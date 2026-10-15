@@ -59,10 +59,14 @@ class Sync {
       try {
         if (q['kind'] == 'duty') {
           await Api.post('duty', payload);
-        } else if (q['kind'] == 'photo') {
+        } else if (q['kind'] == 'photo' || q['kind'] == 'field_photo') {
           final f = File(q['file'] as String);
           if (!await f.exists()) { await LocalDb.dequeue(id); continue; }
-          await Api.upload('task_photo', payload.map((k, v) => MapEntry(k, v?.toString() ?? '')), f);
+          payload['client_id'] ??= 'fp_${DateTime.now().millisecondsSinceEpoch}_$id';
+          final action = (payload.containsKey('task_id') && payload['task_id'] != null && payload['task_id'] != 0)
+              ? 'task_photo'
+              : 'upload_field_photo';
+          await Api.upload(action, payload.map((k, v) => MapEntry(k, v?.toString() ?? '')), f);
           await f.delete().catchError((_) => f);
         }
         await LocalDb.dequeue(id);

@@ -118,3 +118,23 @@ function find_nearest_geofence(?float $lat, ?float $lng): ?string {
     } catch (Throwable $e) {}
     return null;
 }
+
+/**
+ * Inserts a field photo record with automatic column migration fallback.
+ */
+function insert_field_photo(int $userId, string $filePath, ?float $lat, ?float $lng, ?string $note, ?string $geofence, string $dt): void {
+    try {
+        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+          [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
+    } catch (Throwable $e) {
+        try {
+            q("ALTER TABLE field_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+              [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
+        } catch (Throwable $e2) {
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+              [$userId, $filePath, $lat, $lng, $note, $dt]);
+        }
+    }
+}
+

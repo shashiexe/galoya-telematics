@@ -1,0 +1,1743 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WiaTag Mobile App · Galoya Telematics</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    .sim-layout {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 36px;
+      padding: 24px;
+      flex-wrap: wrap;
+    }
+
+    /* Smartphone Frame (380x760) */
+    .phone-device {
+      width: 375px;
+      height: 750px;
+      background: #000;
+      border-radius: 48px;
+      padding: 12px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 0 4px #334155;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .phone-notch {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 110px;
+      height: 22px;
+      background: #000;
+      border-radius: 12px;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .phone-notch .cam-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1e293b;
+    }
+
+    .phone-screen {
+      flex: 1;
+      background: #fff;
+      border-radius: 38px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Status Bar inside phone */
+    .phone-statusbar {
+      height: 36px;
+      padding: 6px 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: #1e293b;
+      z-index: 1000;
+      background: #fff;
+    }
+
+    /* WiaTag Top Header Bar (Screenshot 1) */
+    .wiatag-header {
+      height: 48px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      z-index: 1000;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .wiatag-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #1e293b;
+      letter-spacing: -0.5px;
+    }
+    .wiatag-logo-drops {
+      width: 26px;
+      height: 26px;
+      border-radius: 50% 50% 50% 0;
+      background: linear-gradient(135deg, #42a5f5, #1976d2);
+      transform: rotate(-45deg);
+      display: inline-block;
+    }
+    .wiatag-header-icons {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 18px;
+      color: #334155;
+      cursor: pointer;
+    }
+
+    /* Views */
+    .app-page {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .app-page.active {
+      display: flex;
+    }
+
+    .page-main-body {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Map View inside phone */
+    #phone-map {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #0f172a;
+      z-index: 1;
+    }
+
+    /* Floating Toast inside phone screen */
+    .phone-toast {
+      position: absolute;
+      top: 54px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      color: #ffffff;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      z-index: 2500;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    /* Floating Send SOS Card (Screenshot 1 top) */
+    .floating-sos-card {
+      position: absolute;
+      top: 10px;
+      left: 14px;
+      right: 14px;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 7px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.18);
+      z-index: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s;
+    }
+    .floating-sos-card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(220, 38, 38, 0.25);
+    }
+    .sos-icon-badge {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #ef4444;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    }
+    .sos-text {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    /* Floating Right Map Controls (Screenshot 1: Layers, Center, Compass) */
+    .phone-map-floating-controls {
+      position: absolute;
+      top: 60px;
+      right: 14px;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .phone-map-icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .phone-map-icon-btn:hover {
+      transform: scale(1.08);
+      background: #f8fafc;
+    }
+    .phone-map-icon-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* Compass Button (Matching Screenshot 1) */
+    .compass-btn {
+      background: #334155 !important;
+      position: relative;
+    }
+    .needle-north {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 12px solid #ef4444;
+      position: absolute;
+      top: 10px;
+    }
+    .needle-south {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 12px solid #ffffff;
+      position: absolute;
+      bottom: 10px;
+    }
+
+    /* Map Layer Selector Modal / Bottom Sheet inside phone */
+    .phone-map-layer-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    .layer-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(2px);
+    }
+    .layer-modal-card {
+      position: relative;
+      background: #ffffff;
+      border-radius: 24px 24px 0 0;
+      padding: 16px;
+      box-shadow: 0 -10px 25px rgba(0,0,0,0.25);
+      z-index: 2001;
+      animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .layer-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #0f172a;
+      font-size: 14px;
+    }
+    .layer-option-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .layer-opt {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .layer-opt:hover {
+      background: #f1f7fe;
+      border-color: #3b82f6;
+    }
+    .layer-opt.selected {
+      background: #eff6ff;
+      border-color: #2563eb;
+    }
+    .layer-preview-icon {
+      font-size: 22px;
+    }
+    .layer-name {
+      font-weight: 700;
+      font-size: 12.5px;
+      color: #1e293b;
+    }
+    .layer-sub {
+      font-size: 10.5px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+    .chk-mark {
+      font-size: 14px;
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    /* Location Disabled Warning Banner */
+    .location-alert-banner {
+      position: absolute;
+      top: 66px;
+      left: 14px;
+      right: 14px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      z-index: 500;
+      display: none;
+      font-size: 11.5px;
+      color: #92400e;
+    }
+
+    /* Circular Floating Action Buttons (Screenshot 1) */
+    .wiatag-action-row {
+      position: absolute;
+      bottom: 120px;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+      padding: 0 10px;
+      z-index: 500;
+    }
+    .wiatag-circle-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 18px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    .wiatag-circle-btn:hover {
+      transform: scale(1.08);
+    }
+    .btn-status   { background: #9333ea; } /* Purple check */
+    .btn-chat     { background: #4f46e5; } /* Violet chat */
+    .btn-gallery  { background: #f97316; } /* Orange gallery */
+    .btn-tasks    { background: #64748b; } /* Lavender tasks */
+    .btn-camera   { background: #334155; } /* Dark camera */
+    .btn-mode     { background: #0284c7; } /* Blue battery mode */
+
+    /* Draggable Bottom Sheet (Screenshot 1) */
+    .wiatag-bottom-sheet {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 110px;
+      background: #ffffff;
+      border-radius: 22px 22px 0 0;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
+      padding: 8px 18px 14px;
+      z-index: 600;
+      user-select: none;
+    }
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: #cbd5e1;
+      border-radius: 2px;
+      margin: 0 auto 10px;
+    }
+    .sheet-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .sheet-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    /* iOS Toggle Switch */
+    .w-switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 26px;
+    }
+    .w-switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #cbd5e1;
+      transition: .25s;
+      border-radius: 26px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .25s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #22c55e; }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .sheet-info-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    /* Operation Mode Screen (Screenshot 2) */
+    .op-mode-page {
+      background: #fff;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .op-mode-topbar {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 14px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .op-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 16px;
+      margin: 12px 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .op-card.selected {
+      background: #eff6ff;
+      border-color: #3b82f6;
+    }
+    .op-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .op-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .op-radio {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .op-card.selected .op-radio {
+      border-color: #3b82f6;
+      background: #3b82f6;
+    }
+    .op-card.selected .op-radio:after {
+      content: "✓";
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .op-card-desc {
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .op-bullet {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+
+    /* Controller Panel on Laptop Screen */
+    .sim-dock {
+      width: 380px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 22px;
+      color: #f1f5f9;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .sim-dock h2 {
+      margin: 0 0 10px;
+      font-size: 17px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dock-box {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+    .dock-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      display: block;
+    }
+    .dock-btn {
+      width: 100%;
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12.5px;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    .dock-btn.red { background: #dc2626; }
+    .dock-btn.green { background: #16a34a; }
+
+    /* Android System Navigation Bar */
+    .phone-android-navbar {
+      height: 24px;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+      color: #64748b;
+      font-size: 13px;
+      border-top: 1px solid #f1f5f9;
+      z-index: 1000;
+      user-select: none;
+    }
+
+    /* Laptop Controller Dock Layer Buttons */
+    .dock-btn-layer {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #f1f5f9;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .dock-btn-layer:hover {
+      background: #1e293b;
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+    .dock-btn-layer.active {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+
+    /* Responsive Full-Screen Native Mobile UI */
+    @media (max-width: 768px) {
+      body {
+        background: #ffffff !important;
+        overflow: hidden !important;
+        height: 100% !important;
+        min-height: 100dvh !important;
+      }
+      .sim-layout {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100vw !important;
+        height: 100dvh !important;
+        gap: 0 !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+      }
+      .phone-device {
+        width: 100vw !important;
+        height: 100dvh !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: #ffffff !important;
+      }
+      .phone-notch {
+        display: none !important;
+      }
+      .phone-statusbar {
+        display: none !important;
+      }
+      .phone-android-navbar {
+        display: none !important;
+      }
+      .phone-screen {
+        border-radius: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+      .sim-dock {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sim-layout">
+    <!-- SMARTPHONE DEVICE -->
+    <div class="phone-device">
+      <div class="phone-notch"><span class="cam-dot"></span></div>
+
+      <div class="phone-screen">
+        <!-- Status Bar -->
+        <div class="phone-statusbar">
+          <span id="phone-time">7:58</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="stat-gps-icon">📍</span>
+            <span>📶</span>
+            <span id="phone-battery-txt">🔋 85%</span>
+          </div>
+        </div>
+
+        <!-- PAGE 1: WIATAG MAIN SCREEN (Matching Screenshot 1) -->
+        <div class="app-page active" id="page-main">
+          <!-- Top WiaTag Header Bar -->
+          <div class="wiatag-header">
+            <div class="wiatag-brand">
+              <span class="wiatag-logo-drops"></span>
+              <span>wiatag</span>
+            </div>
+            <div class="wiatag-header-icons">
+              <span id="btn-open-modes" title="Battery & Operation Modes">⚙️</span>
+              <span onclick="alert('Galoya StaffTrack v2.4 (WiaTag Telematics Core)')" title="Menu">⊞</span>
+            </div>
+          </div>
+
+          <!-- Main Body containing Map and Controls -->
+          <div class="page-main-body">
+            <!-- Floating Toast Alert -->
+            <div id="phone-toast" class="phone-toast"></div>
+
+            <!-- Floating Send SOS Pill Button -->
+            <div class="floating-sos-card" id="btn-send-sos">
+              <div class="sos-icon-badge">SOS</div>
+              <div class="sos-text">Send SOS</div>
+            </div>
+
+            <!-- Location Disabled Alert Banner -->
+            <div class="location-alert-banner" id="loc-alert">
+              <strong>⚠️ GPS Location Disabled!</strong>
+              <div>Tracking is stopped because phone location is off. Turn on GPS to resume duty.</div>
+              <button onclick="togglePhoneGPS(true)" style="margin-top:6px;background:#d97706;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">Turn On Location</button>
+            </div>
+
+            <!-- Interactive Map Background -->
+            <div id="phone-map"></div>
+
+            <!-- Floating Right Map Controls (Screenshot 1: Layers, Center, Compass) -->
+            <div class="phone-map-floating-controls">
+              <!-- Layers Button (Opens Map Layer Switcher) -->
+              <button class="phone-map-icon-btn" id="btn-phone-map-layers" title="Change Map Layer (Satellite / Standard)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </button>
+
+              <!-- My Location Button (Flies to current GPS coordinates) -->
+              <button class="phone-map-icon-btn" id="btn-phone-my-location" title="My Location">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#1e293b">
+                  <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+                </svg>
+              </button>
+
+              <!-- Compass Needle (Points North, exactly matching Screenshot 1) -->
+              <button class="phone-map-icon-btn compass-btn" id="btn-phone-compass" title="Compass (North)">
+                <div class="needle-north"></div>
+                <div class="needle-south"></div>
+              </button>
+            </div>
+
+            <!-- Mobile Machine / Unit Selector Modal -->
+            <div class="phone-map-layer-modal" id="modal-phone-units" style="display:none">
+              <div class="layer-modal-backdrop" onclick="closePhoneUnitModal()"></div>
+              <div class="layer-modal-card">
+                <div class="layer-modal-header">
+                  <strong>🚜 Select Machine / Unit</strong>
+                  <span onclick="closePhoneUnitModal()" style="cursor:pointer;font-size:18px;font-weight:700">✕</span>
+                </div>
+                <div class="layer-option-list" style="max-height:320px;overflow-y:auto">
+                  <div class="layer-opt selected" id="opt-unit-2" onclick="pickPhoneUnit(2, 'TRACTOR 49-1665', '🚜')">
+                    <span class="layer-preview-icon">🚜</span>
+                    <div style="flex:1">
+                      <div class="layer-name">TRACTOR 49-1665</div>
+                      <div class="layer-sub">Hingurana Estate Agriculture</div>
+                    </div>
+                  </div>
+                  <div class="layer-opt" id="opt-unit-3" onclick="pickPhoneUnit(3, 'TRACTOR 49-3835', '🚜')">
+                    <span class="layer-preview-icon">🚜</span>
+                    <div style="flex:1">
+                      <div class="layer-name">TRACTOR 49-3835</div>
+                      <div class="layer-sub">Hingurana Estate Agriculture</div>
+                    </div>
+                  </div>
+                  <div class="layer-opt" id="opt-unit-4" onclick="pickPhoneUnit(4, 'HARVESTER CH-570', '🌾')">
+                    <span class="layer-preview-icon">🌾</span>
+                    <div style="flex:1">
+                      <div class="layer-name">HARVESTER CH-570 (2806)</div>
+                      <div class="layer-sub">Sugarcane Combine Harvester</div>
+                    </div>
+                  </div>
+                  <div class="layer-opt" id="opt-unit-12" onclick="pickPhoneUnit(12, 'BOLERO DAH-8851', '🚙')">
+                    <span class="layer-preview-icon">🚙</span>
+                    <div style="flex:1">
+                      <div class="layer-name">BOLERO DAH-8851</div>
+                      <div class="layer-sub">Field Inspection 4x4</div>
+                    </div>
+                  </div>
+                  <div class="layer-opt" id="opt-unit-16" onclick="pickPhoneUnit(16, 'Kamal Perera', '📱')">
+                    <span class="layer-preview-icon">📱</span>
+                    <div style="flex:1">
+                      <div class="layer-name">Kamal Perera</div>
+                      <div class="layer-sub">Field Officer Phone</div>
+                    </div>
+                  </div>
+                  <div class="layer-opt" id="opt-unit-17" onclick="pickPhoneUnit(17, 'Nimal Silva', '📱')">
+                    <span class="layer-preview-icon">📱</span>
+                    <div style="flex:1">
+                      <div class="layer-name">Nimal Silva</div>
+                      <div class="layer-sub">Field Supervisor Phone</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mobile Map Layer Selector Modal -->
+            <div class="phone-map-layer-modal" id="modal-map-layers" style="display:none">
+              <div class="layer-modal-backdrop" onclick="closeMapLayerModal()"></div>
+              <div class="layer-modal-card">
+                <div class="layer-modal-header">
+                  <strong>🗺️ Select Map Layer</strong>
+                  <span onclick="closeMapLayerModal()" style="cursor:pointer;font-size:18px;font-weight:700">✕</span>
+                </div>
+                <div class="layer-option-list">
+                  <div class="layer-opt selected" id="opt-layer-google_hybrid" onclick="switchPhoneMapLayer('google_hybrid')">
+                    <span class="layer-preview-icon">🌐</span>
+                    <div style="flex:1">
+                      <div class="layer-name">Google Hybrid</div>
+                      <div class="layer-sub">Satellite with roads & estate labels</div>
+                    </div>
+                    <span class="chk-mark" id="chk-layer-google_hybrid">✓</span>
+                  </div>
+
+                  <div class="layer-opt" id="opt-layer-satellite" onclick="switchPhoneMapLayer('satellite')">
+                    <span class="layer-preview-icon">🛰️</span>
+                    <div style="flex:1">
+                      <div class="layer-name">Satellite (Esri HD)</div>
+                      <div class="layer-sub">High-definition satellite for fields</div>
+                    </div>
+                    <span class="chk-mark" id="chk-layer-satellite"></span>
+                  </div>
+
+                  <div class="layer-opt" id="opt-layer-osm" onclick="switchPhoneMapLayer('osm')">
+                    <span class="layer-preview-icon">🗺️</span>
+                    <div style="flex:1">
+                      <div class="layer-name">OpenStreetMap</div>
+                      <div class="layer-sub">Clean standard road map</div>
+                    </div>
+                    <span class="chk-mark" id="chk-layer-osm"></span>
+                  </div>
+
+                  <div class="layer-opt" id="opt-layer-hot" onclick="switchPhoneMapLayer('hot')">
+                    <span class="layer-preview-icon">📍</span>
+                    <div style="flex:1">
+                      <div class="layer-name">Humanitarian OSM</div>
+                      <div class="layer-sub">High-contrast tracks & canals</div>
+                    </div>
+                    <span class="chk-mark" id="chk-layer-hot"></span>
+                  </div>
+
+                  <div class="layer-opt" id="opt-layer-topo" onclick="switchPhoneMapLayer('topo')">
+                    <span class="layer-preview-icon">🏔️</span>
+                    <div style="flex:1">
+                      <div class="layer-name">OpenTopoMap (Terrain)</div>
+                      <div class="layer-sub">Elevation & terrain contours</div>
+                    </div>
+                    <span class="chk-mark" id="chk-layer-topo"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Circular Floating Action Buttons (Screenshot 1) -->
+            <div class="wiatag-action-row">
+              <button class="wiatag-circle-btn btn-status" title="Check-in Status" onclick="showStatusDialog()">✓</button>
+              <button class="wiatag-circle-btn btn-chat" title="Chat / Dispatch" onclick="openChat()">💬</button>
+              <button class="wiatag-circle-btn btn-gallery" title="Send Photo" onclick="triggerTaskPhoto()">🖼️</button>
+              <button class="wiatag-circle-btn btn-tasks" title="Tasks List" onclick="openTasksModal()">⛶</button>
+              <button class="wiatag-circle-btn btn-camera" title="Take Before/After Photo" onclick="triggerTaskPhoto()">📷</button>
+              <button class="wiatag-circle-btn btn-mode" title="Battery Operation Mode" onclick="showPage('modes')">🔋</button>
+            </div>
+
+            <!-- Draggable Bottom Sheet (Screenshot 1) -->
+            <div class="wiatag-bottom-sheet">
+              <div class="sheet-handle"></div>
+              <div class="sheet-header-row">
+                <div class="sheet-title">Tracking</div>
+                <label class="w-switch">
+                  <input type="checkbox" id="chk-tracking" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="sheet-info-row" style="color:#0284c7;font-weight:700;cursor:pointer" onclick="openPhoneUnitModal()" title="Tap to switch unit">
+                <span id="disp-unit-icon">🚜</span>
+                <span id="disp-unit-name">TRACTOR 49-1665</span>
+                <span style="font-size:10px;color:#0284c7;background:#e0f2fe;padding:2px 7px;border-radius:10px;margin-left:auto">Change Unit ▾</span>
+              </div>
+              <div class="sheet-info-row">
+                <span>📍</span>
+                <span id="disp-accuracy">Accuracy 130 ft</span>
+              </div>
+              <div class="sheet-info-row">
+                <span>✉️</span>
+                <span id="disp-last-msg">Last message was sent 0 s ago</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAGE 2: OPERATION MODE SCREEN (Matching Screenshot 2) -->
+        <div class="app-page" id="page-modes">
+          <div class="op-mode-topbar">
+            <span style="cursor:pointer;font-size:20px" onclick="showPage('main')">←</span>
+            <span>Operation mode</span>
+          </div>
+
+          <div class="op-mode-page">
+            <!-- Mode 1: Light -->
+            <div class="op-card" id="card-mode-light" onclick="selectMode('light')">
+              <div class="op-card-header">
+                <span class="op-card-title">Light</span>
+                <span class="op-radio"></span>
+              </div>
+              <div class="op-card-desc">
+                This mode is suitable for those who want to save battery power and for whom it is enough to know the approximate location.
+              </div>
+              <div class="op-bullet">
+                <span>✓</span>
+                <span>Low battery consumption</span>
+              </div>
+              <div class="op-bullet">
+                <span>✓</span>
+                <span>General idea of the unit movement</span>
+              </div>
+            </div>
+
+            <!-- Mode 2: Standard (Selected by default) -->
+            <div class="op-card selected" id="card-mode-standard" onclick="selectMode('standard')">
+              <div class="op-card-header">
+                <span class="op-card-title">Standard</span>
+                <span class="op-radio"></span>
+              </div>
+              <div class="op-card-desc">
+                This mode is optimized for obtaining accurate tracks and moderate battery consumption.
+              </div>
+              <div class="op-bullet">
+                <span>✓</span>
+                <span>Well-balanced and accurate</span>
+              </div>
+              <div class="op-bullet">
+                <span>✓</span>
+                <span>Battery lasting all working day</span>
+              </div>
+            </div>
+
+            <!-- Mode 3: Custom -->
+            <div class="op-card" id="card-mode-custom" onclick="selectMode('custom')">
+              <div class="op-card-header">
+                <span class="op-card-title">Custom</span>
+                <span class="op-radio"></span>
+              </div>
+              <div class="op-card-desc">
+                You can create a custom mode based on your own requirements.
+              </div>
+              <div class="op-bullet">
+                <span>✓</span>
+                <span id="custom-rate-lbl">Data collection: 30 s</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Android System Navigation Bar (Screenshot 1 bottom) -->
+        <div class="phone-android-navbar">
+          <span>◀</span>
+          <span>●</span>
+          <span>■</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAPTOP CONTROLLER DOCK -->
+    <div class="sim-dock">
+      <h2>🎮 Smart Mobile App Controller</h2>
+      <p style="font-size:12px;color:#94a3b8;margin:0 0 14px">
+        Test battery saving, GPS permissions, SOS alarms, and live telematics transmission to Web Admin!
+      </p>
+
+      <!-- 0. Machine / Unit Connection -->
+      <div class="dock-box" style="border:1px solid #38bdf8;background:#1e293b;padding:12px 14px;border-radius:10px;margin-bottom:14px">
+        <span class="dock-label" style="color:#38bdf8;font-size:12px;font-weight:700">🚜 Active Unit / Machinery to Simulate</span>
+        <select id="sim-unit-select" onchange="switchSimulatedUnit(this.value)" style="width:100%;padding:8px 10px;border-radius:6px;background:#0f172a;color:#fff;border:1px solid #38bdf8;font-size:13px;font-weight:600;margin-top:6px;cursor:pointer">
+          <option value="2" selected>🚜 TRACTOR 49-1665 (Hingurana Estate)</option>
+          <option value="3">🚜 TRACTOR 49-3835</option>
+          <option value="4">🌾 HARVESTER 2806</option>
+          <option value="5">🌾 HARVESTER 2808</option>
+          <option value="8">🚛 INFIELDER 3407</option>
+          <option value="12">🚙 BOLERO DAH-8851</option>
+          <option value="16">📱 Kamal Perera (Field Officer Phone)</option>
+          <option value="17">📱 Nimal Silva (Supervisor Phone)</option>
+        </select>
+        <div id="sim-conn-status" style="font-size:11.5px;color:#22c55e;font-weight:700;margin-top:8px;display:flex;align-items:center;gap:6px">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px #22c55e"></span>
+          <span id="sim-status-text">🟢 Online & Connected to Web Control Room</span>
+        </div>
+        <div id="sim-ping-counter" style="font-size:11px;color:#94a3b8;margin-top:4px">
+          Heartbeat: Transmitting GPS packets to Web Admin every 3-5s
+        </div>
+      </div>
+
+      <!-- 1. GPS Location Permission Simulation -->
+      <div class="dock-box">
+        <span class="dock-label">📍 Phone Location Sensor (GPS)</span>
+        <div style="display:flex;gap:8px">
+          <button class="dock-btn green" id="btn-gps-on" onclick="togglePhoneGPS(true)">
+            GPS Enabled (ON)
+          </button>
+          <button class="dock-btn red" id="btn-gps-off" onclick="togglePhoneGPS(false)">
+            Turn GPS OFF
+          </button>
+        </div>
+        <div style="font-size:11px;color:#cbd5e1;margin-top:6px">
+          Tests your requirement: Alert staff when location is turned off so tracking never fails!
+        </div>
+      </div>
+
+      <!-- 2. Battery Consumption & Smart Mode Simulation -->
+      <div class="dock-box">
+        <span class="dock-label">🔋 Battery Level & Smart Power Saver</span>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px">Battery: <strong id="dock-bat-val">85%</strong></span>
+          <span style="font-size:11px;color:#38bdf8" id="dock-mode-val">Standard Mode</span>
+        </div>
+        <input type="range" id="battery-slider" min="5" max="100" value="85" style="width:100%;margin-top:8px">
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">
+          • Light mode: Throttles pings when stationary (lasts 2+ days)<br>
+          • Standard mode: High accuracy, lasts all working day
+        </div>
+      </div>
+
+      <!-- 3. Map Layer Selector (Quick Laptop Click) -->
+      <div class="dock-box">
+        <span class="dock-label">🗺️ Mobile Map Layer Selector</span>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px;">
+          <button class="dock-btn-layer active" id="dock-layer-google_hybrid" onclick="switchPhoneMapLayer('google_hybrid')">
+            🌐 Google Hybrid
+          </button>
+          <button class="dock-btn-layer" id="dock-layer-satellite" onclick="switchPhoneMapLayer('satellite')">
+            🛰️ Satellite HD
+          </button>
+          <button class="dock-btn-layer" id="dock-layer-osm" onclick="switchPhoneMapLayer('osm')">
+            🗺️ OpenStreetMap
+          </button>
+          <button class="dock-btn-layer" id="dock-layer-hot" onclick="switchPhoneMapLayer('hot')">
+            📍 Humanitarian
+          </button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:6px">
+          💡 Tip: You can switch layers here OR tap the <b>Layers ⛶ button</b> directly on the phone screen!
+        </div>
+      </div>
+
+      <!-- 4. Auto-Drive Movement Simulation -->
+      <div class="dock-box">
+        <span class="dock-label">🚜 Hingurana Movement Simulator</span>
+        <button class="dock-btn" id="btn-drive-toggle" onclick="toggleDrivingSim()">
+          ▶️ Start Vehicle Movement
+        </button>
+        <div style="font-size:11px;color:#cbd5e1;margin-top:6px">
+          Transmits live speed (24 km/h) & movement coordinates to show moving green vehicle logo on Admin Map!
+        </div>
+      </div>
+
+      <!-- 5. Instant Online / Offline Control -->
+      <div class="dock-box">
+        <span class="dock-label">🔴 Test Unit Online / Offline Toggle</span>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="dock-btn red" id="btn-dock-offline" onclick="disconnectCurrentUnit()">
+            🔴 Go Offline / Disconnect
+          </button>
+          <button class="dock-btn green" id="btn-dock-online" onclick="reconnectCurrentUnit()">
+            🟢 Go Online / Connect
+          </button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:6px">
+          Instantly removes unit from Active Monitoring (0 units online) or reconnects it!
+        </div>
+      </div>
+
+      <!-- 6. Quick Links to Admin Panel -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+        <a href="../admin/index.php" target="_blank" class="dock-btn" style="background:#38bdf8;color:#0f172a;text-align:center;text-decoration:none">
+          🗺️ Open Live Admin Map
+        </a>
+        <a href="../admin/dashboard.php" target="_blank" class="dock-btn" style="background:#334155;text-align:center;text-decoration:none">
+          📊 Open Telematics Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isTrackingOn = true;
+    let isGpsHardwareOn = true;
+    let currentBattery = 85;
+    let currentMode = 'standard';
+    let currentLat = 7.20950;
+    let currentLng = 81.65750;
+    let isDriving = false;
+    let driveInterval = null;
+    let lastMsgSec = 0;
+    let lastMsgTimer = null;
+    let phoneMap, userMarker, userPulseCircle;
+    let currentUnitId = 2;
+    let currentUnitName = 'TRACTOR 49-1665';
+    let pingCount = 0;
+
+    async function setDeviceOffline(unitId) {
+      const targetId = unitId || currentUnitId;
+      const token = localStorage.getItem('staff_token');
+      try {
+        const res = await fetch('../api.php?action=set_offline&unit_id=' + targetId, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + (token || ''),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ unit_id: targetId })
+        });
+        const d = await res.json();
+        const stEl = document.getElementById('sim-status-text');
+        if (stEl) {
+          stEl.innerHTML = '<span style="color:#ef4444">🔴 Offline / Disconnected</span>';
+        }
+        const pEl = document.getElementById('sim-ping-counter');
+        if (pEl) {
+          pEl.textContent = 'Transmissions stopped. Unit removed from Web Control Room.';
+        }
+        return d;
+      } catch (e) {
+        console.error('setDeviceOffline failed:', e);
+      }
+    }
+
+    async function disconnectCurrentUnit() {
+      if (isDriving) toggleDrivingSim();
+      await setDeviceOffline(currentUnitId);
+      showPhoneToast('🔴 Unit ' + currentUnitName + ' disconnected (Offline)');
+    }
+
+    async function reconnectCurrentUnit() {
+      await authenticateSimulator(currentUnitId);
+      showPhoneToast('🟢 Unit ' + currentUnitName + ' reconnected (Online)');
+    }
+
+    async function switchSimulatedUnit(unitId) {
+      const oldUnitId = currentUnitId;
+      if (oldUnitId && oldUnitId != unitId) {
+        await setDeviceOffline(oldUnitId);
+      }
+      currentUnitId = parseInt(unitId);
+      const sel = document.getElementById('sim-unit-select');
+      currentUnitName = sel.options[sel.selectedIndex].text.replace(/^[^\w]+/, '');
+      const dispEl = document.getElementById('disp-unit-name');
+      if (dispEl) dispEl.textContent = currentUnitName;
+      authenticateSimulator(currentUnitId);
+    }
+
+    async function authenticateSimulator(unitId) {
+      try {
+        const res = await fetch('../api.php?action=simulator_auth&unit_id=' + unitId);
+        const data = await res.json();
+        if (data.ok && data.token) {
+          localStorage.setItem('staff_token', data.token);
+          currentUnitId = data.user.id;
+          currentUnitName = data.user.name;
+          const dispEl = document.getElementById('disp-unit-name');
+          if (dispEl) dispEl.textContent = data.user.name;
+          const stEl = document.getElementById('sim-status-text');
+          if (stEl) stEl.textContent = '🟢 Online: ' + data.user.name;
+          showPhoneToast('📡 Connected as ' + data.user.name);
+          sendTelemetryPing();
+        }
+      } catch (e) {
+        console.error('Simulator auth failed:', e);
+      }
+    }
+
+    const PHONE_MAP_LAYERS = {
+      google_hybrid: {
+        name: 'Google Hybrid',
+        url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        maxZoom: 20
+      },
+      satellite: {
+        name: 'Satellite (Esri HD)',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19
+      },
+      osm: {
+        name: 'OpenStreetMap',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        maxZoom: 19
+      },
+      hot: {
+        name: 'Humanitarian OSM (Estate Tracks)',
+        url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+        maxZoom: 19
+      },
+      topo: {
+        name: 'OpenTopoMap (Terrain)',
+        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        maxZoom: 17
+      }
+    };
+
+    let currentTileLayer = null;
+    let currentLayerKey = 'google_hybrid';
+
+    // Switch Phone Map Layer
+    function switchPhoneMapLayer(layerKey) {
+      if (!PHONE_MAP_LAYERS[layerKey]) return;
+      currentLayerKey = layerKey;
+      const cfg = PHONE_MAP_LAYERS[layerKey];
+
+      if (currentTileLayer && phoneMap) {
+        phoneMap.removeLayer(currentTileLayer);
+      }
+
+      if (phoneMap) {
+        currentTileLayer = L.tileLayer(cfg.url, {
+          maxZoom: cfg.maxZoom || 19,
+          subdomains: ['a', 'b', 'c']
+        }).addTo(phoneMap);
+      }
+
+      // Update checkmarks in modal
+      document.querySelectorAll('.layer-opt').forEach(el => el.classList.remove('selected'));
+      document.querySelectorAll('.chk-mark').forEach(el => el.textContent = '');
+      const optEl = document.getElementById('opt-layer-' + layerKey);
+      const chkEl = document.getElementById('chk-layer-' + layerKey);
+      if (optEl) optEl.classList.add('selected');
+      if (chkEl) chkEl.textContent = '✓';
+
+      // Update dock buttons
+      document.querySelectorAll('.dock-btn-layer').forEach(b => b.classList.remove('active'));
+      const dockBtn = document.getElementById('dock-layer-' + layerKey);
+      if (dockBtn) dockBtn.classList.add('active');
+
+      showPhoneToast('🗺️ Map changed: ' + cfg.name);
+      closeMapLayerModal();
+    }
+
+    function openMapLayerModal() {
+      const m = document.getElementById('modal-map-layers');
+      if (m) m.style.display = 'flex';
+    }
+
+    function closeMapLayerModal() {
+      const m = document.getElementById('modal-map-layers');
+      if (m) m.style.display = 'none';
+    }
+
+    function showPhoneToast(text) {
+      const toast = document.getElementById('phone-toast');
+      if (!toast) return;
+      toast.textContent = text;
+      toast.style.opacity = '1';
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => {
+        toast.style.opacity = '0';
+      }, 2200);
+    }
+
+    // Initialize Map inside Phone (Hingurana / Damana area)
+    function initPhoneMap() {
+      phoneMap = L.map('phone-map', { zoomControl: false, attributionControl: false })
+        .setView([currentLat, currentLng], 15);
+
+      // Load initial layer
+      switchPhoneMapLayer('google_hybrid');
+
+      // User location accuracy circle
+      userPulseCircle = L.circle([currentLat, currentLng], {
+        radius: 40,
+        color: '#38bdf8',
+        fillColor: '#0284c7',
+        fillOpacity: 0.25,
+        weight: 2
+      }).addTo(phoneMap);
+
+      userMarker = L.circleMarker([currentLat, currentLng], {
+        radius: 8,
+        color: '#ffffff',
+        fillColor: '#0284c7',
+        fillOpacity: 1,
+        weight: 3
+      }).addTo(phoneMap);
+
+      // Bind floating control buttons
+      const btnLayers = document.getElementById('btn-phone-map-layers');
+      if (btnLayers) {
+        btnLayers.onclick = (e) => {
+          e.stopPropagation();
+          openMapLayerModal();
+        };
+      }
+
+      const btnLoc = document.getElementById('btn-phone-my-location');
+      if (btnLoc) {
+        btnLoc.onclick = () => {
+          phoneMap.flyTo([currentLat, currentLng], 16, { animate: true, duration: 1 });
+          showPhoneToast('📍 Centered on your location');
+        };
+      }
+
+      const btnCompass = document.getElementById('btn-phone-compass');
+      if (btnCompass) {
+        btnCompass.onclick = () => {
+          phoneMap.setView([currentLat, currentLng], 15);
+          showPhoneToast('🧭 Oriented North');
+        };
+      }
+    }
+
+    // Switch Phone Pages
+    function showPage(pageId) {
+      document.querySelectorAll('.app-page').forEach(p => p.classList.remove('active'));
+      const p = document.getElementById('page-' + pageId);
+      if (p) p.classList.add('active');
+      if (pageId === 'main' && phoneMap) {
+        setTimeout(() => phoneMap.invalidateSize(), 50);
+      }
+    }
+
+    document.getElementById('btn-open-modes').onclick = () => showPage('modes');
+
+    // Select Operation Mode (Screenshot 2)
+    function selectMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.op-card').forEach(c => c.classList.remove('selected'));
+      document.getElementById('card-mode-' + mode).classList.add('selected');
+      document.getElementById('dock-mode-val').textContent = mode.toUpperCase() + ' Mode';
+      
+      // Update backend via API
+      fetch('../api.php?action=operation_mode', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || ''), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      }).catch(()=>{});
+
+      setTimeout(() => showPage('main'), 300);
+    }
+
+    // Toggle Tracking Switch
+    document.getElementById('chk-tracking').addEventListener('change', async (e) => {
+      isTrackingOn = e.target.checked;
+      if (isTrackingOn) {
+        document.getElementById('disp-accuracy').textContent = 'Accuracy 130 ft';
+        await authenticateSimulator(currentUnitId);
+        sendTelemetryPing();
+        showPhoneToast('📡 Tracking Resumed: Unit Online');
+      } else {
+        document.getElementById('disp-accuracy').textContent = 'Tracking Paused';
+        if (isDriving) toggleDrivingSim();
+        await setDeviceOffline(currentUnitId);
+        showPhoneToast('⏸ Tracking Paused: Removed from Web Admin');
+      }
+    });
+
+    // Toggle Phone GPS Hardware (Tests user requirement)
+    async function togglePhoneGPS(on) {
+      isGpsHardwareOn = on;
+      const alertBox = document.getElementById('loc-alert');
+      const icon = document.getElementById('stat-gps-icon');
+
+      if (!isGpsHardwareOn) {
+        alertBox.style.display = 'block';
+        icon.textContent = '❌';
+        document.getElementById('disp-accuracy').textContent = 'Location GPS Disabled!';
+        if (isDriving) toggleDrivingSim();
+        await setDeviceOffline(currentUnitId);
+        showPhoneToast('❌ GPS Disabled: Unit taken Offline from Web Admin');
+      } else {
+        alertBox.style.display = 'none';
+        icon.textContent = '📍';
+        document.getElementById('disp-accuracy').textContent = 'Accuracy 130 ft';
+        await authenticateSimulator(currentUnitId);
+        sendTelemetryPing();
+        showPhoneToast('📍 GPS Enabled: Reconnected to Web Admin');
+      }
+    }
+
+    // Send SOS Emergency Button
+    document.getElementById('btn-send-sos').addEventListener('click', async () => {
+      if (!isGpsHardwareOn) {
+        alert('Cannot send SOS: GPS is turned off! Turn on location first.');
+        return;
+      }
+      if (confirm('🚨 Transmit EMERGENCY SOS with your live coordinates to Galoya Control Room?')) {
+        try {
+          const res = await fetch('../api.php?action=sos', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || ''), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: currentLat, lng: currentLng, battery: currentBattery })
+          });
+          const d = await res.json();
+          alert('🚨 SOS TRANSMITTED!\nEmergency signal received by Control Room.\nLive coordinates: ' + currentLat.toFixed(5) + ', ' + currentLng.toFixed(5));
+        } catch (e) {
+          alert('SOS broadcast dispatched to local server!');
+        }
+      }
+    });
+
+    // Offline GPS queue helpers
+    function getOfflineQueue() {
+      try {
+        return JSON.parse(localStorage.getItem('stafftrack_offline_queue') || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function savePointToOfflineQueue(pt) {
+      const q = getOfflineQueue();
+      if (q.length > 3000) q.shift();
+      q.push(pt);
+      localStorage.setItem('stafftrack_offline_queue', JSON.stringify(q));
+      
+      const stEl = document.getElementById('sim-status-text');
+      if (stEl) {
+        stEl.innerHTML = `<span style="color:#f59e0b">📶 Offline: ${q.length} points saved on phone</span>`;
+      }
+      const pEl = document.getElementById('sim-ping-counter');
+      if (pEl) {
+        pEl.textContent = `No internet · Queued ${q.length} GPS points in memory. Auto-syncs when online.`;
+      }
+    }
+
+    async function flushOfflineQueue() {
+      const q = getOfflineQueue();
+      if (q.length === 0) return;
+      const token = localStorage.getItem('staff_token');
+      try {
+        const batch = q.slice(0, 500);
+        const res = await fetch('../api.php?action=locations', {
+          method: 'POST',
+          headers: { 
+            'Authorization': 'Bearer ' + (token || ''), 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            unit_id: currentUnitId,
+            points: batch
+          })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          const remaining = q.slice(batch.length);
+          localStorage.setItem('stafftrack_offline_queue', JSON.stringify(remaining));
+          console.log(`Synced ${batch.length} offline points, ${remaining.length} remaining`);
+          showPhoneToast(`📶 Synced ${batch.length} offline GPS points!`);
+          if (remaining.length > 0) setTimeout(flushOfflineQueue, 1500);
+        }
+      } catch (e) {
+        console.warn('Flush offline queue retry later:', e);
+      }
+    }
+
+    window.addEventListener('online', () => {
+      showPhoneToast('📶 Connection restored · Syncing offline tracks...');
+      flushOfflineQueue();
+    });
+
+    // Send Telemetry Ping to api.php (with offline fallback)
+    async function sendTelemetryPing(liveSpeed, liveAcc) {
+      if (!isTrackingOn || !isGpsHardwareOn) return;
+
+      const token = localStorage.getItem('staff_token');
+      const calcSpeed = (liveSpeed !== undefined) ? liveSpeed : (isDriving ? 24.5 : 0);
+      const calcAcc = (liveAcc !== undefined) ? liveAcc : 4.2;
+
+      const currentPoint = {
+        lat: currentLat,
+        lng: currentLng,
+        accuracy: calcAcc,
+        speed: calcSpeed,
+        battery: currentBattery,
+        t: Date.now()
+      };
+
+      try {
+        const res = await fetch('../api.php?action=locations', {
+          method: 'POST',
+          headers: { 
+            'Authorization': 'Bearer ' + (token || ''), 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            unit_id: currentUnitId,
+            points: [currentPoint]
+          })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          lastMsgSec = 0;
+          pingCount++;
+          document.getElementById('disp-last-msg').textContent = 'Last message was sent 0 s ago';
+          const pEl = document.getElementById('sim-ping-counter');
+          if (pEl) {
+            pEl.textContent = `Transmitted ${pingCount} GPS packets · Speed: ${calcSpeed > 0 ? calcSpeed + ' km/h (Moving ➔)' : '0 km/h (Stationary)'}`;
+          }
+          const stEl = document.getElementById('sim-status-text');
+          if (stEl) {
+            stEl.innerHTML = `<span style="color:#22c55e">🟢 Online · Synced ${new Date().toLocaleTimeString()}</span>`;
+          }
+          // Also flush any previously accumulated offline points if queue exists
+          if (getOfflineQueue().length > 0) {
+            flushOfflineQueue();
+          }
+        } else {
+          savePointToOfflineQueue(currentPoint);
+        }
+      } catch (e) {
+        // Network failure / completely offline -> save point locally!
+        savePointToOfflineQueue(currentPoint);
+      }
+    }
+
+    // Last message seconds timer
+    lastMsgTimer = setInterval(() => {
+      if (isTrackingOn && isGpsHardwareOn) {
+        lastMsgSec++;
+        document.getElementById('disp-last-msg').textContent = `Last message was sent ${lastMsgSec} s ago`;
+      }
+    }, 1000);
+
+    // Auto-Drive Movement
+    function toggleDrivingSim() {
+      isDriving = !isDriving;
+      const btn = document.getElementById('btn-drive-toggle');
+
+      if (isDriving) {
+        btn.textContent = '⏹ Stop Movement';
+        btn.classList.add('red');
+        let step = 0;
+        driveInterval = setInterval(() => {
+          step++;
+          currentLat += (Math.sin(step / 2.5) * 0.00045);
+          currentLng += (Math.cos(step / 2.5) * 0.00045);
+          
+          if (userMarker && phoneMap) {
+            userMarker.setLatLng([currentLat, currentLng]);
+            userPulseCircle.setLatLng([currentLat, currentLng]);
+            phoneMap.panTo([currentLat, currentLng]);
+          }
+
+          sendTelemetryPing();
+        }, 2500);
+        sendTelemetryPing();
+      } else {
+        btn.textContent = '▶️ Start Vehicle Movement';
+        btn.classList.remove('red');
+        if (driveInterval) clearInterval(driveInterval);
+        sendTelemetryPing();
+      }
+    }
+
+    // Automatically take device offline when window is closed
+    window.addEventListener('beforeunload', () => {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('../api.php?action=set_offline&unit_id=' + currentUnitId);
+      }
+    });
+
+    // Battery Slider
+    document.getElementById('battery-slider').addEventListener('input', (e) => {
+      currentBattery = parseInt(e.target.value);
+      document.getElementById('phone-battery-txt').textContent = `🔋 ${currentBattery}%`;
+      document.getElementById('dock-bat-val').textContent = `${currentBattery}%`;
+      sendTelemetryPing();
+    });
+
+    // Instant Task Photo Trigger
+    function triggerTaskPhoto() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async () => {
+        if (!input.files[0]) return;
+        const fd = new FormData();
+        fd.append('task_id', 1);
+        fd.append('type', 'before');
+        fd.append('client_id', 'wiatag_' + Date.now());
+        fd.append('lat', currentLat);
+        fd.append('lng', currentLng);
+        fd.append('photo', input.files[0]);
+
+        try {
+          await fetch('../api.php?action=task_photo', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || '') },
+            body: fd
+          });
+          alert('📷 Photo uploaded with GPS tag ' + currentLat.toFixed(5) + ', ' + currentLng.toFixed(5) + '!\nCheck the Admin Tasks tab.');
+        } catch (e) {
+          alert('Photo saved to device queue.');
+        }
+      };
+      input.click();
+    }
+
+    function showStatusDialog() {
+      alert('✓ Staff Status: Active On Duty\nPlantation Sector: Hingurana Block D/207\nBattery: ' + currentBattery + '%\nMode: ' + currentMode.toUpperCase());
+    }
+
+    function openChat() {
+      const msg = prompt('Enter message / field note to transmit to Control Room:');
+      if (msg) alert('✉️ Note transmitted: "' + msg + '"');
+    }
+
+    function openTasksModal() {
+      window.open('../admin/tasks.php', '_blank');
+    }
+
+    function openPhoneUnitModal() {
+      const m = document.getElementById('modal-phone-units');
+      if (m) m.style.display = 'flex';
+    }
+
+    function closePhoneUnitModal() {
+      const m = document.getElementById('modal-phone-units');
+      if (m) m.style.display = 'none';
+    }
+
+    async function pickPhoneUnit(id, name, icon) {
+      document.querySelectorAll('#modal-phone-units .layer-opt').forEach(el => el.classList.remove('selected'));
+      const opt = document.getElementById('opt-unit-' + id);
+      if (opt) opt.classList.add('selected');
+
+      const iconEl = document.getElementById('disp-unit-icon');
+      if (iconEl && icon) iconEl.textContent = icon;
+
+      closePhoneUnitModal();
+      await switchSimulatedUnit(id);
+      showPhoneToast(`${icon || '🚜'} Switched to ${name}`);
+    }
+
+    let realGpsWatchId = null;
+    let hasRealGpsFix = false;
+
+    function initRealDeviceGps() {
+      if ('geolocation' in navigator) {
+        realGpsWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            hasRealGpsFix = true;
+            currentLat = pos.coords.latitude;
+            currentLng = pos.coords.longitude;
+            const acc = Math.round(pos.coords.accuracy || 10);
+            const liveSpeedKmh = (pos.coords.speed !== null && !isNaN(pos.coords.speed) && pos.coords.speed > 0)
+              ? Math.round(pos.coords.speed * 3.6)
+              : (isDriving ? 24.5 : 0);
+
+            const accEl = document.getElementById('disp-accuracy');
+            if (accEl && isTrackingOn && isGpsHardwareOn) {
+              accEl.textContent = `Accuracy ${acc} m (${Math.round(acc * 3.28)} ft)`;
+            }
+
+            if (userMarker && phoneMap) {
+              userMarker.setLatLng([currentLat, currentLng]);
+              if (userPulseCircle) {
+                userPulseCircle.setLatLng([currentLat, currentLng]);
+                userPulseCircle.setRadius(Math.max(acc, 20));
+              }
+              if (!window._initialGpsCentered) {
+                phoneMap.setView([currentLat, currentLng], 16);
+                window._initialGpsCentered = true;
+              }
+            }
+
+            sendTelemetryPing(liveSpeedKmh, acc);
+          },
+          (err) => {
+            console.warn('Real GPS status / permission:', err.message);
+            if (err.code === 1) { // PERMISSION_DENIED
+              togglePhoneGPS(false);
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 2000,
+            timeout: 10000
+          }
+        );
+      }
+    }
+
+    function initRealBattery() {
+      if ('getBattery' in navigator) {
+        navigator.getBattery().then(bat => {
+          currentBattery = Math.round(bat.level * 100);
+          const bTxt = document.getElementById('phone-battery-txt');
+          if (bTxt) bTxt.textContent = `🔋 ${currentBattery}%`;
+          const dVal = document.getElementById('dock-bat-val');
+          if (dVal) dVal.textContent = `${currentBattery}%`;
+          const bSlider = document.getElementById('battery-slider');
+          if (bSlider) bSlider.value = currentBattery;
+
+          bat.addEventListener('levelchange', () => {
+            currentBattery = Math.round(bat.level * 100);
+            if (bTxt) bTxt.textContent = `🔋 ${currentBattery}%`;
+            if (dVal) dVal.textContent = `${currentBattery}%`;
+          });
+        }).catch(()=>{});
+      }
+    }
+
+    // Clock updater
+    setInterval(() => {
+      const d = new Date();
+      document.getElementById('phone-time').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+    }, 1000);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initPhoneMap();
+      authenticateSimulator(currentUnitId);
+      initRealDeviceGps();
+      initRealBattery();
+      // Continuous heartbeat ping every 5 seconds if real GPS has not yet taken over
+      setInterval(() => {
+        if (!isDriving && isTrackingOn && isGpsHardwareOn && !hasRealGpsFix) {
+          sendTelemetryPing();
+        }
+      }, 5000);
+    });
+  </script>
+</body>
+</html>

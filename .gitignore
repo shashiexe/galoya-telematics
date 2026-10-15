@@ -1,0 +1,30 @@
+# Binaries and temp files
+*.zip
+*.tar.gz
+*.rar
+*.log
+.DS_Store
+Thumbs.db
+
+# Antigravity & IDE
+.gemini/
+.agents/
+.system_generated/
+.idea/
+.vscode/
+
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/android/local.properties
+mobile/android/.gradle/
+
+# PHP & Backend uploads
+backend/uploads/

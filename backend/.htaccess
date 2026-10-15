@@ -1,0 +1,20 @@
+# Protect sensitive files on shared hosting
+<FilesMatch "^(config\.php|bootstrap\.php|schema\.sql|database_setup\.sql)$">
+  Require all denied
+</FilesMatch>
+
+# Pass Authorization header to PHP (needed on many cPanel servers)
+RewriteEngine On
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+Options -Indexes
+
+<IfModule mod_php.c>
+  php_value upload_max_filesize 10M
+  php_value post_max_size 12M
+</IfModule>
+<IfModule mod_php7.c>
+  php_value upload_max_filesize 10M
+  php_value post_max_size 12M
+</IfModule>

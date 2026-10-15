@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="lk.galoya.stafftrack">
 
     <!-- Permissions for 24/7 background GPS tracking & offline sync -->
@@ -43,7 +44,8 @@
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="location"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="true"
+            tools:replace="android:exported" />
 
         <meta-data
             android:name="flutterEmbedding"

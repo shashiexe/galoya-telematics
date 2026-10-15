@@ -58,3 +58,63 @@ function to_dt($v): string {
     $t = strtotime((string)$v);
     return date('Y-m-d H:i:s', $t ?: time());
 }
+
+/** Check if coordinates are inside or near an active Geofence */
+function find_nearest_geofence(?float $lat, ?float $lng): ?string {
+    if ($lat === null || $lng === null || $lat == 0.0 || $lng == 0.0) return null;
+    try {
+        $geofences = q("SELECT id, name, coordinates FROM geofences WHERE active=1")->fetchAll();
+        if (empty($geofences)) return null;
+
+        $closestName = null;
+        $minDist = INF;
+
+        foreach ($geofences as $g) {
+            $coords = json_decode($g['coordinates'], true);
+            if (!$coords || !is_array($coords) || count($coords) < 3) continue;
+
+            // Point-in-polygon ray casting algorithm
+            $inside = false;
+            $n = count($coords);
+            for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+                $xi = (float)$coords[$i][0]; $yi = (float)$coords[$i][1];
+                $xj = (float)$coords[$j][0]; $yj = (float)$coords[$j][1];
+                $intersect = (($yi > $lng) !== ($yj > $lng)) &&
+                             ($lat < ($xj - $xi) * ($lng - $yi) / (($yj - $yi) ?: 0.00000001) + $xi);
+                if ($intersect) $inside = !$inside;
+            }
+
+            if ($inside) {
+                return "Inside " . $g['name'];
+            }
+
+            // Calculate distance to polygon centroid
+            $sumLat = 0; $sumLng = 0;
+            foreach ($coords as $c) {
+                $sumLat += (float)$c[0];
+                $sumLng += (float)$c[1];
+            }
+            $cLat = $sumLat / $n;
+            $cLng = $sumLng / $n;
+
+            $dLat = deg2rad($lat - $cLat);
+            $dLng = deg2rad($lng - $cLng);
+            $a = sin($dLat / 2) ** 2 + cos(deg2rad($cLat)) * cos(deg2rad($lat)) * sin($dLng / 2) ** 2;
+            $dist = 6371000 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+            if ($dist < $minDist) {
+                $minDist = $dist;
+                $closestName = $g['name'];
+            }
+        }
+
+        if ($closestName !== null) {
+            if ($minDist < 1000) {
+                return "Near " . $closestName . " (" . round($minDist) . "m)";
+            } else {
+                return "Near " . $closestName . " (" . round($minDist / 1000, 1) . "km)";
+            }
+        }
+    } catch (Throwable $e) {}
+    return null;
+}

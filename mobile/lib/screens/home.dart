@@ -30,6 +30,14 @@ class TaskStore {
 
   static Future<void> save(List<Map<String, dynamic>> t) async =>
       (await SharedPreferences.getInstance()).setString('tasks_cache', jsonEncode(t));
+
+  static Future<void> patch(int id, Map<String, dynamic> changes) async {
+    final list = await cached();
+    for (final t in list) {
+      if (t['id'] == id) t.addAll(changes);
+    }
+    await save(list);
+  }
 }
 
 class HomeScreen extends StatefulWidget {
@@ -181,12 +189,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final lat = pos?.latitude ?? 7.2050;
     final lng = pos?.longitude ?? 81.6580;
 
-    await LocalDb.enqueue('sos', {
+    await LocalDb.enqueue('sos', jsonEncode({
       'lat': lat,
       'lng': lng,
       'status': 'EMERGENCY_SOS',
       't': DateTime.now().millisecondsSinceEpoch,
-    });
+    }));
     Sync.run();
 
     if (mounted) {
@@ -249,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () {
                     setState(() => _currentStatus = s['name'] as String);
                     Navigator.pop(ctx);
-                    LocalDb.enqueue('status_change', {'status': s['name']});
+                    LocalDb.enqueue('status_change', jsonEncode({'status': s['name']}));
                     Sync.run();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Status updated: ${s['name']}')),
@@ -285,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff3b82f6)),
             onPressed: () {
               if (ctl.text.trim().isNotEmpty) {
-                LocalDb.enqueue('note', {'message': ctl.text.trim()});
+                LocalDb.enqueue('note', jsonEncode({'message': ctl.text.trim()}));
                 Sync.run();
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message sent to dispatch')));
@@ -306,12 +314,15 @@ class _HomeScreenState extends State<HomeScreen> {
       if (photo == null) return;
 
       final pos = _currentPosition;
-      await LocalDb.enqueue('photo', {
-        'path': photo.path,
-        'lat': pos?.latitude ?? 7.2050,
-        'lng': pos?.longitude ?? 81.6580,
-        't': DateTime.now().millisecondsSinceEpoch,
-      });
+      await LocalDb.enqueue(
+        'photo',
+        jsonEncode({
+          'lat': pos?.latitude ?? 7.2050,
+          'lng': pos?.longitude ?? 81.6580,
+          't': DateTime.now().millisecondsSinceEpoch,
+        }),
+        file: photo.path,
+      );
       Sync.run();
 
       if (mounted) {
@@ -535,7 +546,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                         if (ok == true) {
                           await Tracker.stop();
-                          await Api.logout();
+                          final sp = await SharedPreferences.getInstance();
+                          await sp.remove('token');
                           if (mounted) {
                             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
                           }

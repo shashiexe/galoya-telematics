@@ -24,8 +24,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace "lk.galoya.stafftrack"
-    compileSdkVersion 34
-    compileSdk 34
+    compileSdkVersion flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -44,7 +43,7 @@ android {
     defaultConfig {
         applicationId "lk.galoya.stafftrack"
         minSdkVersion 23
-        targetSdkVersion 34
+        targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true

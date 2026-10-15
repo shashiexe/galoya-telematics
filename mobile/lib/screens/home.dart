@@ -313,12 +313,81 @@ class _HomeScreenState extends State<HomeScreen> {
       final photo = await picker.pickImage(source: source, imageQuality: 80);
       if (photo == null) return;
 
-      final pos = _currentPosition;
+      // Ensure GPS position
+      Position? pos = _currentPosition;
+      if (pos == null) {
+        try {
+          pos = await Geolocator.getLastKnownPosition();
+          pos ??= await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 4),
+          );
+        } catch (_) {}
+      }
+
+      String note = 'Field Snap';
+      if (mounted) {
+        final ctl = TextEditingController();
+        final res = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xff1e293b),
+            title: const Row(
+              children: [
+                Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 22),
+                SizedBox(width: 8),
+                Text('Add Photo Note', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (pos != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text('📍 ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}',
+                        style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                  ),
+                TextField(
+                  controller: ctl,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Note (e.g. Field inspection, Cane plot)...',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, ''),
+                child: const Text('Skip Note', style: TextStyle(color: Colors.white54)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff0284c7)),
+                onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
+                child: const Text('Upload Photo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        if (res != null && res.isNotEmpty) note = res;
+      }
+
+      final cid = 'fp_${DateTime.now().millisecondsSinceEpoch}';
+      final lat = pos?.latitude ?? 7.2050;
+      final lng = pos?.longitude ?? 81.6580;
+
       await LocalDb.enqueue(
-        'photo',
+        'field_photo',
         jsonEncode({
-          'lat': pos?.latitude ?? 7.2050,
-          'lng': pos?.longitude ?? 81.6580,
+          'client_id': cid,
+          'lat': lat,
+          'lng': lng,
+          'note': note,
           't': DateTime.now().millisecondsSinceEpoch,
         }),
         file: photo.path,
@@ -327,7 +396,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Field photo captured with GPS coordinates & uploaded!')),
+          SnackBar(
+            backgroundColor: const Color(0xff16a34a),
+            content: Text('Field photo captured ($lat, $lng) & uploaded!'),
+          ),
         );
       }
     } catch (e) {

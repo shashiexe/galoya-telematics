@@ -76,6 +76,7 @@ function layout_start(string $title, string $active, bool $map = false): void {
         'dashboard.php'     => ['Dashboard', '📊'],
         'index.php'         => ['Monitoring', '🛰️'],
         'history.php'       => ['Tracks', '↝'],
+        'photos.php'        => ['Photos', '📷'],
         'messages.php'      => ['Messages', '💬'],
         'reports.php'       => ['Reports', '📋'],
         'geofences.php'     => ['Geofences', '⬡'],

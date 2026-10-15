@@ -254,8 +254,7 @@ try {
         $note = trim($_POST['note'] ?? '');
         $geofence = find_nearest_geofence($lat, $lng);
 
-        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-          [$u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt]);
+        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt);
 
         out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence]);
     }
@@ -289,8 +288,7 @@ try {
             $note = trim($_POST['note'] ?? '');
             $geofence = find_nearest_geofence($lat, $lng);
 
-            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-              [$u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt]);
+            insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt);
 
             out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence]);
         }

@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'db.dart';
@@ -44,13 +45,24 @@ class Tracker {
   }
 
   static Future<bool> ensurePermissions() async {
+    try {
+      await Permission.notification.request();
+      await Permission.camera.request();
+    } catch (_) {}
+
     if (!await Geolocator.isLocationServiceEnabled()) {
       await Geolocator.openLocationSettings();
       return false;
     }
     var p = await Geolocator.checkPermission();
     if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
-    if (p == LocationPermission.whileInUse) p = await Geolocator.requestPermission(); // ask for "Always"
+    if (p == LocationPermission.whileInUse) {
+      try {
+        await Permission.locationAlways.request();
+      } catch (_) {
+        p = await Geolocator.requestPermission();
+      }
+    }
     if (p == LocationPermission.deniedForever) {
       await Geolocator.openAppSettings();
       return false;

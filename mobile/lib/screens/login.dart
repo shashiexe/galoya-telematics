@@ -23,7 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final j = await Api.post('login', {'phone': _phone.text.trim(), 'password': _pass.text}, auth: false);
       final sp = await SharedPreferences.getInstance();
       await sp.setString('token', j['token']);
-      await sp.setString('name', j['user']['name']);
+      await sp.setString('name', j['user']['name'] ?? 'Staff');
+      if (j['user']['code'] != null) await sp.setString('code', j['user']['code']);
+      await sp.setString('phone', _phone.text.trim());
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
     } catch (e) {

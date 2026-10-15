@@ -31,6 +31,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter create . --org lk.galoya --project-name stafftrack --platforms android
+          sed -i -e 's/gradle-.*-bin.zip/gradle-8.4-bin.zip/' -e 's/gradle-.*-all.zip/gradle-8.4-all.zip/' android/gradle/wrapper/gradle-wrapper.properties 2>/dev/null || true
           flutter pub get
 
       - name: Build APK (Release)

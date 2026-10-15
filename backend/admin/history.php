@@ -31,13 +31,14 @@ $pts = q("SELECT lat, lng, speed, battery, recorded_at
 // Fetch photos taken during this track interval
 $track_photos = [];
 try {
-    $fp = q("SELECT id, user_id, file_path, lat, lng, note, taken_at, 'field' as type 
+    $fp = q("SELECT id, user_id, file_path, lat, lng, note, geofence_name, taken_at, 'field' as type 
              FROM field_photos 
              WHERE user_id=? AND taken_at BETWEEN ? AND ? AND lat IS NOT NULL AND lng IS NOT NULL",
             [$uid, $from_dt, $to_dt])->fetchAll();
     
     $tp = q("SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng, 
                     CONCAT('Task #', tp.task_id, ' (', tp.type, ')', IF(t.title IS NOT NULL, CONCAT(' - ', t.title), '')) as note, 
+                    NULL as geofence_name,
                     tp.taken_at, 'task' as type 
              FROM task_photos tp 
              LEFT JOIN tasks t ON t.id = tp.task_id
@@ -569,6 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Photo" loading="lazy">
           </div>
           <div style="font-size:11px;color:#64748b;margin-bottom:4px">🕒 <strong>${p.taken_at}</strong></div>
+          ${p.geofence_name ? `<div style="font-size:11px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;padding:3px 6px;border-radius:4px;margin-bottom:6px;font-weight:700">⬡ ${p.geofence_name}</div>` : ''}
           ${p.note ? `<div style="font-size:11px;color:#334155;background:#f8fafc;border-left:3px solid #0284c7;padding:4px 6px;border-radius:3px;margin-bottom:6px">${p.note}</div>` : ''}
           <div style="font-size:10.5px;color:#94a3b8;margin-bottom:8px">📍 ${parseFloat(p.lat).toFixed(5)}, ${parseFloat(p.lng).toFixed(5)}</div>
           <div style="display:flex;gap:6px">

@@ -31,7 +31,7 @@ jobs:
         run: |
           rm -rf android
           flutter create . --org lk.galoya --project-name stafftrack --platforms android
-          cp AndroidManifest.xml.template android/app/src/main/AndroidManifest.xml
+          python3 patch_android.py
           flutter pub get
 
       - name: Build APK (Release)

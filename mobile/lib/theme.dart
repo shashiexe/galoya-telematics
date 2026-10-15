@@ -25,7 +25,7 @@ ThemeData buildTheme() {
       backgroundColor: AppColors.bg, elevation: 0, centerTitle: false,
       titleTextStyle: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.white),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.panel, elevation: 0, margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: AppColors.line)),
     ),

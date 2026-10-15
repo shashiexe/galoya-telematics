@@ -143,6 +143,10 @@ layout_start('Tracks', 'history.php', true);
           <input type="checkbox" name="apply_trip_detector" value="1" checked style="width:auto;margin:0">
           Apply trip detector
         </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#1e293b;cursor:pointer;margin-top:6px;font-weight:600">
+          <input type="checkbox" id="chk-snap-roads" checked style="width:auto;margin:0">
+          🛣️ Snap track to roads (Smooth road routing)
+        </label>
       </div>
 
       <!-- Date Presets Row -->
@@ -284,6 +288,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }).addTo(map);
 
     map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+
+    // Snap to Road (OSRM Map Matching) for smooth road-following tracks
+    async function applySnapToRoads() {
+      if (latlngs.length < 2) return;
+      const step = Math.max(1, Math.floor(latlngs.length / 90));
+      const sampled = [];
+      for (let i = 0; i < latlngs.length; i += step) {
+        sampled.push(latlngs[i]);
+      }
+      if (sampled[sampled.length - 1] !== latlngs[latlngs.length - 1]) {
+        sampled.push(latlngs[latlngs.length - 1]);
+      }
+
+      const coordStr = sampled.map(p => `${p[1].toFixed(6)},${p[0].toFixed(6)}`).join(';');
+      const url = `https://router.project-osrm.org/match/v1/driving/${coordStr}?overview=full&geometries=geojson`;
+
+      try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
+          const roadPoints = [];
+          data.matchings.forEach(m => {
+            if (m.geometry && m.geometry.coordinates) {
+              m.geometry.coordinates.forEach(c => roadPoints.push([c[1], c[0]]));
+            }
+          });
+          if (roadPoints.length > 0) {
+            polyline.setLatLngs(roadPoints);
+          }
+        }
+      } catch (err) {
+        console.warn('Snap to road fallback:', err);
+      }
+    }
+
+    if (document.getElementById('chk-snap-roads')?.checked) {
+      applySnapToRoads();
+    }
+
+    document.getElementById('chk-snap-roads')?.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        applySnapToRoads();
+      } else {
+        polyline.setLatLngs(latlngs);
+      }
+    });
 
     // Start marker (Green flag)
     const startPt = latlngs[0];

@@ -128,33 +128,116 @@ class Tracker {
   }
 }
 
-/// Android background isolate entry point.
+/// Android background isolate entry point with Standard Telematics Smart Filtering.
 @pragma('vm:entry-point')
 void _serviceMain(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   WidgetsFlutterBinding.ensureInitialized();
   var running = true;
-  service.on('stop').listen((_) { running = false; service.stopSelf(); });
+  StreamSubscription<Position>? streamSub;
+
+  service.on('stop').listen((_) {
+    running = false;
+    streamSub?.cancel();
+    service.stopSelf();
+  });
 
   final sp = await SharedPreferences.getInstance();
   await sp.reload();
-  if (sp.getBool('tracking') != true) { service.stopSelf(); return; } // e.g. boot while off duty
+  if (sp.getBool('tracking') != true) {
+    service.stopSelf();
+    return;
+  }
 
-  while (running) {
-    final interval = await effectiveInterval();
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 25));
+  // Telematics tracking state
+  double? lastLat;
+  double? lastLng;
+  double lastHeading = 0.0;
+  int lastTime = 0;
+  int lastSync = 0;
+
+  final locationSettings = AndroidSettings(
+    accuracy: LocationAccuracy.high,
+    distanceFilter: 3, // wake hardware on 3m change
+    intervalDuration: const Duration(seconds: 2), // poll hardware stream every 2s
+    foregroundNotificationConfig: const ForegroundNotificationConfig(
+      notificationTitle: 'Galoya Telematics – Active',
+      notificationText: 'Tracking location in background',
+      enableWakeLock: true,
+    ),
+  );
+
+  streamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
+    if (!running) return;
+
+    // 1. Accuracy Filter: Reject wild multipath jumps (> 30 meters)
+    if (pos.accuracy > 30.0) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final int interval = await effectiveInterval(); // e.g. 15s
+
+    bool shouldRecord = false;
+
+    if (lastLat == null || lastLng == null) {
+      // First fix
+      shouldRecord = true;
+    } else {
+      final double dist = Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude);
+      final double headingDelta = (pos.heading - lastHeading).abs();
+      final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
+      final double elapsedSec = (now - lastTime) / 1000.0;
+      final bool isMoving = pos.speed > 0.8; // > ~3 km/h
+
+      if (isMoving) {
+        // MOVING RULES (Follow roads accurately & capture curves):
+        // A) Cornering / Turn: Heading changed >= 20 deg and moved >= 8m
+        if (normalizedAngle >= 20.0 && dist >= 8.0) {
+          shouldRecord = true;
+        }
+        // B) Distance trigger: Moved >= 15 meters along road
+        else if (dist >= 15.0) {
+          shouldRecord = true;
+        }
+        // C) Max time elapsed: Interval reached (e.g. 15s)
+        else if (elapsedSec >= interval) {
+          shouldRecord = true;
+        }
+      } else {
+        // STATIONARY RULES (Prevent GPS jitter / drift while stopped):
+        // Filter out small random GPS drifts under 14 meters!
+        if (dist >= 16.0) {
+          shouldRecord = true; // genuine motion resumed
+        } else if (elapsedSec >= 120.0) {
+          shouldRecord = true; // 2-minute stationary heartbeat
+        }
+      }
+    }
+
+    if (shouldRecord) {
+      lastLat = pos.latitude;
+      lastLng = pos.longitude;
+      lastHeading = pos.heading;
+      lastTime = now;
+
       await Tracker.recordPosition(pos);
+
+      // Update foreground notification
       if (service is AndroidServiceInstance) {
         final pending = await LocalDb.countPoints();
+        final speedKmh = (pos.speed >= 0 ? pos.speed * 3.6 : 0.0).toStringAsFixed(1);
         service.setForegroundNotificationInfo(
-          title: 'StaffTrack – On duty',
-          content: pending > 0 ? 'Tracking · $pending points waiting to upload' : 'Tracking · all synced',
+          title: 'Galoya Telematics – Live',
+          content: pos.speed > 0.8
+              ? 'Speed: $speedKmh km/h · $pending points waiting'
+              : 'Stationary · all synced',
         );
       }
-    } catch (_) {/* no GPS fix this time */}
-    await Sync.run();
-    await Future.delayed(Duration(seconds: interval));
-  }
+
+      // Sync data to server smoothly
+      if (now - lastSync > 3000) {
+        lastSync = now;
+        Sync.run();
+      }
+    }
+  });
 }

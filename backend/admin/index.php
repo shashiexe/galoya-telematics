@@ -40,6 +40,12 @@ if (isset($_GET['feed'])) {
 
 layout_start('Monitoring', 'index.php', true);
 ?>
+<style>
+  /* Smooth Marker Glide for Live Telematics (Eliminates abrupt jumping) */
+  .leaflet-marker-pane .w-telematics-pin {
+    transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  }
+</style>
 <div class="w-monitoring-layout">
   <!-- Left Units Sidebar (Screenshot 3) -->
   <aside class="w-units-sidebar">

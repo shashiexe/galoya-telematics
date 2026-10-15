@@ -28,6 +28,26 @@ $pts = q("SELECT lat, lng, speed, battery, recorded_at
           ORDER BY recorded_at ASC",
          [$uid, $from_dt, $to_dt])->fetchAll();
 
+// Fetch photos taken during this track interval
+$track_photos = [];
+try {
+    $fp = q("SELECT id, user_id, file_path, lat, lng, note, taken_at, 'field' as type 
+             FROM field_photos 
+             WHERE user_id=? AND taken_at BETWEEN ? AND ? AND lat IS NOT NULL AND lng IS NOT NULL",
+            [$uid, $from_dt, $to_dt])->fetchAll();
+    
+    $tp = q("SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng, 
+                    CONCAT('Task #', tp.task_id, ' (', tp.type, ')', IF(t.title IS NOT NULL, CONCAT(' - ', t.title), '')) as note, 
+                    tp.taken_at, 'task' as type 
+             FROM task_photos tp 
+             LEFT JOIN tasks t ON t.id = tp.task_id
+             WHERE tp.user_id=? AND tp.taken_at BETWEEN ? AND ? AND tp.lat IS NOT NULL AND tp.lng IS NOT NULL",
+            [$uid, $from_dt, $to_dt])->fetchAll();
+    
+    $track_photos = array_merge($fp, $tp);
+    usort($track_photos, function($a, $b) { return strcmp($a['taken_at'], $b['taken_at']); });
+} catch (Throwable $e) {}
+
 // Calculate distance & telemetry analytics
 $km = 0;
 $max_speed = 0;
@@ -80,6 +100,133 @@ foreach ($geofences as &$g) {
 
 layout_start('Tracks', 'history.php', true);
 ?>
+<style>
+  /* Trip Playback Simulation HUD */
+  .w-playback-hud {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.94);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 10px 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    width: min(650px, 92%);
+    color: #f8fafc;
+    font-size: 12px;
+  }
+  .w-pb-row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .w-pb-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .w-pb-btn {
+    background: #0284c7;
+    color: #fff;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .w-pb-btn:hover { background: #0369a1; }
+  .w-pb-speeds {
+    display: flex;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 2px;
+    gap: 2px;
+    margin-left: 4px;
+  }
+  .w-pb-speed {
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 3px;
+    color: #cbd5e1;
+  }
+  .w-pb-speed.active {
+    background: #0284c7;
+    color: #fff;
+  }
+  .w-pb-telemetry {
+    display: flex;
+    gap: 14px;
+    font-size: 11.5px;
+  }
+  .w-pb-slider-wrap input[type=range] {
+    width: 100%;
+    accent-color: #0284c7;
+    cursor: pointer;
+    margin: 0;
+  }
+
+  /* Point Tooltips */
+  .leaflet-tooltip.w-point-tooltip {
+    background: rgba(15, 23, 42, 0.92);
+    color: #f8fafc;
+    border: 1px solid #38bdf8;
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 3px 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    white-space: nowrap;
+  }
+  .leaflet-tooltip.w-point-tooltip::before {
+    border-top-color: rgba(15, 23, 42, 0.92);
+  }
+
+  /* Photo Marker Pin */
+  .w-photo-pin {
+    background: #0284c7;
+    color: #fff;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+  }
+  .w-photo-pin:hover {
+    transform: scale(1.25);
+    background: #0369a1;
+  }
+
+  /* Animated Playback Vehicle Marker */
+  .w-playback-car-pin {
+    background: #16a34a;
+    color: #fff;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.6);
+    transition: transform 0.15s ease-out;
+  }
+</style>
 <div class="w-monitoring-layout">
   <!-- Left Tracks Controller (Exact Wialon Screenshot Layout) -->
   <aside class="w-units-sidebar" style="width:340px;overflow-y:auto;padding:14px">
@@ -223,8 +370,37 @@ layout_start('Tracks', 'history.php', true);
   <!-- Right Map View -->
   <div class="w-map-wrapper">
     <div id="map"></div>
+
     <!-- Live Coordinate HUD at bottom right -->
     <div class="w-coord-hud" id="w-coord-hud">N 07° 12.3380' &nbsp; E 081° 45.3522'</div>
+
+    <!-- Trip Playback Simulation HUD -->
+    <?php if (count($pts) >= 2): ?>
+      <div class="w-playback-hud" id="w-playback-hud">
+        <div class="w-pb-row1">
+          <div class="w-pb-controls">
+            <button type="button" class="w-pb-btn" id="btn-pb-play" title="Play trip simulation">▶️ Play</button>
+            <button type="button" class="w-pb-btn" id="btn-pb-stop" title="Restart to start point">⏮️ Restart</button>
+            <div class="w-pb-speeds">
+              <span class="w-pb-speed active" data-speed="1">1x</span>
+              <span class="w-pb-speed" data-speed="2">2x</span>
+              <span class="w-pb-speed" data-speed="5">5x</span>
+              <span class="w-pb-speed" data-speed="10">10x</span>
+            </div>
+          </div>
+
+          <div class="w-pb-telemetry">
+            <span class="w-pb-stat">🚗 <strong id="pb-speed" style="color:#16a34a">0 km/h</strong></span>
+            <span class="w-pb-stat">🕒 <strong id="pb-time"><?= substr($pts[0]['recorded_at'], 11, 8) ?></strong></span>
+            <span class="w-pb-stat">📍 <span id="pb-dist">0.00 km</span> / <?= number_format($km, 2) ?> km</span>
+          </div>
+        </div>
+
+        <div class="w-pb-slider-wrap">
+          <input type="range" id="pb-slider" min="0" max="<?= count($pts) - 1 ?>" value="0" step="1">
+        </div>
+      </div>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -269,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Track points from PHP
   const rawPts = <?= json_encode($pts) ?>;
+  const trackPhotos = <?= json_encode($track_photos) ?>;
   const stops = <?= json_encode($stops) ?>;
   const colorMode = "<?= $color_mode ?>";
   const thickness = <?= $thickness ?>;
@@ -369,6 +546,202 @@ document.addEventListener('DOMContentLoaded', () => {
           iconAnchor: [11, 11]
         })
       }).addTo(map).bindPopup(`<strong>Parking / Stop</strong><br>Time: ${st.time}<br>Duration: ${st.duration}`);
+    });
+
+    // 1. Render Photos Taken Along the Track (Camera Markers with download button)
+    trackPhotos.forEach(p => {
+      if (!p.lat || !p.lng) return;
+      const photoUrl = `../<?= $CONFIG['upload_url'] ?>/${p.file_path}`;
+      const pIcon = L.divIcon({
+        className: 'w-photo-marker-icon',
+        html: `<div class="w-photo-pin" title="Click to view photo taken at this location">📷</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      const popupContent = `
+        <div style="width:230px;font-family:sans-serif">
+          <div style="font-weight:700;font-size:12px;color:#0f172a;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+            <span>📷 ${p.type === 'field' ? 'Field Snap' : 'Task Photo'}</span>
+            <span style="font-size:10px;color:#64748b">${p.taken_at.substr(11, 5)}</span>
+          </div>
+          <div style="width:100%;height:140px;background:#0f172a;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer" onclick="window.open('${photoUrl}', '_blank')">
+            <img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Photo" loading="lazy">
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:4px">🕒 <strong>${p.taken_at}</strong></div>
+          ${p.note ? `<div style="font-size:11px;color:#334155;background:#f8fafc;border-left:3px solid #0284c7;padding:4px 6px;border-radius:3px;margin-bottom:6px">${p.note}</div>` : ''}
+          <div style="font-size:10.5px;color:#94a3b8;margin-bottom:8px">📍 ${parseFloat(p.lat).toFixed(5)}, ${parseFloat(p.lng).toFixed(5)}</div>
+          <div style="display:flex;gap:6px">
+            <a href="download_photo.php?file=${encodeURIComponent(p.file_path)}" class="w-icon-btn primary" style="flex:1;justify-content:center;padding:5px;font-size:11.5px;font-weight:700;border-radius:4px">⬇️ Download Photo</a>
+          </div>
+        </div>
+      `;
+
+      L.marker([parseFloat(p.lat), parseFloat(p.lng)], { icon: pIcon, zIndexOffset: 800 })
+        .addTo(map)
+        .bindPopup(popupContent);
+    });
+
+    // 2. Interactive GPS Points with Mini Hover Tooltips showing Speed, Time, Coords
+    const stepPts = Math.max(1, Math.floor(rawPts.length / 300));
+    const cumulativeDist = [0];
+    let totalDistKm = 0;
+
+    for (let i = 0; i < rawPts.length; i++) {
+      if (i > 0) {
+        const prev = rawPts[i - 1];
+        const curr = rawPts[i];
+        const dLat = (parseFloat(curr.lat) - parseFloat(prev.lat)) * Math.PI / 180;
+        const dLng = (parseFloat(curr.lng) - parseFloat(prev.lng)) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(parseFloat(prev.lat) * Math.PI / 180) * Math.cos(parseFloat(curr.lat) * Math.PI / 180) *
+                  Math.sin(dLng/2) * Math.sin(dLng/2);
+        totalDistKm += 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+      cumulativeDist.push(totalDistKm);
+
+      if (i % stepPts === 0 || i === rawPts.length - 1) {
+        const pt = rawPts[i];
+        const pLat = parseFloat(pt.lat);
+        const pLng = parseFloat(pt.lng);
+        const pSpd = Math.round(parseFloat(pt.speed || 0));
+        const pTime = pt.recorded_at.substr(11, 8);
+
+        const circle = L.circleMarker([pLat, pLng], {
+          radius: 3.5,
+          fillColor: pSpd > 40 ? '#ef4444' : (pSpd > 15 ? '#16a34a' : '#0284c7'),
+          color: '#ffffff',
+          weight: 1,
+          opacity: 0.8,
+          fillOpacity: 0.8
+        }).addTo(map);
+
+        circle.bindTooltip(`🚗 <strong>${pSpd} km/h</strong> &bull; 🕒 ${pTime} &bull; 📍 ${pLat.toFixed(4)}, ${pLng.toFixed(4)}`, {
+          className: 'w-point-tooltip',
+          direction: 'top',
+          offset: [0, -4]
+        });
+
+        circle.on('click', () => {
+          jumpToPlaybackIndex(i);
+        });
+      }
+    }
+
+    // 3. Smooth Trip Playback Simulator
+    const vehicleIcon = L.divIcon({
+      className: 'w-playback-car',
+      html: `<div class="w-playback-car-pin" id="playback-car-icon">🚗</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    const vehicleMarker = L.marker(latlngs[0], { icon: vehicleIcon, zIndexOffset: 1200 }).addTo(map);
+
+    let playIndex = 0;
+    let isPlaying = false;
+    let playSpeed = 1;
+    let playTimer = null;
+
+    const playBtn = document.getElementById('btn-pb-play');
+    const stopBtn = document.getElementById('btn-pb-stop');
+    const slider = document.getElementById('pb-slider');
+    const speedEl = document.getElementById('pb-speed');
+    const timeEl = document.getElementById('pb-time');
+    const distEl = document.getElementById('pb-dist');
+
+    function updatePlaybackUI(idx) {
+      if (idx < 0 || idx >= rawPts.length) return;
+      playIndex = idx;
+      const pt = rawPts[idx];
+      const lat = parseFloat(pt.lat);
+      const lng = parseFloat(pt.lng);
+      const spd = Math.round(parseFloat(pt.speed || 0));
+      const dist = (cumulativeDist[idx] || 0).toFixed(2);
+
+      vehicleMarker.setLatLng([lat, lng]);
+
+      // Rotate car icon based on heading to next point
+      if (idx < rawPts.length - 1) {
+        const nextPt = rawPts[idx + 1];
+        const dy = parseFloat(nextPt.lat) - lat;
+        const dx = (parseFloat(nextPt.lng) - lng) * Math.cos(lat * Math.PI / 180);
+        const heading = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+        const iconEl = document.getElementById('playback-car-icon');
+        if (iconEl) iconEl.style.transform = `rotate(${heading - 90}deg)`;
+      }
+
+      if (speedEl) {
+        speedEl.textContent = `${spd} km/h`;
+        speedEl.style.color = spd > 40 ? '#ef4444' : (spd > 15 ? '#16a34a' : '#38bdf8');
+      }
+      if (timeEl) timeEl.textContent = pt.recorded_at.substr(11, 8);
+      if (distEl) distEl.textContent = `${dist} km`;
+      if (slider) slider.value = idx;
+    }
+
+    function jumpToPlaybackIndex(idx) {
+      updatePlaybackUI(idx);
+      const pt = rawPts[idx];
+      map.panTo([parseFloat(pt.lat), parseFloat(pt.lng)], { animate: true, duration: 0.4 });
+    }
+
+    function stepPlayback() {
+      if (!isPlaying) return;
+      if (playIndex >= rawPts.length - 1) {
+        pausePlayback();
+        return;
+      }
+      playIndex++;
+      updatePlaybackUI(playIndex);
+
+      // Pan map if vehicle goes near map boundaries
+      if (playIndex % 4 === 0) {
+        const pt = rawPts[playIndex];
+        const curBounds = map.getBounds();
+        if (!curBounds.contains([parseFloat(pt.lat), parseFloat(pt.lng)])) {
+          map.panTo([parseFloat(pt.lat), parseFloat(pt.lng)], { animate: true, duration: 0.6 });
+        }
+      }
+
+      const delay = Math.max(30, 250 / playSpeed);
+      playTimer = setTimeout(stepPlayback, delay);
+    }
+
+    function startPlayback() {
+      if (playIndex >= rawPts.length - 1) playIndex = 0;
+      isPlaying = true;
+      if (playBtn) playBtn.textContent = '⏸️ Pause';
+      stepPlayback();
+    }
+
+    function pausePlayback() {
+      isPlaying = false;
+      if (playTimer) clearTimeout(playTimer);
+      if (playBtn) playBtn.textContent = '▶️ Play';
+    }
+
+    playBtn?.addEventListener('click', () => {
+      if (isPlaying) pausePlayback();
+      else startPlayback();
+    });
+
+    stopBtn?.addEventListener('click', () => {
+      pausePlayback();
+      jumpToPlaybackIndex(0);
+    });
+
+    slider?.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.value, 10);
+      updatePlaybackUI(idx);
+    });
+
+    document.querySelectorAll('.w-pb-speed').forEach(spBtn => {
+      spBtn.addEventListener('click', () => {
+        document.querySelectorAll('.w-pb-speed').forEach(b => b.classList.remove('active'));
+        spBtn.classList.add('active');
+        playSpeed = parseFloat(spBtn.dataset.speed || 1);
+      });
     });
   }
 

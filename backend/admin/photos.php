@@ -14,7 +14,7 @@ $type = $_GET['type'] ?? 'all'; // all, field, task
 $params1 = [];
 $params2 = [];
 
-$sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.taken_at, 'field' as photo_type, 
+$sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, fp.taken_at, 'field' as photo_type, 
                 u.name as user_name, u.code as user_code, u.unit_type
          FROM field_photos fp
          JOIN users u ON u.id = fp.user_id
@@ -24,6 +24,7 @@ $params1[] = $to_dt;
 
 $sql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng, 
                 CONCAT('Task #', tp.task_id, ' (', tp.type, ')', IF(t.title IS NOT NULL, CONCAT(' - ', t.title), '')) as note, 
+                NULL as geofence_name,
                 tp.taken_at, 'task' as photo_type,
                 u.name as user_name, u.code as user_code, u.unit_type
          FROM task_photos tp
@@ -156,6 +157,12 @@ layout_start('Photos & Field Media', 'photos.php');
               <div style="font-size:11.5px;color:#64748b;margin-bottom:6px">
                 🕒 <?= h($p['taken_at']) ?>
               </div>
+
+              <?php if (!empty($p['geofence_name'])): ?>
+                <div style="font-size:11px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;padding:3px 8px;border-radius:4px;margin-bottom:6px;font-weight:700">
+                  ⬡ <?= h($p['geofence_name']) ?>
+                </div>
+              <?php endif; ?>
 
               <?php if (!empty($p['note'])): ?>
                 <div style="font-size:12px;color:#334155;background:#f8fafc;padding:6px 8px;border-radius:4px;border-left:3px solid #0284c7;margin-bottom:8px">

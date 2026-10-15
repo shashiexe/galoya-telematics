@@ -45,6 +45,86 @@ layout_start('Monitoring', 'index.php', true);
   .leaflet-marker-pane .w-telematics-pin {
     transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
   }
+
+  /* Emergency SOS Alert Top Banner */
+  .w-sos-container {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    max-width: 90%;
+    display: none;
+    pointer-events: auto;
+  }
+  .w-sos-banner {
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: #ffffff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.65), 0 0 0 3px rgba(254, 202, 202, 0.6);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    animation: sosPulseBanner 1.2s infinite alternate ease-in-out;
+    font-size: 13px;
+  }
+  @keyframes sosPulseBanner {
+    0% { transform: scale(1); box-shadow: 0 4px 15px rgba(220, 38, 38, 0.5); }
+    100% { transform: scale(1.02); box-shadow: 0 6px 28px rgba(220, 38, 38, 0.9), 0 0 0 6px rgba(254, 202, 202, 0.7); }
+  }
+  .w-sos-pulse-icon {
+    font-size: 28px;
+    animation: sosShake 0.5s infinite;
+  }
+  @keyframes sosShake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-12deg); }
+    75% { transform: rotate(12deg); }
+  }
+  .w-sos-btn {
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.15s;
+  }
+  .w-sos-btn.focus-btn {
+    background: #ffffff;
+    color: #dc2626;
+  }
+  .w-sos-btn.silence-btn {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+  .w-sos-btn.resolve-btn {
+    background: #16a34a;
+    color: #ffffff;
+  }
+  .w-sos-btn:hover {
+    transform: translateY(-1px);
+    opacity: 0.95;
+  }
+  /* Pulsing Red Radar Ring for SOS Units on Map */
+  .w-sos-marker-ring {
+    position: absolute;
+    width: 70px;
+    height: 70px;
+    top: -15px;
+    left: 20px;
+    border-radius: 50%;
+    border: 3px solid #dc2626;
+    background: rgba(220, 38, 38, 0.35);
+    animation: sosRingPulse 1.2s infinite ease-out;
+    pointer-events: none;
+  }
+  @keyframes sosRingPulse {
+    0% { transform: scale(0.5); opacity: 1; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
 </style>
 <div class="w-monitoring-layout">
   <!-- Left Units Sidebar (Screenshot 3) -->
@@ -99,8 +179,10 @@ layout_start('Monitoring', 'index.php', true);
 
   <!-- Center Map View -->
   <div class="w-map-wrapper">
-    <div id="map"></div>
+    <!-- Emergency SOS Alert Container -->
+    <div id="sos-container" class="w-sos-container"></div>
 
+    <div id="map"></div>
 
     <!-- Live Coordinate HUD at bottom right (Screenshot 3: N 07° 12.3522' E 081° 39.5479') -->
     <div class="w-coord-hud" id="w-coord-hud">
@@ -692,15 +774,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const icon = typeIcons[u.unit_type] || '🚜';
       const isOnline = !!u.is_online;
       const isMoving = isOnline && (u.motion_state === 'moving' || parseFloat(u.speed || 0) > 0);
-      const stateClass = !isOnline ? 'offline' : (isMoving ? 'moving' : 'stationary');
+      const isSos = parseInt(u.sos_active || 0) === 1;
+      const stateClass = isSos ? 'sos' : (!isOnline ? 'offline' : (isMoving ? 'moving' : 'stationary'));
 
       const labelHtml = `
         <div class="w-unit-marker-wrap">
-          ${isMoving ? '<div class="w-radar-pulse"></div>' : ''}
-          <div class="w-marker-bubble ${stateClass}">
-            <span class="w-mb-icon">${icon}</span>
+          ${isSos ? '<div class="w-sos-marker-ring"></div>' : (isMoving ? '<div class="w-radar-pulse"></div>' : '')}
+          <div class="w-marker-bubble ${stateClass}" style="${isSos ? 'background:#dc2626;color:#fff;animation:sosPulseBanner 0.8s infinite alternate' : ''}">
+            <span class="w-mb-icon">${isSos ? '🆘' : icon}</span>
             <span>${u.name.split(' ')[0]}</span>
-            ${isMoving ? `<span class="w-mb-speed">➔ ${Math.round(u.speed)}k</span>` : (isOnline ? `<span class="w-mb-speed">0k</span>` : `<span class="w-mb-speed">OFF</span>`)}
+            ${isSos ? `<span class="w-mb-speed" style="background:#fff;color:#dc2626;font-weight:900">SOS!</span>` : (isMoving ? `<span class="w-mb-speed">➔ ${Math.round(u.speed)}k</span>` : (isOnline ? `<span class="w-mb-speed">0k</span>` : `<span class="w-mb-speed">OFF</span>`))}
           </div>
         </div>
       `;
@@ -714,16 +797,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const popupContent = `
         <div style="min-width:180px;font-size:12px;line-height:1.4">
-          <strong style="font-size:13px;color:#1565c0">${icon} ${u.name}</strong>
+          <strong style="font-size:13px;color:${isSos ? '#dc2626' : '#1565c0'}">${isSos ? '🚨 SOS EMERGENCY: ' : ''}${icon} ${u.name}</strong>
           ${u.code ? `<span style="color:#64748b;font-size:11px">(${u.code})</span>` : ''}
           <hr style="margin:6px 0;border:0;border-top:1px solid #e2e8f0">
-          <div>Status: <strong style="color:${isMoving ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8')}">${!isOnline ? 'OFFLINE' : (isMoving ? 'MOVING ➔' : 'STATIONARY ⛔')}</strong></div>
+          <div>Status: <strong style="color:${isSos ? '#dc2626' : (isMoving ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8'))}">${isSos ? '🆘 EMERGENCY SOS ACTIVE!' : (!isOnline ? 'OFFLINE' : (isMoving ? 'MOVING ➔' : 'STATIONARY ⛔'))}</strong></div>
           <div>Speed: <strong>${Math.round(u.speed || 0)} km/h</strong></div>
           <div>Ignition: <strong>${(u.ignition && isOnline) ? 'ON' : 'OFF'}</strong></div>
           <div>Battery: <strong>${u.battery !== null ? u.battery + '%' : 'N/A'}</strong></div>
           <div>Coordinates: <code>${lat.toFixed(5)}, ${lng.toFixed(5)}</code></div>
-          <div style="margin-top:8px">
+          <div style="margin-top:8px;display:flex;gap:6px">
             <a href="history.php?user=${u.id}" class="w-icon-btn primary" style="font-size:11px;padding:3px 8px">Track Route History</a>
+            ${isSos ? `<button type="button" class="w-sos-btn resolve-btn" onclick="resolveSOSAlert(0, ${u.id})" style="font-size:10.5px;padding:3px 8px">Clear SOS</button>` : ''}
           </div>
         </div>
       `;
@@ -740,6 +824,93 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Web Audio API Emergency Siren System
+  let audioCtx = null;
+  let sirenOsc = null;
+  let sirenGain = null;
+  let sirenInterval = null;
+  let isSirenPlaying = false;
+  let sirenSilencedByUser = false;
+
+  function initAudio() {
+    if (!audioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) audioCtx = new AudioContext();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+  document.addEventListener('click', initAudio, { once: true });
+  document.addEventListener('keydown', initAudio, { once: true });
+
+  function startEmergencySiren() {
+    if (isSirenPlaying || sirenSilencedByUser) return;
+    initAudio();
+    if (!audioCtx) return;
+
+    try {
+      sirenOsc = audioCtx.createOscillator();
+      sirenGain = audioCtx.createGain();
+      sirenOsc.type = 'sawtooth';
+      sirenOsc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      sirenGain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      sirenOsc.connect(sirenGain);
+      sirenGain.connect(audioCtx.destination);
+      sirenOsc.start();
+      isSirenPlaying = true;
+
+      let high = false;
+      sirenInterval = setInterval(() => {
+        if (!isSirenPlaying || !audioCtx) return;
+        high = !high;
+        sirenOsc.frequency.setTargetAtTime(high ? 1150 : 750, audioCtx.currentTime, 0.08);
+      }, 350);
+    } catch (e) {
+      console.warn('Audio siren autoplay blocked until user gesture:', e);
+    }
+  }
+
+  function stopEmergencySiren() {
+    if (!isSirenPlaying) return;
+    try {
+      if (sirenInterval) clearInterval(sirenInterval);
+      if (sirenOsc) {
+        sirenOsc.stop();
+        sirenOsc.disconnect();
+      }
+      if (sirenGain) sirenGain.disconnect();
+    } catch (e) {}
+    isSirenPlaying = false;
+  }
+
+  window.silenceSOS = function() {
+    sirenSilencedByUser = true;
+    stopEmergencySiren();
+    const btn = document.querySelector('.silence-btn');
+    if (btn) btn.textContent = '🔇 Silenced';
+  };
+
+  window.resolveSOSAlert = async function(id, userId) {
+    if (!confirm('Resolve and clear this SOS emergency alert?')) return;
+    try {
+      await fetch(`../api.php?action=resolve_sos&id=${id}&user_id=${userId}`);
+      sirenSilencedByUser = false;
+      stopEmergencySiren();
+      fetchFeed();
+    } catch (e) {
+      alert('Failed to resolve SOS: ' + e);
+    }
+  };
+
+  window.focusOnSOS = function(lat, lng, userId) {
+    initAudio();
+    map.flyTo([lat, lng], 17, { animate: true, duration: 1.0 });
+    if (unitMarkers[userId]) {
+      unitMarkers[userId].openPopup();
+    }
+  };
+
   // Fetch live data from backend feed
   async function fetchFeed() {
     try {
@@ -751,6 +922,40 @@ document.addEventListener('DOMContentLoaded', () => {
       renderUnitsTable();
       updateMarkers();
       renderGeofences(geofencesData);
+
+      // Handle SOS Emergency Alarms automatically
+      const activeSos = data.sos || [];
+      const sosContainer = document.getElementById('sos-container');
+      if (activeSos.length > 0) {
+        startEmergencySiren();
+        const top = activeSos[0];
+        if (sosContainer) {
+          sosContainer.innerHTML = `
+            <div class="w-sos-banner">
+              <span class="w-sos-pulse-icon">🚨</span>
+              <div style="flex:1">
+                <strong style="font-size:13.5px;letter-spacing:0.5px">EMERGENCY SOS ALERT ACTIVATED!</strong>
+                <div style="font-size:11.5px;opacity:0.95;margin-top:2px">
+                  Unit: <strong>${top.name}</strong> ${top.phone ? `(${top.phone})` : ''} &bull; Time: <strong>${top.created_at || 'Just now'}</strong> &bull; Lat: ${parseFloat(top.lat).toFixed(5)}, Lng: ${parseFloat(top.lng).toFixed(5)}
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button type="button" class="w-sos-btn focus-btn" onclick="focusOnSOS(${top.lat}, ${top.lng}, ${top.user_id})">🎯 Locate Unit</button>
+                <button type="button" class="w-sos-btn silence-btn" onclick="silenceSOS()">🔕 Silence Siren</button>
+                <button type="button" class="w-sos-btn resolve-btn" onclick="resolveSOSAlert(${top.id}, ${top.user_id})">✓ Resolve Alert</button>
+              </div>
+            </div>
+          `;
+          sosContainer.style.display = 'block';
+        }
+      } else {
+        stopEmergencySiren();
+        sirenSilencedByUser = false;
+        if (sosContainer) {
+          sosContainer.style.display = 'none';
+          sosContainer.innerHTML = '';
+        }
+      }
 
       // Real-time update of bottom status bar online counter
       const onlineCount = unitsData.filter(u => u.is_online).length;

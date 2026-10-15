@@ -244,7 +244,7 @@ try {
         $sub = date('Y/m');
         $dir = $CONFIG['upload_dir'] . '/' . $sub;
         if (!is_dir($dir)) mkdir($dir, 0755, true);
-        $cid = bin2hex(random_bytes(6));
+        $cid = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['client_id'] ?? '') ?: bin2hex(random_bytes(6));
         $name = "field_{$u['id']}_{$cid}.{$ext}";
         if (!move_uploaded_file($f['tmp_name'], "$dir/$name")) fail('Could not save photo', 500);
 
@@ -252,11 +252,12 @@ try {
         $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
         $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
         $note = trim($_POST['note'] ?? '');
+        $geofence = find_nearest_geofence($lat, $lng);
 
-        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
-          [$u['id'], "$sub/$name", $lat, $lng, $note, $dt]);
+        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+          [$u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt]);
 
-        out(['ok' => true, 'file_path' => "$sub/$name"]);
+        out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence]);
     }
 
     case 'task_photo': {
@@ -265,10 +266,10 @@ try {
         $u = auth_user();
         $taskId = (int)($_POST['task_id'] ?? 0);
         $type = ($_POST['type'] ?? '') === 'after' ? 'after' : 'before';
-        $cid = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['client_id'] ?? '');
-        if (!$cid) fail('client_id required');
+        $cid = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['client_id'] ?? '') ?: bin2hex(random_bytes(6));
+
+        // If no task_id or 0: instantly save as general field photo with nearest geofence
         if (!$taskId) {
-            // Fallback: save as general field photo if no task is specified
             $f = $_FILES['photo'] ?? null;
             if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed');
             if ($f['size'] > $CONFIG['max_photo_mb'] * 1048576) fail('Photo too large');
@@ -279,7 +280,6 @@ try {
             $sub = date('Y/m');
             $dir = $CONFIG['upload_dir'] . '/' . $sub;
             if (!is_dir($dir)) mkdir($dir, 0755, true);
-            $cid = bin2hex(random_bytes(6));
             $name = "field_{$u['id']}_{$cid}.{$ext}";
             if (!move_uploaded_file($f['tmp_name'], "$dir/$name")) fail('Could not save photo', 500);
 
@@ -287,11 +287,12 @@ try {
             $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
             $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
             $note = trim($_POST['note'] ?? '');
+            $geofence = find_nearest_geofence($lat, $lng);
 
-            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
-              [$u['id'], "$sub/$name", $lat, $lng, $note, $dt]);
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+              [$u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt]);
 
-            out(['ok' => true, 'file_path' => "$sub/$name"]);
+            out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence]);
         }
 
         $task = q('SELECT * FROM tasks WHERE id=? AND assigned_to=?', [$taskId, $u['id']])->fetch();

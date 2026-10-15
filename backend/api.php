@@ -231,6 +231,34 @@ try {
         out(['ok' => true, 'tasks' => $rows]);
     }
 
+    case 'upload_field_photo': {
+        global $CONFIG;
+        $u = auth_user();
+        $f = $_FILES['photo'] ?? null;
+        if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed');
+        if ($f['size'] > $CONFIG['max_photo_mb'] * 1048576) fail('Photo too large');
+        $info = @getimagesize($f['tmp_name']);
+        if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) fail('Invalid image');
+        $ext = $info[2] === IMAGETYPE_PNG ? 'png' : 'jpg';
+
+        $sub = date('Y/m');
+        $dir = $CONFIG['upload_dir'] . '/' . $sub;
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        $cid = bin2hex(random_bytes(6));
+        $name = "field_{$u['id']}_{$cid}.{$ext}";
+        if (!move_uploaded_file($f['tmp_name'], "$dir/$name")) fail('Could not save photo', 500);
+
+        $dt = to_dt($_POST['t'] ?? time() * 1000);
+        $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
+        $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
+        $note = trim($_POST['note'] ?? '');
+
+        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+          [$u['id'], "$sub/$name", $lat, $lng, $note, $dt]);
+
+        out(['ok' => true, 'file_path' => "$sub/$name"]);
+    }
+
     case 'task_photo': {
         // multipart: task_id, type(before|after), client_id, lat, lng, t, note, photo(file)
         global $CONFIG;
@@ -239,6 +267,33 @@ try {
         $type = ($_POST['type'] ?? '') === 'after' ? 'after' : 'before';
         $cid = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['client_id'] ?? '');
         if (!$cid) fail('client_id required');
+        if (!$taskId) {
+            // Fallback: save as general field photo if no task is specified
+            $f = $_FILES['photo'] ?? null;
+            if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed');
+            if ($f['size'] > $CONFIG['max_photo_mb'] * 1048576) fail('Photo too large');
+            $info = @getimagesize($f['tmp_name']);
+            if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) fail('Invalid image');
+            $ext = $info[2] === IMAGETYPE_PNG ? 'png' : 'jpg';
+
+            $sub = date('Y/m');
+            $dir = $CONFIG['upload_dir'] . '/' . $sub;
+            if (!is_dir($dir)) mkdir($dir, 0755, true);
+            $cid = bin2hex(random_bytes(6));
+            $name = "field_{$u['id']}_{$cid}.{$ext}";
+            if (!move_uploaded_file($f['tmp_name'], "$dir/$name")) fail('Could not save photo', 500);
+
+            $dt = to_dt($_POST['t'] ?? time() * 1000);
+            $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
+            $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
+            $note = trim($_POST['note'] ?? '');
+
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+              [$u['id'], "$sub/$name", $lat, $lng, $note, $dt]);
+
+            out(['ok' => true, 'file_path' => "$sub/$name"]);
+        }
+
         $task = q('SELECT * FROM tasks WHERE id=? AND assigned_to=?', [$taskId, $u['id']])->fetch();
         if (!$task) fail('Task not found', 404);
 
@@ -270,6 +325,25 @@ try {
             q("UPDATE tasks SET status='done', completed_at=?, end_lat=?, end_lng=?, staff_note=?,
                  started_at=COALESCE(started_at, ?) WHERE id=?",
               [$dt, $lat, $lng, $_POST['note'] ?? null, $dt, $taskId]);
+        }
+        out(['ok' => true]);
+    }
+
+    case 'resolve_sos': {
+        $id = (int)($_GET['id'] ?? ($_POST['id'] ?? 0));
+        $uid = (int)($_GET['user_id'] ?? ($_POST['user_id'] ?? 0));
+        if ($id > 0) {
+            $alert = q('SELECT * FROM sos_alerts WHERE id=?', [$id])->fetch();
+            if ($alert) {
+                q("UPDATE sos_alerts SET status='resolved' WHERE id=?", [$id]);
+                $uid = (int)$alert['user_id'];
+            }
+        }
+        if ($uid > 0) {
+            $rem = (int)q("SELECT COUNT(*) FROM sos_alerts WHERE user_id=? AND status='active'", [$uid])->fetchColumn();
+            if ($rem === 0) {
+                q("UPDATE users SET sos_active=0 WHERE id=?", [$uid]);
+            }
         }
         out(['ok' => true]);
     }

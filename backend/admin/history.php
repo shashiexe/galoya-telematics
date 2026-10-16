@@ -91,8 +91,8 @@ function build_history_trip($pts, $idx, $trip_colors) {
         if ($s > $trip_max_spd) $trip_max_spd = $s;
     }
 
-    // Ignore tiny GPS jitter (< 0.10 km and fewer than 4 points)
-    if ($trip_dist < 0.10 && count($pts) < 4) {
+    // Ignore tiny GPS jitter (< 0.25 km / 250m) to prevent breaking parking sessions
+    if ($trip_dist < 0.25) {
         return null;
     }
 
@@ -137,21 +137,35 @@ for ($i = 0; $i < count($clean_pts); $i++) {
                         $trips[] = $tr;
                         $timeline[] = ['type' => 'trip', 'index' => $trip_idx, 'data' => $tr];
                         $km += $tr['distance_km'];
+                        $cur_trip_pts = [];
+                    } else {
+                        // Drift < 250m: discard trip points so it merges into parking
+                        $cur_trip_pts = [];
                     }
-                    $cur_trip_pts = [];
                 }
 
-                $stop_obj = [
-                    'stop_num' => count($stops) + 1,
-                    'lat' => (float)$cur_stop_pts[0]['lat'],
-                    'lng' => (float)$cur_stop_pts[0]['lng'],
-                    'start_time' => date('H:i:s', $s_first),
-                    'end_time' => date('H:i:s', $s_last),
-                    'duration_sec' => $stop_dur,
-                    'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
-                ];
-                $stops[] = $stop_obj;
-                $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+                // If previous item in timeline was already a stop, extend it!
+                if (!empty($timeline) && $timeline[count($timeline) - 1]['type'] === 'stop') {
+                    $last_idx = count($timeline) - 1;
+                    $prev_s_start = strtotime($stops[count($stops) - 1]['start_time']);
+                    $ext_dur = max(0, $s_last - $prev_s_start);
+                    $stops[count($stops) - 1]['end_time'] = date('H:i:s', $s_last);
+                    $stops[count($stops) - 1]['duration_sec'] = $ext_dur;
+                    $stops[count($stops) - 1]['duration_str'] = floor($ext_dur / 3600) > 0 ? (floor($ext_dur / 3600).'h '.floor(($ext_dur % 3600) / 60).'m') : (round($ext_dur / 60).' min');
+                    $timeline[$last_idx]['data'] = $stops[count($stops) - 1];
+                } else {
+                    $stop_obj = [
+                        'stop_num' => count($stops) + 1,
+                        'lat' => (float)$cur_stop_pts[0]['lat'],
+                        'lng' => (float)$cur_stop_pts[0]['lng'],
+                        'start_time' => date('H:i:s', $s_first),
+                        'end_time' => date('H:i:s', $s_last),
+                        'duration_sec' => $stop_dur,
+                        'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
+                    ];
+                    $stops[] = $stop_obj;
+                    $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+                }
             } else {
                 // Brief stop (< 10 min, traffic light / momentary pause). Keep inside current trip!
                 foreach ($cur_stop_pts as $sp) {
@@ -182,21 +196,33 @@ if (!empty($cur_stop_pts)) {
                 $trips[] = $tr;
                 $timeline[] = ['type' => 'trip', 'index' => $trip_idx, 'data' => $tr];
                 $km += $tr['distance_km'];
+                $cur_trip_pts = [];
+            } else {
+                $cur_trip_pts = [];
             }
-            $cur_trip_pts = [];
         }
 
-        $stop_obj = [
-            'stop_num' => count($stops) + 1,
-            'lat' => (float)$cur_stop_pts[0]['lat'],
-            'lng' => (float)$cur_stop_pts[0]['lng'],
-            'start_time' => date('H:i:s', $s_first),
-            'end_time' => date('H:i:s', $s_last),
-            'duration_sec' => $stop_dur,
-            'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
-        ];
-        $stops[] = $stop_obj;
-        $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+        if (!empty($timeline) && $timeline[count($timeline) - 1]['type'] === 'stop') {
+            $last_idx = count($timeline) - 1;
+            $prev_s_start = strtotime($stops[count($stops) - 1]['start_time']);
+            $ext_dur = max(0, $s_last - $prev_s_start);
+            $stops[count($stops) - 1]['end_time'] = date('H:i:s', $s_last);
+            $stops[count($stops) - 1]['duration_sec'] = $ext_dur;
+            $stops[count($stops) - 1]['duration_str'] = floor($ext_dur / 3600) > 0 ? (floor($ext_dur / 3600).'h '.floor(($ext_dur % 3600) / 60).'m') : (round($ext_dur / 60).' min');
+            $timeline[$last_idx]['data'] = $stops[count($stops) - 1];
+        } else {
+            $stop_obj = [
+                'stop_num' => count($stops) + 1,
+                'lat' => (float)$cur_stop_pts[0]['lat'],
+                'lng' => (float)$cur_stop_pts[0]['lng'],
+                'start_time' => date('H:i:s', $s_first),
+                'end_time' => date('H:i:s', $s_last),
+                'duration_sec' => $stop_dur,
+                'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
+            ];
+            $stops[] = $stop_obj;
+            $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+        }
     } else {
         foreach ($cur_stop_pts as $sp) {
             $cur_trip_pts[] = $sp;
@@ -412,135 +438,121 @@ layout_start('Tracks', 'history.php', true);
 </style>
 <div class="w-monitoring-layout">
   <!-- Left Tracks Controller (Exact Wialon Screenshot Layout) -->
-  <aside class="w-units-sidebar" style="width:340px;overflow-y:auto;padding:14px">
-    <form method="get" id="track-form">
-      <!-- Unit Selection -->
-      <div style="margin-bottom:12px">
-        <label style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px;font-weight:600">Unit:</label>
-        <div style="display:flex;gap:6px">
-          <select name="user" style="flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12.5px">
-            <?php foreach ($staff as $s): ?>
-              <option value="<?= $s['id'] ?>" <?= $s['id'] == $uid ? 'selected' : '' ?>>
-                <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <a href="staff.php" class="w-icon-btn" title="Unit Properties">🔧</a>
+  <aside class="w-units-sidebar" style="width:340px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px">
+    
+    <!-- Collapsible Unit & Date Selector -->
+    <details class="w-track-filter-box" <?= empty($pts) ? 'open' : '' ?> style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:2px">
+      <summary style="font-weight:700;font-size:12px;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        <span>⚙️ Unit &amp; Date Parameters</span>
+        <span style="font-size:11px;color:#0284c7;background:#e0f2fe;padding:2px 6px;border-radius:4px"><?= h($u['name'] ?? 'Select') ?></span>
+      </summary>
+
+      <form method="get" id="track-form" style="margin-top:10px">
+        <!-- Unit Selection -->
+        <div style="margin-bottom:8px">
+          <label style="font-size:11px;color:#475569;display:block;margin-bottom:3px;font-weight:600">Unit:</label>
+          <div style="display:flex;gap:6px">
+            <select name="user" style="flex:1;padding:5px 7px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+              <?php foreach ($staff as $s): ?>
+                <option value="<?= $s['id'] ?>" <?= $s['id'] == $uid ? 'selected' : '' ?>>
+                  <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <a href="staff.php" class="w-icon-btn" title="Unit Properties">🔧</a>
+          </div>
         </div>
-      </div>
 
-      <!-- Color Scheme -->
-      <div style="margin-bottom:12px">
-        <label style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px;font-weight:600">Color:</label>
-        <select name="color_mode" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
-          <option value="trips" <?= $color_mode === 'trips' ? 'selected' : '' ?>>By trips</option>
-          <option value="single" <?= $color_mode === 'single' ? 'selected' : '' ?>>Single color</option>
-          <option value="speed" <?= $color_mode === 'speed' ? 'selected' : '' ?>>By speed</option>
-        </select>
-      </div>
+        <!-- Color Scheme & Line Thickness in 2 columns -->
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="flex:1">
+            <label style="font-size:11px;color:#475569;display:block;margin-bottom:3px;font-weight:600">Color:</label>
+            <select name="color_mode" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:11.5px">
+              <option value="trips" <?= $color_mode === 'trips' ? 'selected' : '' ?>>By trips</option>
+              <option value="single" <?= $color_mode === 'single' ? 'selected' : '' ?>>Single color</option>
+              <option value="speed" <?= $color_mode === 'speed' ? 'selected' : '' ?>>By speed</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label style="font-size:11px;color:#475569;display:block;margin-bottom:3px;font-weight:600">Thickness:</label>
+            <select name="thickness" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:11.5px">
+              <option value="1" <?= $thickness === 1 ? 'selected' : '' ?>>1 px</option>
+              <option value="2" <?= $thickness === 2 ? 'selected' : '' ?>>2 px</option>
+              <option value="3" <?= $thickness === 3 ? 'selected' : '' ?>>3 px</option>
+              <option value="4" <?= $thickness === 4 ? 'selected' : '' ?>>4 px</option>
+              <option value="5" <?= $thickness === 5 ? 'selected' : '' ?>>5 px</option>
+            </select>
+          </div>
+        </div>
 
-      <!-- Line Thickness -->
-      <div style="margin-bottom:12px">
-        <label style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px;font-weight:600">Line thickness:</label>
-        <select name="thickness" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
-          <option value="1" <?= $thickness === 1 ? 'selected' : '' ?>>1 px</option>
-          <option value="2" <?= $thickness === 2 ? 'selected' : '' ?>>2 px</option>
-          <option value="3" <?= $thickness === 3 ? 'selected' : '' ?>>3 px</option>
-          <option value="4" <?= $thickness === 4 ? 'selected' : '' ?>>4 px</option>
-          <option value="5" <?= $thickness === 5 ? 'selected' : '' ?>>5 px</option>
-        </select>
-      </div>
+        <!-- Checkboxes -->
+        <div style="margin-bottom:8px;background:#ffffff;border:1px solid #e2e8f0;padding:6px 8px;border-radius:4px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#334155;cursor:pointer;margin-bottom:4px">
+            <input type="checkbox" name="show_annotations" value="1" <?= $show_annotations ? 'checked' : '' ?> style="width:auto;margin:0">
+            Show speed annotations
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#1e293b;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="chk-snap-roads" checked style="width:auto;margin:0">
+            🛣️ Snap track to roads (OSRM)
+          </label>
+        </div>
 
-      <!-- Annotations Icon Bar (Matching Screenshot) -->
-      <div style="display:flex;align-items:center;gap:4px;background:#f1f5f9;padding:6px 8px;border-radius:4px;border:1px solid #cbd5e1;margin-bottom:12px">
-        <span class="w-cluster-badge" style="width:20px;height:20px;font-size:10px" title="Filter level">3</span>
-        <span title="Mileage markers" style="cursor:pointer;font-size:13px">📍</span>
-        <span title="Parking markers" style="cursor:pointer;font-size:13px;color:#1976d2;font-weight:bold">🅿️</span>
-        <span title="Stops" style="cursor:pointer;font-size:13px;color:#d32f2f">🛑</span>
-        <span title="Fuel events" style="cursor:pointer;font-size:13px">⛽</span>
-        <span title="Speeding" style="cursor:pointer;font-size:13px">⚠️</span>
-        <span title="Photo capture markers" style="cursor:pointer;font-size:13px">📷</span>
-        <span title="Direction arrows" style="cursor:pointer;font-size:13px;color:#2e7d32">➜</span>
-      </div>
+        <!-- Date Presets Row -->
+        <div class="w-btn-group" style="width:100%;margin-bottom:8px;display:flex">
+          <button type="button" class="btn-preset active" data-preset="today" style="flex:1;font-size:11px;padding:4px">Today</button>
+          <button type="button" class="btn-preset" data-preset="yesterday" style="flex:1;font-size:11px;padding:4px">Yesterday</button>
+          <button type="button" class="btn-preset" data-preset="week" style="flex:1;font-size:11px;padding:4px">Week</button>
+          <button type="button" class="btn-preset" data-preset="month" style="flex:1;font-size:11px;padding:4px">Month</button>
+        </div>
 
-      <!-- Checkboxes -->
-      <div style="margin-bottom:12px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:pointer;margin-bottom:6px">
-          <input type="checkbox" name="show_annotations" value="1" <?= $show_annotations ? 'checked' : '' ?> style="width:auto;margin:0">
-          Show annotations
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:pointer">
-          <input type="checkbox" name="apply_trip_detector" value="1" checked style="width:auto;margin:0">
-          Apply trip detector
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#1e293b;cursor:pointer;margin-top:6px;font-weight:600">
-          <input type="checkbox" id="chk-snap-roads" checked style="width:auto;margin:0">
-          🛣️ Snap track to roads (Smooth road routing)
-        </label>
-      </div>
+        <!-- From / To Date Inputs -->
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <div style="flex:1">
+            <label style="font-size:10.5px;color:#475569;display:block;margin-bottom:2px">From:</label>
+            <input type="datetime-local" name="from" id="dt-from" value="<?= date('Y-m-d\TH:i', strtotime($from_dt)) ?>" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:11px;box-sizing:border-box">
+          </div>
+          <div style="flex:1">
+            <label style="font-size:10.5px;color:#475569;display:block;margin-bottom:2px">To:</label>
+            <input type="datetime-local" name="to" id="dt-to" value="<?= date('Y-m-d\TH:i', strtotime($to_dt)) ?>" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:11px;box-sizing:border-box">
+          </div>
+        </div>
 
-      <!-- Date Presets Row -->
-      <div class="w-btn-group" style="width:100%;margin-bottom:12px;display:flex">
-        <button type="button" class="btn-preset active" data-preset="today" style="flex:1">Today</button>
-        <button type="button" class="btn-preset" data-preset="yesterday" style="flex:1">Yesterday</button>
-        <button type="button" class="btn-preset" data-preset="week" style="flex:1">Week</button>
-        <button type="button" class="btn-preset" data-preset="month" style="flex:1">Month</button>
-      </div>
-
-      <!-- Interval Selection -->
-      <div style="margin-bottom:10px">
-        <label style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px;font-weight:600">Interval:</label>
-        <select style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
-          <option>Specified interval</option>
-        </select>
-      </div>
-
-      <!-- From / To Date Inputs -->
-      <div style="margin-bottom:10px">
-        <label style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px">From:</label>
-        <input type="datetime-local" name="from" id="dt-from" value="<?= date('Y-m-d\TH:i', strtotime($from_dt)) ?>" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px;box-sizing:border-box">
-      </div>
-
-      <div style="margin-bottom:16px">
-        <label style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px">To:</label>
-        <input type="datetime-local" name="to" id="dt-to" value="<?= date('Y-m-d\TH:i', strtotime($to_dt)) ?>" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px;box-sizing:border-box">
-      </div>
-
-      <!-- Big Blue Show Track Button (Matching Screenshot) -->
-      <button type="submit" class="w-icon-btn primary" style="width:100%;justify-content:center;padding:9px;font-size:13px;font-weight:700;border-radius:4px">
-        Show track
-      </button>
-    </form>
+        <!-- Show Track Button -->
+        <button type="submit" class="w-icon-btn primary" style="width:100%;justify-content:center;padding:7px;font-size:12px;font-weight:700;border-radius:4px">
+          🔍 Load Track
+        </button>
+      </form>
+    </details>
 
     <!-- Wialon Trip Breakdown Table (Screenshot 4) -->
     <?php if (count($pts) > 0): ?>
-      <div class="w-wialon-track-table" style="margin-top:16px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div class="w-wialon-track-table" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);flex:1;display:flex;flex-direction:column">
         <!-- Master header with Object name & total mileage -->
-        <div id="master-trip-header" class="w-master-header active-all" onclick="selectFullDay()" style="background:#f1f5f9;padding:8px 10px;border-bottom:1px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between;cursor:pointer" title="Click to view full day route & stats">
+        <div id="master-trip-header" class="w-master-header" onclick="selectFullDay()" style="background:#f1f5f9;padding:8px 10px;border-bottom:1px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between;cursor:pointer" title="Click to view full day route & stats">
           <label style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:#0f172a;cursor:pointer" onclick="event.stopPropagation()">
             <input type="checkbox" id="chk-master-trips" checked onchange="toggleAllTrips(this.checked)" style="accent-color:#2563eb">
             <span><?= htmlspecialchars($u['name'] ?? 'Fleet Unit') ?></span>
           </label>
           <div style="text-align:right">
-            <span id="header-selected-label" style="display:block;font-size:10px;color:#64748b;font-weight:600">FULL DAY (<?= count($trips) ?> TRIPS)</span>
+            <span id="header-selected-label" style="display:block;font-size:9.5px;color:#64748b;font-weight:600">FULL DAY (<?= count($trips) ?> TRIPS)</span>
             <div style="font-weight:800;color:#0284c7;font-size:13px">
               <?= number_format($km, 2) ?> km
             </div>
           </div>
         </div>
 
-        <!-- Playback Actions [⏮] [▶] [⏭] [⛶] (Matching Screenshot 4) -->
+        <!-- Playback Actions [⏮] [▶ Play All] [⏭] [⛶ Fit All] -->
         <div style="padding:6px 10px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
           <div style="display:flex;gap:4px">
             <button type="button" class="w-wb-btn" onclick="playbackFirstPoint()" title="Beginning of track">⏮</button>
-            <button type="button" class="w-wb-btn primary" id="btn-toggle-playback" onclick="toggleRoutePlayback()" title="Play track animation">▶ Play</button>
+            <button type="button" class="w-wb-btn primary" id="btn-toggle-playback" onclick="toggleRoutePlayback()" title="Play track animation">▶ Play All</button>
             <button type="button" class="w-wb-btn" onclick="playbackLastPoint()" title="End of track">⏭</button>
           </div>
-          <button type="button" class="w-wb-btn" onclick="fitFullTrackBounds()" title="Fit entire track on map">⛶ Fit</button>
+          <button type="button" class="w-wb-btn" onclick="selectFullDay()" title="View and fit entire day on map">⛶ Full Day</button>
         </div>
 
         <!-- Trips & Stops Timeline -->
-        <div style="max-height:380px;overflow-y:auto;padding:6px" id="timeline-container">
+        <div style="max-height:480px;overflow-y:auto;padding:6px" id="timeline-container">
           <?php if ($is_stationary_day): ?>
             <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:10px;font-size:11.5px;color:#92400e">
               <strong style="display:block;margin-bottom:4px;color:#b45309">🅿️ Stationary All Day (0 km/h)</strong>
@@ -556,16 +568,19 @@ layout_start('Tracks', 'history.php', true);
                 $i = $item['index'];
                 $tr = $item['data'];
               ?>
-                <div class="w-trip-item-row" id="trip-row-<?= $i ?>" data-trip-idx="<?= $i ?>" onclick="selectTrip(<?= $i ?>)" style="padding:7px 9px;border-radius:5px;cursor:pointer;margin-bottom:4px;background:#ffffff;border:1px solid #e2e8f0;transition:all 0.15s">
+                <div class="w-trip-item-row" id="trip-row-<?= $i ?>" data-trip-idx="<?= $i ?>" onclick="selectTrip(<?= $i ?>)" style="padding:8px 10px;border-radius:5px;cursor:pointer;margin-bottom:5px;background:#ffffff;border:1px solid #e2e8f0;transition:all 0.15s">
                   <div style="display:flex;align-items:center;justify-content:space-between">
                     <div style="display:flex;align-items:center;gap:6px">
                       <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:<?= $tr['color'] ?>"></span>
                       <input type="checkbox" class="chk-single-trip" data-trip-idx="<?= $i ?>" checked onclick="event.stopPropagation(); toggleTrip(<?= $i ?>, this.checked)" style="accent-color:<?= $tr['color'] ?>">
-                      <strong style="font-size:12px;color:#0f172a">Trip <?= $tr['trip_num'] ?></strong>
+                      <strong style="font-size:12.5px;color:#0f172a">Trip <?= $tr['trip_num'] ?></strong>
                     </div>
-                    <span style="font-weight:700;font-size:12px;color:<?= $tr['color'] ?>"><?= $tr['distance_km'] ?> km</span>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="font-weight:800;font-size:12.5px;color:<?= $tr['color'] ?>"><?= $tr['distance_km'] ?> km</span>
+                      <button type="button" onclick="event.stopPropagation(); playSpecificTrip(<?= $i ?>)" title="Play this trip only" style="background:#0284c7;color:#fff;border:none;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">▶ Play</button>
+                    </div>
                   </div>
-                  <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:#475569;margin-top:4px">
                     <span>🕒 <?= $tr['start_time'] ?> &rarr; <?= $tr['end_time'] ?></span>
                     <span><strong><?= $tr['duration_str'] ?></strong></span>
                   </div>
@@ -577,12 +592,12 @@ layout_start('Tracks', 'history.php', true);
               <?php elseif ($item['type'] === 'stop'): 
                 $st = $item['data'];
               ?>
-                <div class="w-timeline-stop" style="padding:5px 9px;margin-bottom:4px;font-size:11px;color:#475569;background:#f8fafc;border-left:3px solid #0284c7;border-radius:3px;display:flex;align-items:center;justify-content:space-between">
-                  <div style="display:flex;align-items:center;gap:5px">
+                <div class="w-timeline-stop" style="padding:6px 10px;margin-bottom:5px;font-size:11px;color:#475569;background:#f8fafc;border-left:3px solid #0284c7;border-radius:3px;display:flex;align-items:center;justify-content:space-between">
+                  <div style="display:flex;align-items:center;gap:6px">
                     <span>🅿️</span>
-                    <span style="font-weight:600;color:#1e293b">Stop: <?= $st['start_time'] ?> &rarr; <?= $st['end_time'] ?></span>
+                    <span style="font-weight:700;color:#1e293b">Parking: <?= $st['start_time'] ?> &rarr; <?= $st['end_time'] ?></span>
                   </div>
-                  <span style="font-weight:700;color:#0284c7;font-size:10.5px"><?= $st['duration_str'] ?></span>
+                  <span style="font-weight:700;color:#0284c7;font-size:11px"><?= $st['duration_str'] ?></span>
                 </div>
               <?php endif; ?>
             <?php endforeach; ?>
@@ -591,14 +606,14 @@ layout_start('Tracks', 'history.php', true);
 
         <!-- Telemetry Summary Footer -->
         <div style="padding:8px 10px;background:#f1f5f9;border-top:1px solid #cbd5e1;font-size:11px;color:#475569;display:flex;justify-content:space-between">
-          <span>Points: <strong><?= count($pts) ?></strong></span>
+          <span>Trips: <strong><?= count($trips) ?></strong></span>
           <span>Stops: <strong><?= count($stops) ?></strong></span>
-          <span>Max Spd: <strong style="color:#dc2626"><?= number_format($max_speed, 1) ?> km/h</strong></span>
+          <span>Max: <strong style="color:#dc2626"><?= number_format($max_speed, 1) ?> km/h</strong></span>
         </div>
       </div>
     <?php else: ?>
-      <div style="margin-top:16px;padding:12px;background:#fff8e1;border:1px solid #ffe082;border-radius:4px;font-size:11.5px;color:#8d6e63">
-        No GPS track points found for the selected interval. Click "Show track" or choose "Today".
+      <div style="padding:12px;background:#fff8e1;border:1px solid #ffe082;border-radius:4px;font-size:11.5px;color:#8d6e63">
+        No GPS track points found for the selected interval. Click "Load Track" or choose "Today".
       </div>
     <?php endif; ?>
   </aside>
@@ -698,6 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const trips = <?= json_encode($trips) ?>;
   const isStationaryDay = <?= json_encode($is_stationary_day) ?>;
   const tripPolylines = [];
+  const tripPointLayers = [];
   let allBounds = null;
 
   if (rawPts.length > 0) {
@@ -731,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `);
       map.setView([pLat, pLng], 16);
     } else {
-      // 🚗 Moving trips exist: Render multi-colored discrete trips matching Screenshot 4!
+      // 🚗 Moving trips exist: Prepare discrete trip layers (isolated per-trip)
       trips.forEach((tr, idx) => {
         const trPts = tr.points.map(p => [parseFloat(p.lat), parseFloat(p.lng)]);
         const tripPoly = L.polyline(trPts, {
@@ -739,25 +755,51 @@ document.addEventListener('DOMContentLoaded', () => {
           weight: thickness || 4,
           opacity: 0.9,
           lineJoin: 'round'
-        }).addTo(map);
+        }); // Decoupled from map: added strictly via selectTrip(idx) or selectFullDay()!
 
         tripPolylines.push(tripPoly);
 
         if (!allBounds) allBounds = tripPoly.getBounds();
         else allBounds.extend(tripPoly.getBounds());
 
-        // Trip Start/End Dots
-        if (trPts.length > 0) {
-          L.circleMarker(trPts[0], { radius: 5, fillColor: '#16a34a', color: '#fff', weight: 2, fillOpacity: 0.9 }).addTo(map)
-            .bindTooltip(`Trip ${tr.trip_num} Start (${tr.start_time})`, { direction: 'top' });
-          L.circleMarker(trPts[trPts.length - 1], { radius: 5, fillColor: '#dc2626', color: '#fff', weight: 2, fillOpacity: 0.9 }).addTo(map)
-            .bindTooltip(`Trip ${tr.trip_num} End (${tr.end_time})`, { direction: 'top' });
+        // Create interactive points layer for this specific trip
+        const ptGroup = L.layerGroup();
+        const step = Math.max(1, Math.floor(tr.points.length / 80));
+        for (let pIdx = 0; pIdx < tr.points.length; pIdx++) {
+          if (pIdx % step === 0 || pIdx === tr.points.length - 1) {
+            const pt = tr.points[pIdx];
+            const pLat = parseFloat(pt.lat);
+            const pLng = parseFloat(pt.lng);
+            const pSpd = Math.round(parseFloat(pt.speed || 0));
+            const pTime = pt.recorded_at.substr(11, 8);
+            const circle = L.circleMarker([pLat, pLng], {
+              radius: 3.5,
+              fillColor: pSpd > 40 ? '#ef4444' : (pSpd > 15 ? '#16a34a' : '#0284c7'),
+              color: '#ffffff',
+              weight: 1,
+              opacity: 0.8,
+              fillOpacity: 0.8
+            });
+            circle.bindTooltip(`Trip ${tr.trip_num} &bull; 🚗 <strong>${pSpd} km/h</strong> &bull; 🕒 ${pTime}`, {
+              className: 'w-point-tooltip',
+              direction: 'top',
+              offset: [0, -4]
+            });
+            const capturedIdx = pIdx;
+            const capturedTripIdx = idx;
+            circle.on('click', () => {
+              if (activeTripIdx !== capturedTripIdx) selectTrip(capturedTripIdx);
+              jumpToPlaybackIndex(capturedIdx);
+            });
+            ptGroup.addLayer(circle);
+          }
         }
+        tripPointLayers.push(ptGroup);
       });
 
-      // Speed Annotations along route matching Screenshot 4
+      // Speed Annotations along route (stored inside tripPointLayers so they isolate per trip)
       if (document.querySelector('input[name="show_annotations"]')?.checked) {
-        trips.forEach(tr => {
+        trips.forEach((tr, idx) => {
           const step = Math.max(6, Math.floor(tr.points.length / 8));
           for (let pIdx = step; pIdx < tr.points.length - step; pIdx += step) {
             const pt = tr.points[pIdx];
@@ -769,7 +811,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 iconSize: [50, 18],
                 iconAnchor: [25, 9]
               });
-              L.marker([parseFloat(pt.lat), parseFloat(pt.lng)], { icon: spdIcon, zIndexOffset: 200 }).addTo(map);
+              const m = L.marker([parseFloat(pt.lat), parseFloat(pt.lng)], { icon: spdIcon, zIndexOffset: 200 });
+              if (tripPointLayers[idx]) tripPointLayers[idx].addLayer(m);
             }
           }
         });
@@ -841,10 +884,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sidebar Trip Table Interactions & Route Isolation
     window.toggleTrip = function(idx, isVisible) {
       if (!tripPolylines[idx]) return;
+      const poly = tripPolylines[idx];
+      const ptLayer = tripPointLayers[idx];
       if (isVisible) {
-        if (!map.hasLayer(tripPolylines[idx])) map.addLayer(tripPolylines[idx]);
+        if (!map.hasLayer(poly)) map.addLayer(poly);
+        if (ptLayer && !map.hasLayer(ptLayer)) map.addLayer(ptLayer);
       } else {
-        if (map.hasLayer(tripPolylines[idx])) map.removeLayer(tripPolylines[idx]);
+        if (map.hasLayer(poly)) map.removeLayer(poly);
+        if (ptLayer && map.hasLayer(ptLayer)) map.removeLayer(ptLayer);
       }
     };
 
@@ -853,6 +900,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chk.checked = isVisible;
         window.toggleTrip(idx, isVisible);
       });
+      if (isVisible) {
+        selectFullDay();
+      } else {
+        pausePlayback();
+      }
     };
 
     window.fitFullTrackBounds = function() {
@@ -962,39 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     activeCumDist = computeCumDist(activePlaybackPts);
 
-    // 3. Interactive GPS Points with Mini Hover Tooltips
-    const stepPts = Math.max(1, Math.floor(rawPts.length / 300));
-    for (let i = 0; i < rawPts.length; i++) {
-      if (i % stepPts === 0 || i === rawPts.length - 1) {
-        const pt = rawPts[i];
-        const pLat = parseFloat(pt.lat);
-        const pLng = parseFloat(pt.lng);
-        const pSpd = Math.round(parseFloat(pt.speed || 0));
-        const pTime = pt.recorded_at.substr(11, 8);
-
-        const circle = L.circleMarker([pLat, pLng], {
-          radius: 3.5,
-          fillColor: pSpd > 40 ? '#ef4444' : (pSpd > 15 ? '#16a34a' : '#0284c7'),
-          color: '#ffffff',
-          weight: 1,
-          opacity: 0.8,
-          fillOpacity: 0.8
-        }).addTo(map);
-
-        circle.bindTooltip(`🚗 <strong>${pSpd} km/h</strong> &bull; 🕒 ${pTime} &bull; 📍 ${pLat.toFixed(4)}, ${pLng.toFixed(4)}`, {
-          className: 'w-point-tooltip',
-          direction: 'top',
-          offset: [0, -4]
-        });
-
-        circle.on('click', () => {
-          if (activeTripIdx !== null) selectFullDay();
-          jumpToPlaybackIndex(i);
-        });
-      }
-    }
-
-    // 4. Smooth Trip Playback Simulator Elements
+    // 3. Smooth Trip Playback Simulator Elements
     const vehicleIcon = L.divIcon({
       className: 'w-playback-car',
       html: `<div class="w-playback-car-pin" id="playback-car-icon">🚗</div>`,
@@ -1107,14 +1127,24 @@ document.addEventListener('DOMContentLoaded', () => {
       const masterHdr = document.getElementById('master-trip-header');
       if (masterHdr) masterHdr.classList.remove('active-all');
 
-      // Dim other trip polylines & highlight selected polyline
+      // Update checkboxes: check only selected trip, uncheck others & master
+      const masterChk = document.getElementById('chk-master-trips');
+      if (masterChk) masterChk.checked = false;
+      document.querySelectorAll('.chk-single-trip').forEach((chk, i) => {
+        chk.checked = (i === idx);
+      });
+
+      // Remove ALL other trip polylines & points from map; ADD ONLY selected trip!
       tripPolylines.forEach((poly, i) => {
+        const ptLayer = tripPointLayers[i];
         if (i === idx) {
-          poly.setStyle({ opacity: 1.0, weight: 6 });
+          poly.setStyle({ opacity: 1.0, weight: Math.max(5, (thickness || 4) + 1) });
           if (!map.hasLayer(poly)) map.addLayer(poly);
           poly.bringToFront();
+          if (ptLayer && !map.hasLayer(ptLayer)) map.addLayer(ptLayer);
         } else {
-          poly.setStyle({ opacity: 0.15, weight: 3 });
+          if (map.hasLayer(poly)) map.removeLayer(poly);
+          if (ptLayer && map.hasLayer(ptLayer)) map.removeLayer(ptLayer);
         }
       });
 
@@ -1130,7 +1160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setEndpoints(s, trips[idx].start_time.substr(0, 5), e, trips[idx].end_time.substr(0, 5), `T${trips[idx].trip_num} `);
       }
 
-      // Switch playback context to this trip
+      // Switch playback context to this trip ONLY
       activePlaybackPts = trPts;
       activeCumDist = computeCumDist(activePlaybackPts);
 
@@ -1144,6 +1174,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (totalDistEl) {
         totalDistEl.textContent = `${trips[idx].distance_km} km`;
+      }
+      const hdrLabel = document.getElementById('header-selected-label');
+      if (hdrLabel) {
+        hdrLabel.textContent = `TRIP ${trips[idx].trip_num} (${trips[idx].distance_km} KM)`;
       }
 
       jumpToPlaybackIndex(0);
@@ -1159,9 +1193,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const masterHdr = document.getElementById('master-trip-header');
       if (masterHdr) masterHdr.classList.add('active-all');
 
-      // Reset all polylines to normal appearance
-      tripPolylines.forEach(poly => {
+      // Check all checkboxes
+      const masterChk = document.getElementById('chk-master-trips');
+      if (masterChk) masterChk.checked = true;
+      document.querySelectorAll('.chk-single-trip').forEach(chk => {
+        chk.checked = true;
+      });
+
+      // Show all trip polylines & points on map
+      tripPolylines.forEach((poly, i) => {
         poly.setStyle({ opacity: 0.9, weight: thickness || 4 });
+        if (!map.hasLayer(poly)) map.addLayer(poly);
+        const ptLayer = tripPointLayers[i];
+        if (ptLayer && !map.hasLayer(ptLayer)) map.addLayer(ptLayer);
       });
 
       // Zoom to all bounds
@@ -1189,8 +1233,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (totalDistEl) {
         totalDistEl.textContent = `<?= number_format($km, 2) ?> km`;
       }
+      const hdrLabel = document.getElementById('header-selected-label');
+      if (hdrLabel) {
+        hdrLabel.textContent = `FULL DAY (<?= count($trips) ?> TRIPS)`;
+      }
 
       jumpToPlaybackIndex(0);
+    };
+
+    window.playSpecificTrip = function(idx) {
+      selectTrip(idx);
+      startPlayback();
     };
 
     window.zoomToTrip = function(idx) {
@@ -1226,6 +1279,13 @@ document.addEventListener('DOMContentLoaded', () => {
         playSpeed = parseFloat(spBtn.dataset.speed || 1);
       });
     });
+
+    // Auto-select Trip 1 by default on load if trips exist, otherwise show full day
+    if (trips.length > 0) {
+      selectTrip(0);
+    } else {
+      selectFullDay();
+    }
   }
 
   // If no track points but photos exist, render photos and fit bounds

@@ -49,6 +49,9 @@ class Tracker {
     try {
       await Permission.notification.request();
       await Permission.camera.request();
+      if (!await Permission.ignoreBatteryOptimizations.isGranted) {
+        await Permission.ignoreBatteryOptimizations.request();
+      }
     } catch (_) {}
 
     if (!await Geolocator.isLocationServiceEnabled()) {

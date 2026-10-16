@@ -1171,9 +1171,28 @@
       authenticateSimulator(currentUnitId);
     }
 
+    function getDetectedClientDevice() {
+      const ua = navigator.userAgent;
+      let model = 'Android Phone (Samsung Galaxy S21)';
+      if (ua.indexOf('Android') !== -1) {
+        const m = ua.match(/Android\s+([0-9.]+);\s*([^;\)]+)/);
+        if (m) model = 'Android ' + m[1] + ' (' + m[2].trim() + ')';
+        else model = 'Android Smartphone';
+      } else if (ua.indexOf('iPhone') !== -1) {
+        model = 'Apple iPhone';
+      } else if (ua.indexOf('Windows') !== -1) {
+        model = 'WiaTag Client (Windows / Chrome)';
+      }
+      return model;
+    }
+
     async function authenticateSimulator(unitId) {
       try {
-        const res = await fetch('../api.php?action=simulator_auth&unit_id=' + unitId);
+        const devModel = getDetectedClientDevice();
+        const devId = localStorage.getItem('app_device_uuid') || ('866192035' + String(unitId).padStart(6, '0'));
+        localStorage.setItem('app_device_uuid', devId);
+
+        const res = await fetch('../api.php?action=simulator_auth&unit_id=' + unitId + '&device_model=' + encodeURIComponent(devModel) + '&unique_id=' + encodeURIComponent(devId));
         const data = await res.json();
         if (data.ok && data.token) {
           localStorage.setItem('staff_token', data.token);
@@ -1503,6 +1522,8 @@
           },
           body: JSON.stringify({
             unit_id: currentUnitId,
+            device_model: getDetectedClientDevice(),
+            unique_id: localStorage.getItem('app_device_uuid') || ('866192035' + String(currentUnitId).padStart(6, '0')),
             points: [currentPoint]
           })
         });

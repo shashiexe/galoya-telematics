@@ -120,20 +120,44 @@ function find_nearest_geofence(?float $lat, ?float $lng): ?string {
 }
 
 /**
- * Inserts a field photo record with automatic column migration fallback.
+ * Inserts a field photo record with automatic table creation & column migration fallback.
  */
 function insert_field_photo(int $userId, string $filePath, ?float $lat, ?float $lng, ?string $note, ?string $geofence, string $dt): void {
     try {
         q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
           [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
     } catch (Throwable $e) {
+        // If table doesn't exist, create it immediately
+        if (strpos($e->getMessage(), "doesn't exist") !== false || strpos($e->getMessage(), "Base table or view not found") !== false) {
+            try {
+                q("CREATE TABLE IF NOT EXISTS field_photos (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    file_path VARCHAR(255) NOT NULL,
+                    lat DECIMAL(10,7) NULL,
+                    lng DECIMAL(10,7) NULL,
+                    note TEXT NULL,
+                    geofence_name VARCHAR(128) NULL,
+                    taken_at DATETIME NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX(user_id),
+                    INDEX(taken_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+                  [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
+                return;
+            } catch (Throwable $e2) {}
+        }
+
         try {
             q("ALTER TABLE field_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
             q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
               [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
-        } catch (Throwable $e2) {
-            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
-              [$userId, $filePath, $lat, $lng, $note, $dt]);
+        } catch (Throwable $e3) {
+            try {
+                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+                  [$userId, $filePath, $lat, $lng, $note, $dt]);
+            } catch (Throwable $e4) {}
         }
     }
 }

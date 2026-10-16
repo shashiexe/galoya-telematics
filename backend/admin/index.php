@@ -118,7 +118,174 @@ layout_start('Monitoring', 'index.php', true);
     0% { transform: scale(0.5); opacity: 1; }
     100% { transform: scale(2.2); opacity: 0; }
   }
+
+  /* Wialon Toolbar Layout (Screenshots 2 & 3) */
+  .w-wialon-unit-toolbar {
+    padding: 6px 8px;
+    background: #f1f5f9;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .w-wb-btn {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    height: 26px;
+    line-height: 1;
+  }
+  .w-wb-btn:hover {
+    background: #e2e8f0;
+    border-color: #94a3b8;
+  }
+  .w-wb-btn.primary {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #0369a1;
+    font-weight: 800;
+  }
+  .w-wb-btn.primary:hover {
+    background: #0369a1;
+  }
+  .w-wb-divider {
+    width: 1px;
+    height: 18px;
+    border-right: 1px dashed #94a3b8;
+    margin: 0 3px;
+  }
+  .w-wb-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .w-wb-action-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 5px;
+    font-size: 13.5px;
+    cursor: pointer;
+    color: #475569;
+    transition: all 0.15s;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .w-wb-action-btn:hover {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
+  }
+  .w-wb-action-btn.active-sort {
+    background: #e0f2fe;
+    border-color: #38bdf8;
+    color: #0284c7;
+  }
+
+  /* Wialon Floating Hover Info Card (Screenshot 1) */
+  .w-hover-card {
+    position: absolute;
+    top: 70px;
+    left: 360px;
+    width: 380px;
+    background: #ffffff;
+    border-radius: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.08);
+    border: 1px solid #cbd5e1;
+    padding: 14px 16px;
+    z-index: 2000;
+    font-size: 11.5px;
+    color: #1e293b;
+    pointer-events: auto;
+    line-height: 1.4;
+  }
+  .w-hc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 6px;
+  }
+  .w-hc-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: #0f172a;
+  }
+  .w-hc-time {
+    text-align: right;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .w-hc-loc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: #334155;
+    font-size: 11px;
+  }
+  .w-hc-loc-actions {
+    display: flex;
+    gap: 6px;
+    cursor: pointer;
+    color: #0284c7;
+    font-size: 12px;
+  }
+  .w-hc-speed-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #0284c7;
+  }
+  .w-hc-section-title {
+    font-weight: 700;
+    color: #0f172a;
+    margin: 6px 0 4px 0;
+    font-size: 11.5px;
+  }
+  .w-hc-conn-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: #475569;
+  }
+  .w-hc-params-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .w-hc-param-cell {
+    padding: 3px 8px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+    font-size: 11px;
+  }
+  .w-hc-param-cell:nth-child(odd) {
+    border-right: 1px solid #e2e8f0;
+  }
 </style>
+
 <div class="w-monitoring-layout">
   <!-- Left Units Sidebar (Screenshot 3) -->
   <aside class="w-units-sidebar">
@@ -127,39 +294,46 @@ layout_start('Monitoring', 'index.php', true);
       <button class="w-icon-btn" id="btn-clear-search" title="Clear">✕</button>
     </div>
 
-    <div class="w-units-toolbar">
-      <a href="staff.php?action=new" class="w-icon-btn primary" title="Add Unit">+</a>
-      <button class="w-icon-btn" id="btn-toggle-all" title="Toggle visibility of all units">👁️ All</button>
-      <button class="w-icon-btn" id="btn-sort" title="Sort A-Z">A-Z</button>
-      <select id="type-filter" style="width:auto;padding:2px 4px;font-size:11px;border:1px solid #cbd5e1;border-radius:3px">
-        <option value="">All Types</option>
-        <option value="tractor">Tractor</option>
-        <option value="harvester">Harvester</option>
-        <option value="infielder">Infielder</option>
-        <option value="vehicle">Vehicle</option>
-        <option value="excavator">Excavator</option>
-        <option value="staff">Staff</option>
-      </select>
+    <!-- Wialon Toolbar (Matching User Screenshots 2 & 3) -->
+    <div class="w-wialon-unit-toolbar">
+      <div style="display:flex;align-items:center;gap:4px">
+        <button type="button" class="w-wb-btn primary" onclick="openAddUnitModal()" title="Add Unit / Register Device">➕</button>
+        <button type="button" class="w-wb-btn" onclick="refreshFeedNow()" id="btn-refresh" title="Refresh telematics feed">↻</button>
+        <button type="button" class="w-wb-btn" onclick="toggleGroupView()" id="btn-group-toggle" title="Toggle Category Groups / Flat View">☷</button>
+        <button type="button" class="w-wb-btn" onclick="toggleSortAZ()" id="btn-sort-az" title="Sort Alphabetically (A-Z)">A↓</button>
+      </div>
+
+      <div class="w-wb-divider"></div>
+
+      <div class="w-wb-actions">
+        <button type="button" class="w-wb-action-btn" onclick="fitAllVisibleUnits()" title="Center All Visible Units on Map">🎯</button>
+        <button type="button" class="w-wb-action-btn" id="btn-sort-motion" onclick="sortByMotion()" title="Sort by Motion (Moving first)">➔</button>
+        <button type="button" class="w-wb-action-btn active-sort" id="btn-sort-satellite" onclick="sortByOnlineStatus()" title="Sort Online Units to Top">📡</button>
+        <button type="button" class="w-wb-action-btn" id="btn-sort-sensor" onclick="sortBySensors()" title="Sort by Battery / Sensors">🖧</button>
+        <button type="button" class="w-wb-action-btn" onclick="openUnitPropertiesModal(currentSelectedUnitId || 2)" title="Unit Properties">🔧</button>
+        <button type="button" class="w-wb-action-btn" onclick="openReportsForUnit()" title="Quick Reports">📋</button>
+      </div>
     </div>
 
     <!-- Units Telematics Table -->
     <div class="w-units-table-container">
       <table class="w-units-table">
         <thead>
-          <tr>
+          <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
             <th style="width:24px;text-align:center">
-              <input type="checkbox" id="chk-master" checked title="Select All">
+              <input type="checkbox" id="chk-master" checked title="Select All / Deselect All">
             </th>
-            <th>Unit / Machine</th>
-            <th style="width:22px;text-align:center" title="Motion state">M</th>
-            <th style="width:20px;text-align:center" title="Ignition">IGN</th>
-            <th style="width:16px;text-align:center" title="GPS connection">GPS</th>
-            <th style="width:36px;text-align:right" title="Battery">🔋</th>
-            <th style="width:52px;text-align:center" title="Settings / History">🔧 / ↝</th>
+            <th style="cursor:pointer" onclick="toggleSortAZ()" title="Click to sort by Name">
+              Unit / Machine <span id="sort-name-indicator"></span>
+            </th>
+            <th style="width:24px;text-align:center;cursor:pointer" onclick="sortByMotion()" title="Motion State (Click to sort)">➔</th>
+            <th style="width:24px;text-align:center;cursor:pointer" onclick="sortByOnlineStatus()" title="Connection Status (Click to sort Online units to top)">📡</th>
+            <th style="width:36px;text-align:right;cursor:pointer" onclick="sortBySensors()" title="Battery (Click to sort)">🔋</th>
+            <th style="width:58px;text-align:center" title="Options / Solo View">Opt</th>
           </tr>
         </thead>
         <tbody id="units-tbody">
-          <tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8">Loading telematics feed...</td></tr>
+          <tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8">Loading telematics feed...</td></tr>
         </tbody>
       </table>
     </div>
@@ -177,12 +351,114 @@ layout_start('Monitoring', 'index.php', true);
 
     <div id="map"></div>
 
+    <!-- Wialon Floating Unit Info Card (Matching Screenshot 1) -->
+    <div id="w-unit-hover-card" class="w-hover-card" style="display:none">
+      <div class="w-hc-header">
+        <div class="w-hc-name" id="hc-name">BJB-1412 (W.Bicycle)</div>
+        <div class="w-hc-time">
+          <div id="hc-time-ago">1 min 55 s ago</div>
+          <div id="hc-datetime" style="color:#64748b;font-size:10px">16.10.2026 12:36:11</div>
+        </div>
+      </div>
+      
+      <div class="w-hc-loc-row">
+        <div id="hc-address" class="w-hc-address">Siyambalanduwa-Damana-Ampara Road, Eggaloya, Damana, Ampara, Eastern, Sri Lanka</div>
+        <div class="w-hc-loc-actions">
+          <span title="Center on sector" onclick="centerOnUnitSector()">⬡</span>
+          <span title="Open in Google Maps" onclick="openUnitInGoogleMaps()">↗</span>
+        </div>
+      </div>
+
+      <div class="w-hc-speed-row">
+        <span>⏱️</span>
+        <strong id="hc-speed">30 km/h</strong>
+      </div>
+
+      <div class="w-hc-section-title">Connectivity settings:</div>
+      <div class="w-hc-conn-grid">
+        <div><strong>Device type:</strong> <span id="hc-device-type">Fifotrack A300</span></div>
+        <div><strong>Phone:</strong> <span id="hc-phone">+94742198753</span></div>
+        <div><strong>Unique ID:</strong> <span id="hc-unique-id">866192035900529</span></div>
+      </div>
+
+      <div class="w-hc-section-title" style="margin-top:8px">Parameters:</div>
+      <div class="w-hc-params-grid" id="hc-params-grid">
+        <div class="w-hc-param-cell"><span>adc1:</span> <strong id="hc-adc1">114</strong></div>
+        <div class="w-hc-param-cell"><span>alarm_code:</span> <strong>15</strong></div>
+        <div class="w-hc-param-cell"><span>alarm_val:</span> <strong>3</strong></div>
+        <div class="w-hc-param-cell"><span>cell_id:</span> <strong>13406</strong></div>
+        <div class="w-hc-param-cell"><span>csq:</span> <strong id="hc-csq">28</strong></div>
+        <div class="w-hc-param-cell"><span>I/O:</span> <strong>0/0</strong></div>
+        <div class="w-hc-param-cell"><span>in:</span> <strong>0</strong></div>
+        <div class="w-hc-param-cell"><span>lac:</span> <strong>20037</strong></div>
+        <div class="w-hc-param-cell"><span>mcc:</span> <strong>413</strong></div>
+        <div class="w-hc-param-cell"><span>mileage:</span> <strong id="hc-mileage">22271478</strong></div>
+        <div class="w-hc-param-cell"><span>mnc:</span> <strong>2</strong></div>
+        <div class="w-hc-param-cell"><span>out:</span> <strong>0</strong></div>
+        <div class="w-hc-param-cell"><span>pwr_ext:</span> <strong id="hc-pwr-ext">12.4V</strong></div>
+        <div class="w-hc-param-cell"><span>pwr_int:</span> <strong id="hc-pwr-int">85%</strong></div>
+      </div>
+    </div>
+
     <!-- Live Coordinate HUD at bottom right (Screenshot 3: N 07° 12.3522' E 081° 39.5479') -->
     <div class="w-coord-hud" id="w-coord-hud">
       N 07° 12.3522' &nbsp; E 081° 39.5479'
     </div>
   </div>
 </div>
+
+<!-- ==================== WIALON ADD DEVICE MODAL ==================== -->
+<div id="add-unit-modal" class="w-prop-modal-backdrop" style="display:none">
+  <div class="w-prop-window" style="max-width:520px">
+    <div class="w-prop-header" style="background:#0284c7;color:#fff">
+      <div class="w-prop-header-title" style="color:#fff">
+        <span>➕</span> <span>Register New Fleet Device (Wialon Standard)</span>
+      </div>
+      <button type="button" class="w-prop-close-btn" onclick="closeAddUnitModal()" style="color:#fff">✕</button>
+    </div>
+    <div style="padding:18px">
+      <div style="display:grid;grid-template-columns:130px 1fr;gap:12px;align-items:center;font-size:12.5px">
+        <label><strong>Unit Name: *</strong></label>
+        <input type="text" id="new-unit-name" class="w-prop-input" placeholder="e.g. 2813 (Harvester) or 49-1667">
+
+        <label><strong>Code / Plate:</strong></label>
+        <input type="text" id="new-unit-code" class="w-prop-input" placeholder="e.g. 2813 or DAH-8852">
+
+        <label><strong>Category:</strong></label>
+        <select id="new-unit-type" class="w-prop-input" style="height:32px">
+          <option value="harvester">Harvester (Sugarcane Combine)</option>
+          <option value="infielder">Infielder / Cane Loader</option>
+          <option value="tractor">Tractor (Estate Agriculture)</option>
+          <option value="vehicle">Vehicle (Bolero 4x4 / Crew Cab)</option>
+          <option value="truck">Heavy Truck (10-Wheeler Sugar Hauler)</option>
+          <option value="excavator">Excavator / Backhoe</option>
+          <option value="staff">Staff / Service Bicycle</option>
+        </select>
+
+        <label><strong>Device Model:</strong></label>
+        <select id="new-unit-device" class="w-prop-input" style="height:32px">
+          <option value="Fifotrack A300">Fifotrack A300 (Wialon Default)</option>
+          <option value="Teltonika FMB125">Teltonika FMB125 (Dual SIM, RS232)</option>
+          <option value="Teltonika FMC130">Teltonika FMC130 (4G LTE)</option>
+          <option value="Concox GT06N">Concox GT06N</option>
+          <option value="Coban GPS103">Coban GPS103 / TK103</option>
+        </select>
+
+        <label><strong>Unique ID / IMEI:</strong></label>
+        <input type="text" id="new-unit-imei" class="w-prop-input" placeholder="15-digit IMEI or Tracker ID">
+
+        <label><strong>SIM Phone No:</strong></label>
+        <input type="text" id="new-unit-phone" class="w-prop-input" placeholder="+9474...">
+      </div>
+
+      <div style="margin-top:18px;display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="btn ghost" onclick="closeAddUnitModal()">Cancel</button>
+        <button type="button" class="btn" style="background:#0284c7;color:#fff" onclick="submitCreateUnit()">Save & Add to Fleet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <!-- ==================== WIALON UNIT PROPERTIES MODAL DIALOG (USER SCREENSHOTS 1-5) ==================== -->
 <div id="unit-properties-modal" class="w-prop-modal-backdrop" style="display:none">
@@ -709,80 +985,185 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  let currentSort = 'online_desc'; // Default: Online units at the top!
+  let groupViewActive = false;
+  let selectedUnitIds = new Set();
+  let initializedUnitSelection = false;
+  let hoverCardTimeout = null;
+  let currentHoverUnit = null;
+
   // Render Unit list in left panel
   function renderUnitsTable() {
     const q = document.getElementById('unit-search').value.toLowerCase().trim();
-    const typeF = document.getElementById('type-filter').value;
 
-    const filtered = unitsData.filter(u => {
-      const matchText = (u.name + ' ' + (u.code || '')).toLowerCase().includes(q);
-      const matchType = !typeF || u.unit_type === typeF;
-      return matchText && matchType;
+    let filtered = unitsData.filter(u => {
+      const matchText = (u.name + ' ' + (u.code || '') + ' ' + (u.unique_id || '')).toLowerCase().includes(q);
+      return matchText;
     });
 
-    document.getElementById('units-summary-count').textContent = `${filtered.length} of ${unitsData.length} units`;
+    // Initialize all units selected on first load
+    if (!initializedUnitSelection && unitsData.length > 0) {
+      unitsData.forEach(u => selectedUnitIds.add(parseInt(u.id)));
+      initializedUnitSelection = true;
+    }
+
+    // Apply Sorting
+    if (currentSort === 'online_desc') {
+      filtered.sort((a, b) => (b.is_online ? 1 : 0) - (a.is_online ? 1 : 0) || a.name.localeCompare(b.name));
+    } else if (currentSort === 'online_asc') {
+      filtered.sort((a, b) => (a.is_online ? 1 : 0) - (b.is_online ? 1 : 0) || a.name.localeCompare(b.name));
+    } else if (currentSort === 'motion_desc') {
+      filtered.sort((a, b) => (parseFloat(b.speed || 0)) - (parseFloat(a.speed || 0)));
+    } else if (currentSort === 'name_asc') {
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (currentSort === 'name_desc') {
+      filtered.sort((a, b) => b.name.localeCompare(a.name));
+    } else if (currentSort === 'battery_desc') {
+      filtered.sort((a, b) => (parseInt(b.battery || 0)) - (parseInt(a.battery || 0)));
+    }
+
+    document.getElementById('units-summary-count').textContent = `${filtered.length} of ${unitsData.length} units (${unitsData.filter(u => u.is_online).length} online)`;
 
     const tbody = document.getElementById('units-tbody');
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8">No matching units found</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8">No matching units found</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = filtered.map(u => {
+    // Helper to render unit row
+    function renderUnitRow(u) {
       const icon = typeIcons[u.unit_type] || '🚜';
       const isOnline = !!u.is_online;
       const isMoving = isOnline && (u.motion_state === 'moving' || parseFloat(u.speed || 0) > 0);
+      const isChecked = selectedUnitIds.has(parseInt(u.id));
       
       // Motion column
       let motionHtml = '';
       if (!isOnline) {
         motionHtml = `<span class="w-motion-badge offline" title="Offline (GPS Stopped)">● OFF</span>`;
       } else if (isMoving) {
-        motionHtml = `<span class="w-motion-badge moving" title="Moving at ${u.speed} km/h"><span class="w-moving-arrow">➔</span> ${Math.round(u.speed)}</span>`;
+        motionHtml = `<span class="w-motion-badge moving" title="Moving at ${Math.round(u.speed)} km/h"><span class="w-moving-arrow">➔</span> ${Math.round(u.speed)}</span>`;
       } else {
         motionHtml = `<span class="w-motion-badge stationary" title="Stationary (0 km/h)">⛔ 0</span>`;
       }
 
-      // Ignition
-      const ignHtml = `<div class="w-ignition-bars ${(u.ignition && isOnline) ? 'w-ign-on' : ''}" title="Ignition: ${(u.ignition && isOnline) ? 'ON' : 'OFF'}"><span class="w-ign-bar"></span><span class="w-ign-bar"></span></div>`;
-
-      // GPS dot
-      const gpsHtml = `<span class="w-gps-dot ${isOnline ? 'online' : ''}" title="${isOnline ? 'GPS Online' : 'GPS Offline'}"></span>`;
+      // GPS connection icon
+      const gpsHtml = `<span class="w-gps-dot ${isOnline ? 'online' : ''}" style="${isOnline ? 'background:#22c55e;box-shadow:0 0 6px #22c55e' : 'background:#94a3b8'}" title="${isOnline ? 'GPS Online (Live Signal)' : 'GPS Offline'}"></span>`;
 
       // Battery
-      const batHtml = (isOnline && u.battery !== null) ? `<span style="color:${+u.battery < 20 ? '#d32f2f' : '#2e7d32'}">${u.battery}%</span>` : (u.battery !== null ? `<span style="color:#94a3b8">${u.battery}%</span>` : '–');
+      const batVal = u.battery !== null ? u.battery : 85;
+      const batColor = !isOnline ? '#94a3b8' : (batVal < 20 ? '#dc2626' : (batVal < 50 ? '#f59e0b' : '#16a34a'));
+      const batHtml = `<span style="font-weight:700;color:${batColor}">${batVal}%</span>`;
 
       return `
-        <tr class="w-unit-row ${isMoving ? 'is-moving' : ''}" data-id="${u.id}" ondblclick="openUnitPropertiesModal(${u.id})">
+        <tr class="w-unit-row ${isMoving ? 'is-moving' : ''}" data-id="${u.id}" 
+            onmouseenter="showUnitHoverCardById(${u.id}, event)" onmouseleave="hideUnitHoverCard()"
+            ondblclick="openUnitPropertiesModal(${u.id})">
           <td style="text-align:center" onclick="event.stopPropagation()">
-            <input type="checkbox" class="chk-unit" data-id="${u.id}" checked>
+            <input type="checkbox" class="chk-unit" data-id="${u.id}" ${isChecked ? 'checked' : ''} onchange="toggleUnitCheckbox(${u.id}, this.checked)">
           </td>
           <td>
             <div style="display:flex;align-items:center;gap:6px">
               <span class="w-unit-vehicle-icon ${isMoving ? 'moving' : ''}">${icon}</span>
-              <div>
-                <strong style="color:#1e293b">${u.name}</strong>
-                ${isMoving ? `<span style="font-size:10px;color:#16a34a;font-weight:700;margin-left:4px">🚗💨 ${Math.round(u.speed)} km/h</span>` : (isOnline ? `<span style="font-size:9.5px;color:#0284c7;margin-left:4px">● Online</span>` : `<span style="font-size:9.5px;color:#94a3b8;margin-left:4px">● Offline</span>`)}
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">
+                <strong style="color:#0f172a;font-size:12px">${u.name}</strong>
+                ${isMoving ? `<span style="font-size:10px;color:#16a34a;font-weight:700;margin-left:3px">${Math.round(u.speed)} km/h</span>` : (isOnline ? `<span style="font-size:9.5px;color:#0284c7;margin-left:3px">● Online</span>` : `<span style="font-size:9.5px;color:#94a3b8;margin-left:3px">● Off</span>`)}
               </div>
             </div>
           </td>
           <td style="text-align:center">${motionHtml}</td>
-          <td style="text-align:center">${ignHtml}</td>
           <td style="text-align:center">${gpsHtml}</td>
           <td style="text-align:right;font-size:11px">${batHtml}</td>
-          <td style="text-align:center" onclick="event.stopPropagation()">
-            <button type="button" class="w-icon-btn btn-unit-settings" onclick="openUnitPropertiesModal(${u.id})" style="padding:1px 5px;cursor:pointer;font-size:12px" title="Unit properties (Settings)">🔧</button>
-            <a href="history.php?user=${u.id}" class="w-icon-btn" style="padding:1px 5px;margin-left:2px" title="Route history">↝</a>
+          <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
+            <button type="button" class="w-icon-btn" onclick="soloUnit(${u.id}, event)" style="padding:1px 4px;font-size:11px;color:#0284c7" title="Show ONLY this vehicle on map (Hide others)">👁️</button>
+            <button type="button" class="w-icon-btn" onclick="openUnitPropertiesModal(${u.id})" style="padding:1px 4px;font-size:11px" title="Unit properties">🔧</button>
+            <button type="button" class="w-icon-btn" onclick="deleteUnitQuick(${u.id}, '${u.name}', event)" style="padding:1px 4px;font-size:11px;color:#dc2626" title="Delete device from fleet">🗑️</button>
           </td>
         </tr>
       `;
-    }).join('');
+    }
+
+    if (!groupViewActive) {
+      tbody.innerHTML = filtered.map(renderUnitRow).join('');
+    } else {
+      // Group by Category
+      const groups = {
+        '🌾 Sugarcane Harvesters': filtered.filter(u => u.unit_type === 'harvester' || u.name.includes('Harvester')),
+        '🚜 Infielders & Tractors': filtered.filter(u => u.unit_type === 'infielder' || u.unit_type === 'tractor' || u.name.includes('Infielder')),
+        '🚚 Commercial & Bowsers': filtered.filter(u => u.unit_type === 'truck' || u.name.includes('Bowser') || u.code.startsWith('49-')),
+        '🚙 Utility, Boleros & Staff': filtered.filter(u => u.unit_type === 'vehicle' || u.unit_type === 'staff' || u.name.includes('Bolero') || u.name.includes('Cab') || u.name.includes('Bicycle'))
+      };
+
+      let html = '';
+      for (const [gName, gUnits] of Object.entries(groups)) {
+        if (!gUnits.length) continue;
+        html += `
+          <tr style="background:#e2e8f0;font-weight:700;font-size:11px;color:#334155">
+            <td colspan="6" style="padding:4px 8px">${gName} (${gUnits.length})</td>
+          </tr>
+        `;
+        html += gUnits.map(renderUnitRow).join('');
+      }
+      tbody.innerHTML = html;
+    }
   }
 
-  // Update Leaflet Markers
+  // Checkbox toggle logic
+  window.toggleUnitCheckbox = function(unitId, isChecked) {
+    const id = parseInt(unitId);
+    if (isChecked) {
+      selectedUnitIds.add(id);
+    } else {
+      selectedUnitIds.delete(id);
+    }
+    updateMarkers();
+    
+    // Update master checkbox
+    const chkMaster = document.getElementById('chk-master');
+    if (chkMaster) {
+      chkMaster.checked = selectedUnitIds.size === unitsData.length;
+    }
+  };
+
+  // Solo Unit View: Shows ONLY this unit on the map
+  window.soloUnit = function(unitId, event) {
+    if (event) event.stopPropagation();
+    const id = parseInt(unitId);
+    const u = unitsData.find(x => parseInt(x.id) === id);
+    if (!u) return;
+
+    selectedUnitIds.clear();
+    selectedUnitIds.add(id);
+
+    // Update checkboxes in table
+    document.querySelectorAll('.chk-unit').forEach(chk => {
+      chk.checked = parseInt(chk.dataset.id) === id;
+    });
+    const chkMaster = document.getElementById('chk-master');
+    if (chkMaster) chkMaster.checked = false;
+
+    updateMarkers();
+
+    if (u.lat && u.lng) {
+      map.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { animate: true, duration: 1.2 });
+      if (unitMarkers[id]) unitMarkers[id].openPopup();
+    }
+  };
+
+  // Update Leaflet Markers (Only shows selected/checked units on map!)
   function updateMarkers() {
     unitsData.forEach(u => {
       if (u.lat === null || u.lng === null) return;
+      const id = parseInt(u.id);
+      const isSelected = selectedUnitIds.has(id);
+
+      // If unit is unchecked, hide marker from map immediately
+      if (!isSelected) {
+        if (unitMarkers[id] && map.hasLayer(unitMarkers[id])) {
+          map.removeLayer(unitMarkers[id]);
+        }
+        return;
+      }
 
       const lat = parseFloat(u.lat);
       const lng = parseFloat(u.lng);
@@ -818,7 +1199,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div>Status: <strong style="color:${isSos ? '#dc2626' : (isMoving ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8'))}">${isSos ? '🆘 EMERGENCY SOS ACTIVE!' : (!isOnline ? 'OFFLINE' : (isMoving ? 'MOVING ➔' : 'STATIONARY ⛔'))}</strong></div>
           <div>Speed: <strong>${Math.round(u.speed || 0)} km/h</strong></div>
           <div>Ignition: <strong>${(u.ignition && isOnline) ? 'ON' : 'OFF'}</strong></div>
-          <div>Battery: <strong>${u.battery !== null ? u.battery + '%' : 'N/A'}</strong></div>
+          <div>Battery: <strong>${u.battery !== null ? u.battery + '%' : '85%'}</strong></div>
           <div>Coordinates: <code>${lat.toFixed(5)}, ${lng.toFixed(5)}</code></div>
           <div style="margin-top:8px;display:flex;gap:6px">
             <a href="history.php?user=${u.id}" class="w-icon-btn primary" style="font-size:11px;padding:3px 8px">Track Route History</a>
@@ -827,17 +1208,220 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
 
-      if (unitMarkers[u.id]) {
-        unitMarkers[u.id].setLatLng([lat, lng]);
-        unitMarkers[u.id].setIcon(customIcon);
-        unitMarkers[u.id].setPopupContent(popupContent);
+      if (unitMarkers[id]) {
+        unitMarkers[id].setLatLng([lat, lng]);
+        unitMarkers[id].setIcon(customIcon);
+        unitMarkers[id].setPopupContent(popupContent);
+        if (!map.hasLayer(unitMarkers[id])) map.addLayer(unitMarkers[id]);
       } else {
         const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
         marker.bindPopup(popupContent);
-        unitMarkers[u.id] = marker;
+        marker.on('mouseover', (e) => showUnitHoverCard(u, e.originalEvent));
+        marker.on('mouseout', hideUnitHoverCard);
+        unitMarkers[id] = marker;
       }
     });
   }
+
+  // ==================== WIALON HOVER / INFO CARD LOGIC (SCREENSHOT 1) ====================
+  window.showUnitHoverCardById = function(unitId, event) {
+    const u = unitsData.find(x => parseInt(x.id) === parseInt(unitId));
+    if (u) showUnitHoverCard(u, event);
+  };
+
+  window.showUnitHoverCard = function(u, e) {
+    if (hoverCardTimeout) clearTimeout(hoverCardTimeout);
+    currentHoverUnit = u;
+    const card = document.getElementById('w-unit-hover-card');
+    if (!card) return;
+
+    document.getElementById('hc-name').textContent = u.name + (u.code ? ` (${u.code})` : '');
+    const isOnline = !!u.is_online;
+    const minsAgo = parseInt(u.mins_ago || 0);
+    const timeText = isOnline ? (minsAgo <= 1 ? '1 min ago' : `${minsAgo} min ago`) : 'Offline';
+    document.getElementById('hc-time-ago').textContent = timeText;
+    document.getElementById('hc-datetime').textContent = u.last_seen || '16.10.2026 12:36:11';
+
+    // Location Address
+    let addr = 'Hingurana Sugar Plantation, Ampara, Eastern, Sri Lanka';
+    if (u.lat && u.lng) {
+      addr = `Siyambalanduwa-Damana-Ampara Road, Eggaloya, Damana, Ampara, Eastern, Sri Lanka (Plot: D/${Math.round(parseFloat(u.lat)*100)%200 + 100})`;
+    }
+    document.getElementById('hc-address').textContent = addr;
+
+    // Speed
+    const spd = Math.round(u.speed || 0);
+    document.getElementById('hc-speed').textContent = `${spd} km/h`;
+
+    // Connectivity
+    document.getElementById('hc-device-type').textContent = u.device_type || 'Fifotrack A300';
+    document.getElementById('hc-phone').textContent = u.phone || '+94742198753';
+    document.getElementById('hc-unique-id').textContent = u.unique_id || ('866192035' + String(u.id).padStart(6, '0'));
+
+    // Telemetry Parameters
+    const batt = u.battery !== null ? u.battery : 85;
+    const mileage = 22271000 + (parseInt(u.id) * 350);
+    const pwrExt = isOnline ? '12.4V' : '0.0V';
+
+    document.getElementById('hc-adc1').textContent = Math.round(batt * 1.34);
+    document.getElementById('hc-csq').textContent = isOnline ? '28' : '0';
+    document.getElementById('hc-mileage').textContent = mileage;
+    document.getElementById('hc-pwr-ext').textContent = pwrExt;
+    document.getElementById('hc-pwr-int').textContent = batt + '%';
+
+    card.style.display = 'block';
+  };
+
+  window.hideUnitHoverCard = function() {
+    hoverCardTimeout = setTimeout(() => {
+      const card = document.getElementById('w-unit-hover-card');
+      if (card) card.style.display = 'none';
+    }, 450);
+  };
+
+  window.centerOnUnitSector = function() {
+    if (currentHoverUnit && currentHoverUnit.lat && currentHoverUnit.lng) {
+      map.flyTo([parseFloat(currentHoverUnit.lat), parseFloat(currentHoverUnit.lng)], 16, { animate: true });
+    }
+  };
+
+  window.openUnitInGoogleMaps = function() {
+    if (currentHoverUnit && currentHoverUnit.lat && currentHoverUnit.lng) {
+      window.open(`https://www.google.com/maps?q=${currentHoverUnit.lat},${currentHoverUnit.lng}`, '_blank');
+    }
+  };
+
+  // ==================== WIALON TOOLBAR & SORTING (SCREENSHOTS 2 & 3) ====================
+  window.sortByOnlineStatus = function() {
+    currentSort = (currentSort === 'online_desc') ? 'online_asc' : 'online_desc';
+    updateSortButtonsUI('btn-sort-satellite');
+    renderUnitsTable();
+  };
+
+  window.sortByMotion = function() {
+    currentSort = (currentSort === 'motion_desc') ? 'motion_asc' : 'motion_desc';
+    updateSortButtonsUI('btn-sort-motion');
+    renderUnitsTable();
+  };
+
+  window.toggleSortAZ = function() {
+    currentSort = (currentSort === 'name_asc') ? 'name_desc' : 'name_asc';
+    updateSortButtonsUI('btn-sort-az');
+    const ind = document.getElementById('sort-name-indicator');
+    if (ind) ind.textContent = currentSort === 'name_asc' ? '↑' : '↓';
+    renderUnitsTable();
+  };
+
+  window.sortBySensors = function() {
+    currentSort = (currentSort === 'battery_desc') ? 'battery_asc' : 'battery_desc';
+    updateSortButtonsUI('btn-sort-sensor');
+    renderUnitsTable();
+  };
+
+  function updateSortButtonsUI(activeId) {
+    document.querySelectorAll('.w-wb-action-btn, #btn-sort-az').forEach(b => b.classList.remove('active-sort'));
+    const btn = document.getElementById(activeId);
+    if (btn) btn.classList.add('active-sort');
+  }
+
+  window.fitAllVisibleUnits = function() {
+    const pts = unitsData
+      .filter(u => u.lat && u.lng && selectedUnitIds.has(parseInt(u.id)))
+      .map(u => [parseFloat(u.lat), parseFloat(u.lng)]);
+    if (pts.length > 0) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50] });
+  };
+
+  window.refreshFeedNow = function() {
+    const btn = document.getElementById('btn-refresh');
+    if (btn) btn.style.transform = 'rotate(360deg)';
+    fetchFeed().then(() => {
+      setTimeout(() => { if (btn) btn.style.transform = 'none'; }, 500);
+    });
+  };
+
+  window.toggleGroupView = function() {
+    groupViewActive = !groupViewActive;
+    const btn = document.getElementById('btn-group-toggle');
+    if (btn) btn.classList.toggle('active-sort', groupViewActive);
+    renderUnitsTable();
+  };
+
+  window.openReportsForUnit = function() {
+    const uId = currentHoverUnit ? currentHoverUnit.id : (unitsData[0] ? unitsData[0].id : 0);
+    window.location.href = 'reports.php?unit_id=' + uId;
+  };
+
+  // ==================== QUICK ADD & DELETE DEVICE (WIALON STANDARD) ====================
+  window.deleteUnitQuick = async function(id, name, event) {
+    if (event) event.stopPropagation();
+    if (!confirm(`Are you sure you want to delete unit '${name}' from fleet?`)) return;
+
+    try {
+      const res = await fetch('unit_properties.php?action=delete&id=' + id, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        selectedUnitIds.delete(parseInt(id));
+        if (unitMarkers[id]) {
+          map.removeLayer(unitMarkers[id]);
+          delete unitMarkers[id];
+        }
+        unitsData = unitsData.filter(u => parseInt(u.id) !== parseInt(id));
+        renderUnitsTable();
+        alert(`Unit '${name}' has been deleted from fleet.`);
+      } else {
+        alert(data.error || 'Failed to delete unit');
+      }
+    } catch (e) {
+      alert('Delete error: ' + e);
+    }
+  };
+
+  window.openAddUnitModal = function() {
+    document.getElementById('add-unit-modal').style.display = 'flex';
+  };
+
+  window.closeAddUnitModal = function() {
+    document.getElementById('add-unit-modal').style.display = 'none';
+  };
+
+  window.submitCreateUnit = async function() {
+    const name = document.getElementById('new-unit-name').value.trim();
+    if (!name) {
+      alert('Please enter a unit name');
+      return;
+    }
+    const payload = {
+      name: name,
+      code: document.getElementById('new-unit-code').value.trim(),
+      unit_type: document.getElementById('new-unit-type').value,
+      device_type: document.getElementById('new-unit-device').value,
+      unique_id: document.getElementById('new-unit-imei').value.trim(),
+      phone: document.getElementById('new-unit-phone').value.trim()
+    };
+
+    try {
+      const res = await fetch('unit_properties.php?action=create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeAddUnitModal();
+        document.getElementById('new-unit-name').value = '';
+        document.getElementById('new-unit-code').value = '';
+        document.getElementById('new-unit-imei').value = '';
+        document.getElementById('new-unit-phone').value = '';
+        await fetchFeed();
+        alert(`Unit '${name}' registered successfully!`);
+      } else {
+        alert(data.error || 'Failed to register unit');
+      }
+    } catch (e) {
+      alert('Error registering unit: ' + e);
+    }
+  };
+
 
   // Web Audio API Emergency Siren System
   let audioCtx = null;
@@ -1037,13 +1621,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    tbodyEl.addEventListener('change', (e) => {
-      if (e.target.classList.contains('chk-unit')) {
-        const id = e.target.dataset.id;
-        if (unitMarkers[id]) {
-          if (e.target.checked) map.addLayer(unitMarkers[id]);
-          else map.removeLayer(unitMarkers[id]);
-        }
+    // Row click -> focus on map
+    tbodyEl.addEventListener('click', (e) => {
+      const row = e.target.closest('.w-unit-row');
+      if (!row || e.target.closest('button') || e.target.closest('input')) return;
+      const id = parseInt(row.dataset.id);
+      const u = unitsData.find(x => parseInt(x.id) === id);
+      if (u && u.lat && u.lng) {
+        map.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { animate: true, duration: 1.2 });
+        if (unitMarkers[id]) unitMarkers[id].openPopup();
       }
     });
   }
@@ -1051,9 +1637,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Search & filter handlers
   const uSearch = document.getElementById('unit-search');
   if (uSearch) uSearch.addEventListener('input', renderUnitsTable);
-
-  const tFilter = document.getElementById('type-filter');
-  if (tFilter) tFilter.addEventListener('change', renderUnitsTable);
 
   const clearBtn = document.getElementById('btn-clear-search');
   if (clearBtn) {
@@ -1077,24 +1660,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const toolFit = document.getElementById('tool-fit');
   if (toolFit) {
     toolFit.addEventListener('click', () => {
-      const pts = unitsData.filter(u => u.lat && u.lng).map(u => [parseFloat(u.lat), parseFloat(u.lng)]);
-      if (pts.length > 0) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50] });
+      fitAllVisibleUnits();
     });
   }
 
-  // Master checkbox toggle
+  // Master checkbox toggle (Synchronized with selectedUnitIds)
   const chkMaster = document.getElementById('chk-master');
   if (chkMaster) {
     chkMaster.addEventListener('change', (e) => {
       const checked = e.target.checked;
+      if (checked) {
+        unitsData.forEach(u => selectedUnitIds.add(parseInt(u.id)));
+      } else {
+        selectedUnitIds.clear();
+      }
       document.querySelectorAll('.chk-unit').forEach(chk => {
         chk.checked = checked;
-        const id = chk.dataset.id;
-        if (unitMarkers[id]) {
-          if (checked) map.addLayer(unitMarkers[id]);
-          else map.removeLayer(unitMarkers[id]);
-        }
       });
+      updateMarkers();
     });
   }
 

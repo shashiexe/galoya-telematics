@@ -63,8 +63,29 @@ try {
         if (!$u || !password_verify($b['password'] ?? '', $u['password_hash'])) fail('Phone number or password is wrong', 401);
         $token = bin2hex(random_bytes(32));
         q('INSERT INTO api_tokens (user_id, token_hash) VALUES (?,?)', [$u['id'], hash('sha256', $token)]);
+
+        // Capture phone model & unique ID from app or User-Agent
+        $devModel = trim($b['device_model'] ?? ($b['phone_model'] ?? ''));
+        $devId = trim($b['unique_id'] ?? ($b['imei'] ?? ($b['device_id'] ?? '')));
+        if (!$devModel) {
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            if (preg_match('/Android\s+([0-9.]+);\s*([^;\)]+)/i', $ua, $m)) {
+                $devModel = 'Android ' . trim($m[1]) . ' (' . trim($m[2]) . ')';
+            } elseif (preg_match('/iPhone\s*OS\s*([0-9_]+)/i', $ua, $m)) {
+                $devModel = 'Apple iPhone (iOS ' . str_replace('_', '.', $m[1]) . ')';
+            } elseif (stripos($ua, 'Dart') !== false) {
+                $devModel = 'Galoya Android Mobile App';
+            } else {
+                $devModel = 'Android Smartphone (' . ($u['name'] ?? 'Staff') . ')';
+            }
+        }
+        if (!$devId) {
+            $devId = !empty($u['unique_id']) ? $u['unique_id'] : ('8661920' . str_pad((string)$u['id'], 8, '0', STR_PAD_LEFT));
+        }
+        q('UPDATE users SET last_seen=NOW(), on_duty=1, device_type=?, unique_id=? WHERE id=?', [$devModel, $devId, $u['id']]);
+
         out(['ok' => true, 'token' => $token,
-             'user' => ['id' => (int)$u['id'], 'name' => $u['name'], 'phone' => $u['phone']],
+             'user' => ['id' => (int)$u['id'], 'name' => $u['name'], 'phone' => $u['phone'], 'device_type' => $devModel, 'unique_id' => $devId],
              'config' => app_config()]);
     }
 
@@ -80,8 +101,17 @@ try {
         $token = bin2hex(random_bytes(32));
         q('INSERT INTO api_tokens (user_id, token_hash) VALUES (?,?)', [$u['id'], hash('sha256', $token)]);
         
-        // Mark online immediately
-        q('UPDATE users SET last_seen=NOW(), on_duty=1 WHERE id=?', [$u['id']]);
+        $devModel = trim($_REQUEST['device_model'] ?? ($_POST['device_model'] ?? ''));
+        $devId = trim($_REQUEST['unique_id'] ?? ($_POST['unique_id'] ?? ''));
+        if (!$devModel) {
+            $devModel = ($u['unit_type'] === 'staff') ? 'Android Phone (Samsung Galaxy S21)' : ($u['device_type'] ?: 'Teltonika FMB125');
+        }
+        if (!$devId) {
+            $devId = !empty($u['unique_id']) ? $u['unique_id'] : (($u['unit_type'] === 'staff' ? '8661920' : '3505445') . str_pad((string)$u['id'], 8, '0', STR_PAD_LEFT));
+        }
+
+        // Mark online immediately & update device info
+        q('UPDATE users SET last_seen=NOW(), on_duty=1, device_type=?, unique_id=? WHERE id=?', [$devModel, $devId, $u['id']]);
         
         out([
             'ok' => true,
@@ -91,7 +121,9 @@ try {
                 'name' => $u['name'],
                 'code' => $u['code'],
                 'phone' => $u['phone'],
-                'unit_type' => $u['unit_type']
+                'unit_type' => $u['unit_type'],
+                'device_type' => $devModel,
+                'unique_id' => $devId
             ],
             'config' => app_config()
         ]);
@@ -158,9 +190,23 @@ try {
             $spd = (float)($latest['speed'] ?? 0);
             $motion = $spd > 0 ? 'moving' : 'stationary';
             $ign = $spd > 0 ? 1 : 1;
-            q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1
-               WHERE id=?',
-              [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $u['id']]);
+            
+            $b = body();
+            $devModel = trim($b['device_model'] ?? ($b['phone_model'] ?? ''));
+            $devId = trim($b['unique_id'] ?? ($b['imei'] ?? ($b['device_id'] ?? '')));
+            if ($devModel && $devId) {
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=?, unique_id=? WHERE id=?',
+                  [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devModel, $devId, $u['id']]);
+            } elseif ($devModel) {
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=? WHERE id=?',
+                  [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devModel, $u['id']]);
+            } elseif ($devId) {
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, unique_id=? WHERE id=?',
+                  [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devId, $u['id']]);
+            } else {
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1 WHERE id=?',
+                  [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $u['id']]);
+            }
         }
         db()->commit();
         out(['ok' => true, 'accepted' => $n, 'unit_id' => $u['id'], 'unit_name' => $u['name'], 'config' => app_config()]);

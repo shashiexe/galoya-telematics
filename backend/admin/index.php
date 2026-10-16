@@ -891,13 +891,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btn) btn.textContent = '🔇 Silenced';
   };
 
-  window.resolveSOSAlert = async function(id, userId) {
+  window.resolveSOSAlert = async function(id, userId, all = true) {
     if (!confirm('Resolve and clear this SOS emergency alert?')) return;
     try {
-      await fetch(`../api.php?action=resolve_sos&id=${id}&user_id=${userId}`);
-      sirenSilencedByUser = false;
+      await fetch(`../api.php?action=resolve_sos&id=${id}&user_id=${userId}${all ? '&all=1' : ''}`);
+      sirenSilencedByUser = true;
       stopEmergencySiren();
-      fetchFeed();
+      const sosContainer = document.getElementById('sos-container');
+      if (sosContainer) {
+        sosContainer.style.display = 'none';
+        sosContainer.innerHTML = '';
+      }
+      setTimeout(fetchFeed, 300);
     } catch (e) {
       alert('Failed to resolve SOS: ' + e);
     }
@@ -927,7 +932,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const activeSos = data.sos || [];
       const sosContainer = document.getElementById('sos-container');
       if (activeSos.length > 0) {
-        startEmergencySiren();
+        if (!sirenSilencedByUser) {
+          startEmergencySiren();
+        }
         const top = activeSos[0];
         if (sosContainer) {
           sosContainer.innerHTML = `
@@ -941,8 +948,8 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
               <div style="display:flex;gap:6px;align-items:center">
                 <button type="button" class="w-sos-btn focus-btn" onclick="focusOnSOS(${top.lat}, ${top.lng}, ${top.user_id})">🎯 Locate Unit</button>
-                <button type="button" class="w-sos-btn silence-btn" onclick="silenceSOS()">🔕 Silence Siren</button>
-                <button type="button" class="w-sos-btn resolve-btn" onclick="resolveSOSAlert(${top.id}, ${top.user_id})">✓ Resolve Alert</button>
+                <button type="button" class="w-sos-btn silence-btn" onclick="silenceSOS()">${sirenSilencedByUser ? '🔇 Silenced' : '🔕 Silence Siren'}</button>
+                <button type="button" class="w-sos-btn resolve-btn" onclick="resolveSOSAlert(${top.id}, ${top.user_id}, true)">✓ Resolve Alert</button>
               </div>
             </div>
           `;

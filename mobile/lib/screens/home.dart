@@ -16,6 +16,7 @@ import '../db.dart';
 import '../sync.dart';
 import '../theme.dart';
 import '../tracker.dart';
+import '../vault.dart';
 import 'login.dart';
 import 'settings.dart';
 import 'task_detail.dart';
@@ -163,6 +164,84 @@ class _HomeScreenState extends State<HomeScreen> {
     _mapController.move(target, 16.5);
   }
 
+  /// Supervisor / Admin PIN protection to prevent unauthorized stopping or logout
+  Future<bool> _requestAdminPassword(String actionName) async {
+    final passCtrl = TextEditingController();
+    String? errorText;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          backgroundColor: const Color(0xff1e293b),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xff334155))),
+          title: const Row(
+            children: [
+              Icon(Icons.shield_outlined, color: Color(0xfff59e0b), size: 26),
+              SizedBox(width: 10),
+              Text('Supervisor PIN', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Enter Admin / Supervisor password to $actionName.',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Supervisor Password / PIN',
+                  labelStyle: const TextStyle(color: Colors.white60),
+                  prefixIcon: const Icon(Icons.lock, color: Color(0xfff59e0b)),
+                  errorText: errorText,
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff475569))),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xfff59e0b), width: 1.5)),
+                  filled: true,
+                  fillColor: const Color(0xff0f172a),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xfff59e0b),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final input = passCtrl.text.trim();
+                // Validated supervisor PINs: "2026", "galoya2026", "admin2026"
+                if (input == '2026' || input == 'galoya2026' || input == 'admin2026') {
+                  Navigator.pop(ctx, true);
+                } else {
+                  setDlgState(() {
+                    errorText = 'Incorrect PIN! Contact Fleet Supervisor.';
+                  });
+                }
+              },
+              child: const Text('Authorize', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return result ?? false;
+  }
+
   Future<void> _toggleTracking(bool val) async {
     if (val) {
       final ok = await Tracker.ensurePermissions();
@@ -175,13 +254,20 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
       await Tracker.start();
+      setState(() => _tracking = true);
     } else {
+      // Require supervisor PIN to stop tracking
+      final authorized = await _requestAdminPassword('pause or stop live tracking');
+      if (!authorized) {
+        setState(() => _tracking = true);
+        return;
+      }
       await Tracker.stop();
       try {
         await Api.post('set_offline', {});
       } catch (_) {}
+      setState(() => _tracking = false);
     }
-    setState(() => _tracking = val);
   }
 
   // --- SOS Alert Trigger ---
@@ -839,33 +925,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       onPressed: _showTasksModal,
                     ),
-                    // Settings Icon
+                    // Settings Icon (Supervisor PIN Protected)
                     IconButton(
                       icon: const Icon(Icons.settings_outlined, color: Color(0xff334155)),
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                      onPressed: () async {
+                        final authorized = await _requestAdminPassword('access telematics settings');
+                        if (authorized && mounted) {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                        }
+                      },
                     ),
-                    // Logout
+                    // Logout (Supervisor PIN Protected)
                     IconButton(
                       icon: const Icon(Icons.exit_to_app, color: Color(0xff334155)),
                       onPressed: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: const Color(0xff1e293b),
-                            title: const Text('Logout', style: TextStyle(color: Colors.white)),
-                            content: const Text('Stop tracking and sign out?', style: TextStyle(color: Colors.white70)),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('Logout', style: TextStyle(color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (ok == true) {
+                        final authorized = await _requestAdminPassword('stop tracking and sign out from this device');
+                        if (authorized) {
                           await Tracker.stop();
+                          await AuthVault.clear();
                           final sp = await SharedPreferences.getInstance();
                           await sp.remove('token');
                           if (mounted) {

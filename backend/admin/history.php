@@ -73,132 +73,145 @@ foreach ($pts as $p) {
     $clean_pts[] = $p;
 }
 
-// 2. Segment into Trips (moving) and Stops (stationary >= 3 mins)
+// 2. Segment into Trips (moving) and Stops (stationary >= 10 mins / 600s - Wialon / Telematics Standard)
+$min_stop_sec = 600; // 10 minutes parking threshold
+$trips = [];
+$stops = [];
+$timeline = []; // Chronological list of trips and parking periods
+
+function build_history_trip($pts, $idx, $trip_colors) {
+    if (empty($pts)) return null;
+    $trip_dist = 0;
+    $trip_spd_sum = 0;
+    $trip_max_spd = 0;
+    for ($j = 1; $j < count($pts); $j++) {
+        $trip_dist += haversine_km((float)$pts[$j-1]['lat'], (float)$pts[$j-1]['lng'], (float)$pts[$j]['lat'], (float)$pts[$j]['lng']);
+        $s = (float)$pts[$j]['speed'];
+        $trip_spd_sum += $s;
+        if ($s > $trip_max_spd) $trip_max_spd = $s;
+    }
+
+    // Ignore tiny GPS jitter (< 0.10 km and fewer than 4 points)
+    if ($trip_dist < 0.10 && count($pts) < 4) {
+        return null;
+    }
+
+    $t_start = strtotime($pts[0]['recorded_at']);
+    $t_end = strtotime($pts[count($pts) - 1]['recorded_at']);
+    $t_dur = max(60, $t_end - $t_start);
+
+    return [
+        'trip_num' => $idx + 1,
+        'color' => $trip_colors[$idx % count($trip_colors)],
+        'start_time' => substr($pts[0]['recorded_at'], 11, 8),
+        'end_time' => substr($pts[count($pts) - 1]['recorded_at'], 11, 8),
+        'distance_km' => round($trip_dist, 2),
+        'duration_str' => floor($t_dur / 3600) > 0 ? (floor($t_dur / 3600).'h '.floor(($t_dur % 3600) / 60).'m') : (round($t_dur / 60).' min'),
+        'avg_speed' => round($trip_spd_sum / max(1, count($pts) - 1), 1),
+        'max_speed' => round($trip_max_spd, 1),
+        'points' => $pts
+    ];
+}
+
 $cur_trip_pts = [];
-$stop_start = null;
-$stop_lat = null;
-$stop_lng = null;
+$cur_stop_pts = [];
 
 for ($i = 0; $i < count($clean_pts); $i++) {
     $p = $clean_pts[$i];
     $spd = (float)$p['speed'];
-    $t = strtotime($p['recorded_at']);
-    $lat = (float)$p['lat'];
-    $lng = (float)$p['lng'];
-
     if ($spd > $max_speed) $max_speed = $spd;
 
     if ($spd > 0) {
-        // Moving point: if a stop was in progress, finalize it if >= 180s
-        if ($stop_start !== null) {
-            $stop_dur = $t - $stop_start['time'];
-            if ($stop_dur >= 180) {
-                $stops[] = [
+        // Moving point
+        if (!empty($cur_stop_pts)) {
+            $s_first = strtotime($cur_stop_pts[0]['recorded_at']);
+            $s_last = strtotime($cur_stop_pts[count($cur_stop_pts) - 1]['recorded_at']);
+            $stop_dur = max(0, $s_last - $s_first);
+
+            if ($stop_dur >= $min_stop_sec) {
+                // Legitimate parking (>= 10 minutes)!
+                if (!empty($cur_trip_pts)) {
+                    $tr = build_history_trip($cur_trip_pts, count($trips), $trip_colors);
+                    if ($tr) {
+                        $trip_idx = count($trips);
+                        $trips[] = $tr;
+                        $timeline[] = ['type' => 'trip', 'index' => $trip_idx, 'data' => $tr];
+                        $km += $tr['distance_km'];
+                    }
+                    $cur_trip_pts = [];
+                }
+
+                $stop_obj = [
                     'stop_num' => count($stops) + 1,
-                    'lat' => $stop_lat,
-                    'lng' => $stop_lng,
-                    'start_time' => date('H:i:s', $stop_start['time']),
-                    'end_time' => date('H:i:s', $t),
+                    'lat' => (float)$cur_stop_pts[0]['lat'],
+                    'lng' => (float)$cur_stop_pts[0]['lng'],
+                    'start_time' => date('H:i:s', $s_first),
+                    'end_time' => date('H:i:s', $s_last),
                     'duration_sec' => $stop_dur,
                     'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
                 ];
+                $stops[] = $stop_obj;
+                $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+            } else {
+                // Brief stop (< 10 min, traffic light / momentary pause). Keep inside current trip!
+                foreach ($cur_stop_pts as $sp) {
+                    $cur_trip_pts[] = $sp;
+                }
             }
-            $stop_start = null;
+            $cur_stop_pts = [];
         }
 
         $cur_trip_pts[] = $p;
     } else {
-        // Stationary point
-        if ($stop_start === null) {
-            $stop_start = ['time' => $t, 'point' => $p];
-            $stop_lat = $lat;
-            $stop_lng = $lng;
-        }
+        // Stationary point ($spd == 0)
+        $cur_stop_pts[] = $p;
+    }
+}
 
-        // If current moving trip has points, check if this stop has lasted >= 180s
+// After loop: check trailing stationary points
+if (!empty($cur_stop_pts)) {
+    $s_first = strtotime($cur_stop_pts[0]['recorded_at']);
+    $s_last = strtotime($cur_stop_pts[count($cur_stop_pts) - 1]['recorded_at']);
+    $stop_dur = max(0, $s_last - $s_first);
+
+    if ($stop_dur >= $min_stop_sec) {
         if (!empty($cur_trip_pts)) {
-            $stop_dur = $t - $stop_start['time'];
-            if ($stop_dur >= 180 || $i === count($clean_pts) - 1) {
-                // Finalize current moving trip
-                $trip_dist = 0;
-                $trip_spd_sum = 0;
-                $trip_max_spd = 0;
-                for ($j = 1; $j < count($cur_trip_pts); $j++) {
-                    $d = haversine_km((float)$cur_trip_pts[$j-1]['lat'], (float)$cur_trip_pts[$j-1]['lng'], (float)$cur_trip_pts[$j]['lat'], (float)$cur_trip_pts[$j]['lng']);
-                    $trip_dist += $d;
-                    $s = (float)$cur_trip_pts[$j]['speed'];
-                    $trip_spd_sum += $s;
-                    if ($s > $trip_max_spd) $trip_max_spd = $s;
-                }
-
-                if ($trip_dist >= 0.15 || count($cur_trip_pts) >= 4) {
-                    $t_start = strtotime($cur_trip_pts[0]['recorded_at']);
-                    $t_end = strtotime($cur_trip_pts[count($cur_trip_pts) - 1]['recorded_at']);
-                    $t_dur = max(60, $t_end - $t_start);
-                    $trip_idx = count($trips);
-                    $trips[] = [
-                        'trip_num' => $trip_idx + 1,
-                        'color' => $trip_colors[$trip_idx % count($trip_colors)],
-                        'start_time' => substr($cur_trip_pts[0]['recorded_at'], 11, 8),
-                        'end_time' => substr($cur_trip_pts[count($cur_trip_pts) - 1]['recorded_at'], 11, 8),
-                        'distance_km' => round($trip_dist, 2),
-                        'duration_str' => floor($t_dur / 3600) > 0 ? (floor($t_dur / 3600).'h '.floor(($t_dur % 3600) / 60).'m') : (round($t_dur / 60).' min'),
-                        'avg_speed' => round($trip_spd_sum / max(1, count($cur_trip_pts) - 1), 1),
-                        'max_speed' => round($trip_max_spd, 1),
-                        'points' => $cur_trip_pts
-                    ];
-                    $km += $trip_dist;
-                }
-                $cur_trip_pts = [];
+            $tr = build_history_trip($cur_trip_pts, count($trips), $trip_colors);
+            if ($tr) {
+                $trip_idx = count($trips);
+                $trips[] = $tr;
+                $timeline[] = ['type' => 'trip', 'index' => $trip_idx, 'data' => $tr];
+                $km += $tr['distance_km'];
             }
+            $cur_trip_pts = [];
         }
-    }
-}
 
-// Finalize trailing trip if exists
-if (!empty($cur_trip_pts)) {
-    $trip_dist = 0;
-    $trip_spd_sum = 0;
-    $trip_max_spd = 0;
-    for ($j = 1; $j < count($cur_trip_pts); $j++) {
-        $trip_dist += haversine_km((float)$cur_trip_pts[$j-1]['lat'], (float)$cur_trip_pts[$j-1]['lng'], (float)$cur_trip_pts[$j]['lat'], (float)$cur_trip_pts[$j]['lng']);
-        $s = (float)$cur_trip_pts[$j]['speed'];
-        $trip_spd_sum += $s;
-        if ($s > $trip_max_spd) $trip_max_spd = $s;
-    }
-    if ($trip_dist >= 0.15 || count($cur_trip_pts) >= 4) {
-        $t_start = strtotime($cur_trip_pts[0]['recorded_at']);
-        $t_end = strtotime($cur_trip_pts[count($cur_trip_pts) - 1]['recorded_at']);
-        $t_dur = max(60, $t_end - $t_start);
-        $trip_idx = count($trips);
-        $trips[] = [
-            'trip_num' => $trip_idx + 1,
-            'color' => $trip_colors[$trip_idx % count($trip_colors)],
-            'start_time' => substr($cur_trip_pts[0]['recorded_at'], 11, 8),
-            'end_time' => substr($cur_trip_pts[count($cur_trip_pts) - 1]['recorded_at'], 11, 8),
-            'distance_km' => round($trip_dist, 2),
-            'duration_str' => floor($t_dur / 3600) > 0 ? (floor($t_dur / 3600).'h '.floor(($t_dur % 3600) / 60).'m') : (round($t_dur / 60).' min'),
-            'avg_speed' => round($trip_spd_sum / max(1, count($cur_trip_pts) - 1), 1),
-            'max_speed' => round($trip_max_spd, 1),
-            'points' => $cur_trip_pts
-        ];
-        $km += $trip_dist;
-    }
-}
-
-// Finalize trailing stop if exists
-if ($stop_start !== null && count($clean_pts) > 0) {
-    $stop_dur = strtotime($clean_pts[count($clean_pts) - 1]['recorded_at']) - $stop_start['time'];
-    if ($stop_dur >= 180) {
-        $stops[] = [
+        $stop_obj = [
             'stop_num' => count($stops) + 1,
-            'lat' => $stop_lat,
-            'lng' => $stop_lng,
-            'start_time' => date('H:i:s', $stop_start['time']),
-            'end_time' => date('H:i:s', strtotime($clean_pts[count($clean_pts) - 1]['recorded_at'])),
+            'lat' => (float)$cur_stop_pts[0]['lat'],
+            'lng' => (float)$cur_stop_pts[0]['lng'],
+            'start_time' => date('H:i:s', $s_first),
+            'end_time' => date('H:i:s', $s_last),
             'duration_sec' => $stop_dur,
             'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
         ];
+        $stops[] = $stop_obj;
+        $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+    } else {
+        foreach ($cur_stop_pts as $sp) {
+            $cur_trip_pts[] = $sp;
+        }
+    }
+}
+
+// Trailing moving trip
+if (!empty($cur_trip_pts)) {
+    $tr = build_history_trip($cur_trip_pts, count($trips), $trip_colors);
+    if ($tr) {
+        $trip_idx = count($trips);
+        $trips[] = $tr;
+        $timeline[] = ['type' => 'trip', 'index' => $trip_idx, 'data' => $tr];
+        $km += $tr['distance_km'];
     }
 }
 
@@ -370,6 +383,32 @@ layout_start('Tracks', 'history.php', true);
     box-shadow: 0 4px 12px rgba(22, 163, 74, 0.6);
     transition: transform 0.15s ease-out;
   }
+  .w-trip-item-row:hover {
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+  }
+  .w-trip-item-row.active-trip {
+    background: #f0f9ff !important;
+    border-color: #0284c7 !important;
+    border-left: 4px solid #0284c7 !important;
+    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.15) !important;
+  }
+  .w-master-header {
+    transition: all 0.15s ease;
+  }
+  .w-master-header:hover {
+    background: #e2e8f0 !important;
+  }
+  .w-master-header.active-all {
+    background: #e0f2fe !important;
+    border-left: 4px solid #0284c7 !important;
+  }
+  .w-timeline-stop {
+    transition: background 0.15s ease;
+  }
+  .w-timeline-stop:hover {
+    background: #e2e8f0 !important;
+  }
 </style>
 <div class="w-monitoring-layout">
   <!-- Left Tracks Controller (Exact Wialon Screenshot Layout) -->
@@ -477,13 +516,16 @@ layout_start('Tracks', 'history.php', true);
     <?php if (count($pts) > 0): ?>
       <div class="w-wialon-track-table" style="margin-top:16px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
         <!-- Master header with Object name & total mileage -->
-        <div style="background:#f1f5f9;padding:8px 10px;border-bottom:1px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:#0f172a;cursor:pointer">
+        <div id="master-trip-header" class="w-master-header active-all" onclick="selectFullDay()" style="background:#f1f5f9;padding:8px 10px;border-bottom:1px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between;cursor:pointer" title="Click to view full day route & stats">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:#0f172a;cursor:pointer" onclick="event.stopPropagation()">
             <input type="checkbox" id="chk-master-trips" checked onchange="toggleAllTrips(this.checked)" style="accent-color:#2563eb">
             <span><?= htmlspecialchars($u['name'] ?? 'Fleet Unit') ?></span>
           </label>
-          <div style="font-weight:800;color:#0284c7;font-size:13px">
-            <?= number_format($km, 2) ?> km
+          <div style="text-align:right">
+            <span id="header-selected-label" style="display:block;font-size:10px;color:#64748b;font-weight:600">FULL DAY (<?= count($trips) ?> TRIPS)</span>
+            <div style="font-weight:800;color:#0284c7;font-size:13px">
+              <?= number_format($km, 2) ?> km
+            </div>
           </div>
         </div>
 
@@ -497,8 +539,8 @@ layout_start('Tracks', 'history.php', true);
           <button type="button" class="w-wb-btn" onclick="fitFullTrackBounds()" title="Fit entire track on map">⛶ Fit</button>
         </div>
 
-        <!-- Trips & Stops List -->
-        <div style="max-height:360px;overflow-y:auto;padding:6px">
+        <!-- Trips & Stops Timeline -->
+        <div style="max-height:380px;overflow-y:auto;padding:6px" id="timeline-container">
           <?php if ($is_stationary_day): ?>
             <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:10px;font-size:11.5px;color:#92400e">
               <strong style="display:block;margin-bottom:4px;color:#b45309">🅿️ Stationary All Day (0 km/h)</strong>
@@ -508,29 +550,39 @@ layout_start('Tracks', 'history.php', true);
                 ✓ Stationary GPS jitter filtered. No road movement detected. Fake loops prevented.
               </div>
             </div>
-          <?php elseif (!empty($trips)): ?>
-            <?php foreach ($trips as $i => $tr): ?>
-              <div class="w-trip-item-row" data-trip-idx="<?= $i ?>" onclick="zoomToTrip(<?= $i ?>)" style="padding:7px 8px;border-radius:4px;cursor:pointer;margin-bottom:4px;background:#f8fafc;border:1px solid #e2e8f0;transition:all 0.12s">
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <div style="display:flex;align-items:center;gap:6px">
-                    <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:<?= $tr['color'] ?>"></span>
-                    <input type="checkbox" class="chk-single-trip" data-trip-idx="<?= $i ?>" checked onclick="event.stopPropagation(); toggleTrip(<?= $i ?>, this.checked)" style="accent-color:<?= $tr['color'] ?>">
-                    <strong style="font-size:12px;color:#0f172a">Trip <?= $tr['trip_num'] ?></strong>
+          <?php elseif (!empty($timeline)): ?>
+            <?php foreach ($timeline as $item): ?>
+              <?php if ($item['type'] === 'trip'): 
+                $i = $item['index'];
+                $tr = $item['data'];
+              ?>
+                <div class="w-trip-item-row" id="trip-row-<?= $i ?>" data-trip-idx="<?= $i ?>" onclick="selectTrip(<?= $i ?>)" style="padding:7px 9px;border-radius:5px;cursor:pointer;margin-bottom:4px;background:#ffffff;border:1px solid #e2e8f0;transition:all 0.15s">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:<?= $tr['color'] ?>"></span>
+                      <input type="checkbox" class="chk-single-trip" data-trip-idx="<?= $i ?>" checked onclick="event.stopPropagation(); toggleTrip(<?= $i ?>, this.checked)" style="accent-color:<?= $tr['color'] ?>">
+                      <strong style="font-size:12px;color:#0f172a">Trip <?= $tr['trip_num'] ?></strong>
+                    </div>
+                    <span style="font-weight:700;font-size:12px;color:<?= $tr['color'] ?>"><?= $tr['distance_km'] ?> km</span>
                   </div>
-                  <span style="font-weight:700;font-size:12px;color:<?= $tr['color'] ?>"><?= $tr['distance_km'] ?> km</span>
+                  <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:4px">
+                    <span>🕒 <?= $tr['start_time'] ?> &rarr; <?= $tr['end_time'] ?></span>
+                    <span><strong><?= $tr['duration_str'] ?></strong></span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:2px">
+                    <span>Avg: <strong><?= $tr['avg_speed'] ?> km/h</strong></span>
+                    <span>Max: <strong style="color:#dc2626"><?= $tr['max_speed'] ?> km/h</strong></span>
+                  </div>
                 </div>
-                <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:4px">
-                  <span>🕒 <?= $tr['start_time'] ?> &rarr; <?= $tr['end_time'] ?></span>
-                  <span><strong><?= $tr['duration_str'] ?></strong></span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:2px">
-                  <span>Avg: <strong><?= $tr['avg_speed'] ?> km/h</strong></span>
-                  <span>Max: <strong style="color:#dc2626"><?= $tr['max_speed'] ?> km/h</strong></span>
-                </div>
-              </div>
-              <?php if (isset($stops[$i])): ?>
-                <div style="padding:3px 8px;margin-bottom:4px;font-size:10.5px;color:#64748b;background:#f1f5f9;border-left:3px solid #0284c7;border-radius:2px">
-                  🅿️ Stop: <?= $stops[$i]['start_time'] ?> &rarr; <?= $stops[$i]['end_time'] ?> (<?= $stops[$i]['duration_str'] ?>)
+              <?php elseif ($item['type'] === 'stop'): 
+                $st = $item['data'];
+              ?>
+                <div class="w-timeline-stop" style="padding:5px 9px;margin-bottom:4px;font-size:11px;color:#475569;background:#f8fafc;border-left:3px solid #0284c7;border-radius:3px;display:flex;align-items:center;justify-content:space-between">
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <span>🅿️</span>
+                    <span style="font-weight:600;color:#1e293b">Stop: <?= $st['start_time'] ?> &rarr; <?= $st['end_time'] ?></span>
+                  </div>
+                  <span style="font-weight:700;color:#0284c7;font-size:10.5px"><?= $st['duration_str'] ?></span>
                 </div>
               <?php endif; ?>
             <?php endforeach; ?>
@@ -574,9 +626,10 @@ layout_start('Tracks', 'history.php', true);
           </div>
 
           <div class="w-pb-telemetry">
+            <span class="w-pb-stat" id="pb-target-badge" style="background:#1e293b;padding:2px 8px;border-radius:4px;border:1px solid #334155;color:#38bdf8;font-weight:700">Full Day</span>
             <span class="w-pb-stat">🚗 <strong id="pb-speed" style="color:#16a34a">0 km/h</strong></span>
             <span class="w-pb-stat">🕒 <strong id="pb-time"><?= substr($pts[0]['recorded_at'], 11, 8) ?></strong></span>
-            <span class="w-pb-stat">📍 <span id="pb-dist">0.00 km</span> / <?= number_format($km, 2) ?> km</span>
+            <span class="w-pb-stat">📍 <span id="pb-dist">0.00 km</span> / <span id="pb-total-dist"><?= number_format($km, 2) ?> km</span></span>
           </div>
         </div>
 
@@ -785,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
       map.fitBounds(allBounds, { padding: [50, 50] });
     }
 
-    // Sidebar Trip Table Interactions
+    // Sidebar Trip Table Interactions & Route Isolation
     window.toggleTrip = function(idx, isVisible) {
       if (!tripPolylines[idx]) return;
       if (isVisible) {
@@ -802,39 +855,40 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
-    window.zoomToTrip = function(idx) {
-      if (!tripPolylines[idx]) return;
-      const b = tripPolylines[idx].getBounds();
-      map.fitBounds(b, { padding: [60, 60] });
-    };
-
     window.fitFullTrackBounds = function() {
       if (allBounds) map.fitBounds(allBounds, { padding: [50, 50] });
     };
 
-    if (!isStationaryDay && latlngs.length > 0) {
-      const startPt = latlngs[0];
-      const startTime = rawPts[0].recorded_at.substr(11, 5);
-      L.marker(startPt, {
-        icon: L.divIcon({
-          className: 'w-marker-bubble',
-          html: `<div style="background:#2e7d32;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3)">🚩 Start ${startTime}</div>`,
-          iconSize: [80, 24],
-          iconAnchor: [40, 24]
-        })
-      }).addTo(map).bindPopup(`<strong>Trip Start Point</strong><br>Time: ${rawPts[0].recorded_at}<br>Coordinates: ${startPt[0]}, ${startPt[1]}`);
+    let startMarker = null;
+    let endMarker = null;
 
-      // End marker (Finish flag)
-      const endPt = latlngs[latlngs.length - 1];
-      const endTime = rawPts[rawPts.length - 1].recorded_at.substr(11, 5);
-      L.marker(endPt, {
-        icon: L.divIcon({
-          className: 'w-marker-bubble',
-          html: `<div style="background:#d32f2f;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3)">🏁 End ${endTime}</div>`,
-          iconSize: [80, 24],
-          iconAnchor: [40, 24]
-        })
-      }).addTo(map).bindPopup(`<strong>Trip End Point</strong><br>Time: ${rawPts[rawPts.length - 1].recorded_at}<br>Coordinates: ${endPt[0]}, ${endPt[1]}`);
+    function setEndpoints(startPt, startTime, endPt, endTime, labelPrefix = '') {
+      const sHtml = `<div style="background:#2e7d32;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);white-space:nowrap">🚩 ${labelPrefix}Start ${startTime}</div>`;
+      const eHtml = `<div style="background:#d32f2f;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);white-space:nowrap">🏁 ${labelPrefix}End ${endTime}</div>`;
+
+      if (!startMarker) {
+        startMarker = L.marker(startPt, {
+          icon: L.divIcon({ className: 'w-marker-bubble', html: sHtml, iconSize: [90, 24], iconAnchor: [45, 24] }),
+          zIndexOffset: 900
+        }).addTo(map);
+      } else {
+        startMarker.setLatLng(startPt);
+        startMarker.setIcon(L.divIcon({ className: 'w-marker-bubble', html: sHtml, iconSize: [90, 24], iconAnchor: [45, 24] }));
+      }
+
+      if (!endMarker) {
+        endMarker = L.marker(endPt, {
+          icon: L.divIcon({ className: 'w-marker-bubble', html: eHtml, iconSize: [90, 24], iconAnchor: [45, 24] }),
+          zIndexOffset: 900
+        }).addTo(map);
+      } else {
+        endMarker.setLatLng(endPt);
+        endMarker.setIcon(L.divIcon({ className: 'w-marker-bubble', html: eHtml, iconSize: [90, 24], iconAnchor: [45, 24] }));
+      }
+    }
+
+    if (!isStationaryDay && latlngs.length > 0) {
+      setEndpoints(latlngs[0], rawPts[0].recorded_at.substr(11, 5), latlngs[latlngs.length - 1], rawPts[rawPts.length - 1].recorded_at.substr(11, 5));
 
       // Add Stop / Parking markers (P)
       stops.forEach(st => {
@@ -885,24 +939,32 @@ document.addEventListener('DOMContentLoaded', () => {
         .bindPopup(popupContent);
     });
 
-    // 2. Interactive GPS Points with Mini Hover Tooltips showing Speed, Time, Coords
-    const stepPts = Math.max(1, Math.floor(rawPts.length / 300));
-    const cumulativeDist = [0];
-    let totalDistKm = 0;
+    // 2. Playback State & Cumulative Distance Engine
+    let activePlaybackPts = rawPts;
+    let activeTripIdx = null;
+    let activeCumDist = [];
 
-    for (let i = 0; i < rawPts.length; i++) {
-      if (i > 0) {
-        const prev = rawPts[i - 1];
-        const curr = rawPts[i];
+    function computeCumDist(pts) {
+      const dists = [0];
+      let tot = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const prev = pts[i - 1];
+        const curr = pts[i];
         const dLat = (parseFloat(curr.lat) - parseFloat(prev.lat)) * Math.PI / 180;
         const dLng = (parseFloat(curr.lng) - parseFloat(prev.lng)) * Math.PI / 180;
         const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                   Math.cos(parseFloat(prev.lat) * Math.PI / 180) * Math.cos(parseFloat(curr.lat) * Math.PI / 180) *
                   Math.sin(dLng/2) * Math.sin(dLng/2);
-        totalDistKm += 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        tot += 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        dists.push(tot);
       }
-      cumulativeDist.push(totalDistKm);
+      return dists;
+    }
+    activeCumDist = computeCumDist(activePlaybackPts);
 
+    // 3. Interactive GPS Points with Mini Hover Tooltips
+    const stepPts = Math.max(1, Math.floor(rawPts.length / 300));
+    for (let i = 0; i < rawPts.length; i++) {
       if (i % stepPts === 0 || i === rawPts.length - 1) {
         const pt = rawPts[i];
         const pLat = parseFloat(pt.lat);
@@ -926,12 +988,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         circle.on('click', () => {
+          if (activeTripIdx !== null) selectFullDay();
           jumpToPlaybackIndex(i);
         });
       }
     }
 
-    // 3. Smooth Trip Playback Simulator
+    // 4. Smooth Trip Playback Simulator Elements
     const vehicleIcon = L.divIcon({
       className: 'w-playback-car',
       html: `<div class="w-playback-car-pin" id="playback-car-icon">🚗</div>`,
@@ -952,21 +1015,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const speedEl = document.getElementById('pb-speed');
     const timeEl = document.getElementById('pb-time');
     const distEl = document.getElementById('pb-dist');
+    const targetBadge = document.getElementById('pb-target-badge');
+    const totalDistEl = document.getElementById('pb-total-dist');
 
     function updatePlaybackUI(idx) {
-      if (idx < 0 || idx >= rawPts.length) return;
+      if (idx < 0 || idx >= activePlaybackPts.length) return;
       playIndex = idx;
-      const pt = rawPts[idx];
+      const pt = activePlaybackPts[idx];
       const lat = parseFloat(pt.lat);
       const lng = parseFloat(pt.lng);
       const spd = Math.round(parseFloat(pt.speed || 0));
-      const dist = (cumulativeDist[idx] || 0).toFixed(2);
+      const dist = (activeCumDist[idx] || 0).toFixed(2);
 
       vehicleMarker.setLatLng([lat, lng]);
 
       // Rotate car icon based on heading to next point
-      if (idx < rawPts.length - 1) {
-        const nextPt = rawPts[idx + 1];
+      if (idx < activePlaybackPts.length - 1) {
+        const nextPt = activePlaybackPts[idx + 1];
         const dy = parseFloat(nextPt.lat) - lat;
         const dx = (parseFloat(nextPt.lng) - lng) * Math.cos(lat * Math.PI / 180);
         const heading = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
@@ -985,22 +1050,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function jumpToPlaybackIndex(idx) {
       updatePlaybackUI(idx);
-      const pt = rawPts[idx];
-      map.panTo([parseFloat(pt.lat), parseFloat(pt.lng)], { animate: true, duration: 0.4 });
+      if (activePlaybackPts[idx]) {
+        const pt = activePlaybackPts[idx];
+        map.panTo([parseFloat(pt.lat), parseFloat(pt.lng)], { animate: true, duration: 0.3 });
+      }
     }
 
     function stepPlayback() {
       if (!isPlaying) return;
-      if (playIndex >= rawPts.length - 1) {
+      if (playIndex >= activePlaybackPts.length - 1) {
         pausePlayback();
         return;
       }
       playIndex++;
       updatePlaybackUI(playIndex);
 
-      // Pan map if vehicle goes near map boundaries
       if (playIndex % 4 === 0) {
-        const pt = rawPts[playIndex];
+        const pt = activePlaybackPts[playIndex];
         const curBounds = map.getBounds();
         if (!curBounds.contains([parseFloat(pt.lat), parseFloat(pt.lng)])) {
           map.panTo([parseFloat(pt.lat), parseFloat(pt.lng)], { animate: true, duration: 0.6 });
@@ -1012,7 +1078,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function startPlayback() {
-      if (playIndex >= rawPts.length - 1) playIndex = 0;
+      if (playIndex >= activePlaybackPts.length - 1) playIndex = 0;
       isPlaying = true;
       if (playBtn) playBtn.textContent = '⏸️ Pause';
       const sbPlay = document.getElementById('btn-toggle-playback');
@@ -1028,8 +1094,111 @@ document.addEventListener('DOMContentLoaded', () => {
       if (sbPlay) sbPlay.textContent = '▶ Play';
     }
 
+    // 5. Select Specific Trip: Highlight polyline, zoom to trip, set trip playback target
+    window.selectTrip = function(idx) {
+      if (!trips[idx] || !tripPolylines[idx]) return;
+      activeTripIdx = idx;
+      pausePlayback();
+
+      // Highlight selected row in sidebar
+      document.querySelectorAll('.w-trip-item-row').forEach(r => r.classList.remove('active-trip'));
+      const row = document.getElementById(`trip-row-${idx}`);
+      if (row) row.classList.add('active-trip');
+      const masterHdr = document.getElementById('master-trip-header');
+      if (masterHdr) masterHdr.classList.remove('active-all');
+
+      // Dim other trip polylines & highlight selected polyline
+      tripPolylines.forEach((poly, i) => {
+        if (i === idx) {
+          poly.setStyle({ opacity: 1.0, weight: 6 });
+          if (!map.hasLayer(poly)) map.addLayer(poly);
+          poly.bringToFront();
+        } else {
+          poly.setStyle({ opacity: 0.15, weight: 3 });
+        }
+      });
+
+      // Zoom map to selected trip bounds
+      const b = tripPolylines[idx].getBounds();
+      map.fitBounds(b, { padding: [60, 60] });
+
+      // Update Start / End markers for this trip
+      const trPts = trips[idx].points;
+      if (trPts.length > 0) {
+        const s = [parseFloat(trPts[0].lat), parseFloat(trPts[0].lng)];
+        const e = [parseFloat(trPts[trPts.length - 1].lat), parseFloat(trPts[trPts.length - 1].lng)];
+        setEndpoints(s, trips[idx].start_time.substr(0, 5), e, trips[idx].end_time.substr(0, 5), `T${trips[idx].trip_num} `);
+      }
+
+      // Switch playback context to this trip
+      activePlaybackPts = trPts;
+      activeCumDist = computeCumDist(activePlaybackPts);
+
+      if (slider) {
+        slider.max = Math.max(0, activePlaybackPts.length - 1);
+        slider.value = 0;
+      }
+      if (targetBadge) {
+        targetBadge.textContent = `Trip ${trips[idx].trip_num}`;
+        targetBadge.style.color = trips[idx].color || '#38bdf8';
+      }
+      if (totalDistEl) {
+        totalDistEl.textContent = `${trips[idx].distance_km} km`;
+      }
+
+      jumpToPlaybackIndex(0);
+    };
+
+    // 6. Select Full Day: Restore all polylines & full day playback
+    window.selectFullDay = function() {
+      activeTripIdx = null;
+      pausePlayback();
+
+      // Reset sidebar active states
+      document.querySelectorAll('.w-trip-item-row').forEach(r => r.classList.remove('active-trip'));
+      const masterHdr = document.getElementById('master-trip-header');
+      if (masterHdr) masterHdr.classList.add('active-all');
+
+      // Reset all polylines to normal appearance
+      tripPolylines.forEach(poly => {
+        poly.setStyle({ opacity: 0.9, weight: thickness || 4 });
+      });
+
+      // Zoom to all bounds
+      if (allBounds) map.fitBounds(allBounds, { padding: [50, 50] });
+
+      // Reset Start / End markers to full day
+      if (rawPts.length > 0) {
+        const s = [parseFloat(rawPts[0].lat), parseFloat(rawPts[0].lng)];
+        const e = [parseFloat(rawPts[rawPts.length - 1].lat), parseFloat(rawPts[rawPts.length - 1].lng)];
+        setEndpoints(s, rawPts[0].recorded_at.substr(11, 5), e, rawPts[rawPts.length - 1].recorded_at.substr(11, 5));
+      }
+
+      // Switch playback context to full day
+      activePlaybackPts = rawPts;
+      activeCumDist = computeCumDist(activePlaybackPts);
+
+      if (slider) {
+        slider.max = Math.max(0, activePlaybackPts.length - 1);
+        slider.value = 0;
+      }
+      if (targetBadge) {
+        targetBadge.textContent = 'Full Day';
+        targetBadge.style.color = '#38bdf8';
+      }
+      if (totalDistEl) {
+        totalDistEl.textContent = `<?= number_format($km, 2) ?> km`;
+      }
+
+      jumpToPlaybackIndex(0);
+    };
+
+    window.zoomToTrip = function(idx) {
+      selectTrip(idx);
+    };
+
     window.playbackFirstPoint = function() { jumpToPlaybackIndex(0); };
-    window.playbackLastPoint = function() { jumpToPlaybackIndex(rawPts.length - 1); };
+    window.playbackLastPoint = function() { jumpToPlaybackIndex(Math.max(0, activePlaybackPts.length - 1)); };
     window.toggleRoutePlayback = function() {
       if (isPlaying) pausePlayback();
       else startPlayback();

@@ -11,6 +11,7 @@ if (isset($_GET['feed'])) {
     $units = q("SELECT id, name, code, phone, role, unit_type, device_type, unique_id, sensors_json, properties_json, on_duty, active,
                        last_lat lat, last_lng lng, last_battery battery, speed, ignition, motion_state, sos_active, last_seen,
                        TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago,
+                       (SELECT name FROM drivers WHERE unit_id=users.id LIMIT 1) driver_name,
                        (SELECT COUNT(*) FROM tasks WHERE assigned_to=users.id AND status='in_progress') active_tasks
                 FROM users WHERE role='staff' AND active=1 
                 ORDER BY sos_active DESC, (motion_state='moving') DESC, on_duty DESC, name ASC")->fetchAll();
@@ -25,11 +26,36 @@ if (isset($_GET['feed'])) {
         }
     }
 
+    // Fetch recent trail points for live trail rendering (Unit trace)
+    $trails = [];
+    $active_ids = array_column(array_filter($units, fn($u) => $u['lat'] && $u['lng']), 'id');
+    if (!empty($active_ids)) {
+        $in = implode(',', array_map('intval', $active_ids));
+        try {
+            $loc_rows = q("SELECT user_id, lat, lng, speed, recorded_at 
+                           FROM locations 
+                           WHERE user_id IN ($in) 
+                           ORDER BY id DESC 
+                           LIMIT 400")->fetchAll();
+            foreach ($loc_rows as $row) {
+                $uid = (int)$row['user_id'];
+                if (!isset($trails[$uid])) $trails[$uid] = [];
+                if (count($trails[$uid]) < 30) {
+                    $trails[$uid][] = [(float)$row['lat'], (float)$row['lng'], (float)$row['speed']];
+                }
+            }
+            foreach ($trails as $uid => &$tpts) {
+                $tpts = array_reverse($tpts);
+            }
+        } catch (Throwable $e) {}
+    }
+
     // Fetch active SOS alerts
     $sos_alerts = q("SELECT s.*, u.name, u.phone FROM sos_alerts s JOIN users u ON u.id=s.user_id WHERE s.status='active' ORDER BY s.id DESC LIMIT 5")->fetchAll();
 
     echo json_encode([
         'units' => $units,
+        'trails' => $trails,
         'sos' => $sos_alerts,
         'center' => $CONFIG['map_center'],
         'zoom' => (int)$CONFIG['map_zoom']
@@ -1190,54 +1216,188 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Update Leaflet Markers (Only shows selected/checked units on map!)
+  const VEHICLE_SVGS = {
+    tractor: `<svg width="36" height="28" viewBox="0 0 48 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 12H24V24H14V12Z" fill="#dc2626"/>
+      <path d="M24 16H38L42 22V26H24V16Z" fill="#b91c1c"/>
+      <path d="M16 8H22L24 12H14L16 8Z" fill="#ef4444"/>
+      <rect x="34" y="6" width="3" height="10" fill="#334155" rx="1"/>
+      <path d="M16 13H22V19H16V13Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
+      <circle cx="14" cy="25" r="9" fill="#1e293b" stroke="#64748b" stroke-width="2.5"/>
+      <circle cx="14" cy="25" r="4.5" fill="#f8fafc" stroke="#dc2626" stroke-width="2"/>
+      <circle cx="38" cy="27" r="6" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+      <circle cx="38" cy="27" r="3" fill="#f8fafc" stroke="#dc2626" stroke-width="1.5"/>
+    </svg>`,
+    harvester: `<svg width="38" height="28" viewBox="0 0 50 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="12" y="10" width="24" height="15" rx="2" fill="#16a34a"/>
+      <path d="M36 14H46L48 24H36V14Z" fill="#15803d"/>
+      <circle cx="43" cy="22" r="5" fill="#eab308" stroke="#ca8a04" stroke-width="1.5"/>
+      <circle cx="16" cy="26" r="7" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+      <circle cx="32" cy="27" r="5" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+    </svg>`,
+    infielder: `<svg width="36" height="28" viewBox="0 0 48 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 12H24V24H14V12Z" fill="#2563eb"/>
+      <path d="M24 16H38L42 22V26H24V16Z" fill="#1d4ed8"/>
+      <path d="M16 8H22L24 12H14L16 8Z" fill="#3b82f6"/>
+      <rect x="34" y="6" width="3" height="10" fill="#334155" rx="1"/>
+      <circle cx="14" cy="25" r="9" fill="#1e293b" stroke="#64748b" stroke-width="2.5"/>
+      <circle cx="38" cy="27" r="6" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+    </svg>`,
+    vehicle: `<svg width="34" height="24" viewBox="0 0 44 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 14L12 8H30L36 14L40 16V22H4V16L6 14Z" fill="#0284c7"/>
+      <path d="M13 10H19V14H9L13 10Z" fill="#bae6fd"/>
+      <path d="M22 10H28L32 14H22V10Z" fill="#bae6fd"/>
+      <circle cx="12" cy="22" r="4.5" fill="#1e293b" stroke="#94a3b8" stroke-width="1.5"/>
+      <circle cx="32" cy="22" r="4.5" fill="#1e293b" stroke="#94a3b8" stroke-width="1.5"/>
+    </svg>`,
+    excavator: `<svg width="36" height="28" viewBox="0 0 48 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="14" y="12" width="18" height="12" rx="2" fill="#f59e0b"/>
+      <path d="M28 14L38 6L44 14" stroke="#d97706" stroke-width="3" stroke-linecap="round"/>
+      <rect x="10" y="24" width="26" height="6" rx="3" fill="#1e293b" stroke="#78716c" stroke-width="1.5"/>
+    </svg>`,
+    staff: `<svg width="26" height="28" viewBox="0 0 32 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="10" r="6" fill="#3b82f6"/>
+      <path d="M6 28C6 22.4772 10.4772 18 16 18C21.5228 18 26 22.4772 26 28V30H6V28Z" fill="#1d4ed8"/>
+    </svg>`
+  };
+
+  const unitTrails = {};
+  const unitTrailsPolylines = {};
+  const clusterMarkers = {};
+
+  function calculateHeading(lat1, lon1, lat2, lon2) {
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+    let brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+  }
+
+  window.applyVisibilitySettings = function(key, val) {
+    if (key === 'geofences') {
+      if (val && !showGeofences) window.toggleMonitoringGeofences();
+      else if (!val && showGeofences) window.toggleMonitoringGeofences();
+    }
+    updateMarkers();
+  };
+
+  // Update Leaflet Markers (Shows only checked units, draws live trailing line & labels per visibility settings)
   function updateMarkers() {
-    unitsData.forEach(u => {
-      if (u.lat === null || u.lng === null) return;
-      const id = parseInt(u.id);
-      const isSelected = selectedUnitIds.has(id);
+    const vis = window.wialonVisibility || { monitoring: true, unit_trace: true, unit_name: true, unit_direction: true };
 
-      // If unit is unchecked, hide marker from map immediately
-      if (!isSelected) {
-        if (unitMarkers[id] && map.hasLayer(unitMarkers[id])) {
-          map.removeLayer(unitMarkers[id]);
-        }
-        return;
+    // 1. If Monitoring is toggled OFF: hide all markers & trails
+    if (!vis.monitoring) {
+      for (const id in unitMarkers) {
+        if (map.hasLayer(unitMarkers[id])) map.removeLayer(unitMarkers[id]);
       }
+      for (const id in unitTrailsPolylines) {
+        if (map.hasLayer(unitTrailsPolylines[id])) map.removeLayer(unitTrailsPolylines[id]);
+      }
+      for (const k in clusterMarkers) {
+        if (map.hasLayer(clusterMarkers[k])) map.removeLayer(clusterMarkers[k]);
+      }
+      return;
+    }
 
+    // 2. Clear old cluster markers
+    for (const k in clusterMarkers) {
+      if (map.hasLayer(clusterMarkers[k])) map.removeLayer(clusterMarkers[k]);
+    }
+
+    const isClustering = localStorage.getItem('wialon_cluster_units') === 'true';
+    const activeUnits = unitsData.filter(u => u.lat !== null && u.lng !== null && selectedUnitIds.has(parseInt(u.id)));
+
+    activeUnits.forEach(u => {
+      const id = parseInt(u.id);
       const lat = parseFloat(u.lat);
       const lng = parseFloat(u.lng);
-      const icon = typeIcons[u.unit_type] || '🚜';
       const isOnline = !!u.is_online;
       const isMoving = isOnline && (u.motion_state === 'moving' || parseFloat(u.speed || 0) > 0);
       const isSos = parseInt(u.sos_active || 0) === 1;
-      const stateClass = isSos ? 'sos' : (!isOnline ? 'offline' : (isMoving ? 'moving' : 'stationary'));
 
-      const labelHtml = `
-        <div class="w-unit-marker-wrap">
-          ${isSos ? '<div class="w-sos-marker-ring"></div>' : (isMoving ? '<div class="w-radar-pulse"></div>' : '')}
-          <div class="w-marker-bubble ${stateClass}" style="${isSos ? 'background:#dc2626;color:#fff;animation:sosPulseBanner 0.8s infinite alternate' : ''}">
-            <span class="w-mb-icon">${isSos ? '🆘' : icon}</span>
-            <span>${u.name.split(' ')[0]}</span>
-            ${isSos ? `<span class="w-mb-speed" style="background:#fff;color:#dc2626;font-weight:900">SOS!</span>` : (isMoving ? `<span class="w-mb-speed">➔ ${Math.round(u.speed)}k</span>` : (isOnline ? `<span class="w-mb-speed">0k</span>` : `<span class="w-mb-speed">OFF</span>`))}
+      // Calculate Heading from trail or movement
+      const tr = unitTrails[id] || [];
+      let heading = 0;
+      if (tr.length >= 2) {
+        const p1 = tr[tr.length - 2];
+        const p2 = tr[tr.length - 1];
+        heading = calculateHeading(p1[0], p1[1], p2[0], p2[1]);
+      }
+
+      // Live Trailing Line (Unit trace)
+      // "unit trace ... click karoth witharai map1 wahanaya giya para live line1 adigena yanawa"
+      if (vis.unit_trace && tr.length >= 2) {
+        if (!unitTrailsPolylines[id]) {
+          unitTrailsPolylines[id] = L.polyline(tr, {
+            color: '#0040dd',
+            weight: 4,
+            opacity: 0.9,
+            lineJoin: 'round'
+          }).addTo(map);
+        } else {
+          unitTrailsPolylines[id].setLatLngs(tr);
+          if (!map.hasLayer(unitTrailsPolylines[id])) map.addLayer(unitTrailsPolylines[id]);
+        }
+      } else {
+        if (unitTrailsPolylines[id] && map.hasLayer(unitTrailsPolylines[id])) {
+          map.removeLayer(unitTrailsPolylines[id]);
+        }
+      }
+
+      // Direction Arrow: shown when unit_direction is true
+      const showDir = vis.unit_direction !== false;
+      const arrowHtml = `
+        <div class="w-unit-direction-arrow" style="${showDir ? '' : 'display:none;'}; transform: rotate(${Math.round(heading)}deg)">
+          <svg width="18" height="18" viewBox="0 0 24 24" style="display:block;margin:0 auto">
+            <polygon points="12,2 22,21 12,16 2,21" fill="#00e676" stroke="#15803d" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      `;
+
+      // Vehicle Icon
+      const vSvg = VEHICLE_SVGS[u.unit_type] || VEHICLE_SVGS.tractor;
+
+      // Unit Name Label: shown ONLY if unit_name is true
+      // "unit name click karoth witharai ... sahaunit name1 penna thiyenawa"
+      const showName = vis.unit_name !== false;
+      const nameHtml = `
+        <div class="w-unit-name-label" style="${showName ? '' : 'display:none;'}">${u.name}</div>
+      `;
+
+      // Driver Name Label: shown if driver_name is true
+      const showDriver = vis.driver_name === true && u.driver_name;
+      const driverHtml = `
+        <div class="w-unit-driver-label" style="${showDriver ? '' : 'display:none;'}">${u.driver_name || ''}</div>
+      `;
+
+      const markerHtml = `
+        <div class="w-wialon-marker-wrap" data-id="${u.id}">
+          ${isSos ? '<div class="w-sos-marker-ring"></div>' : ''}
+          ${arrowHtml}
+          <div class="w-vehicle-icon-box">
+            ${vSvg}
           </div>
+          ${nameHtml}
+          ${driverHtml}
         </div>
       `;
 
       const customIcon = L.divIcon({
         className: 'w-telematics-pin',
-        html: labelHtml,
-        iconSize: [110, 40],
-        iconAnchor: [55, 20]
+        html: markerHtml,
+        iconSize: [110, 50],
+        iconAnchor: [55, 25]
       });
 
       const popupContent = `
         <div style="min-width:180px;font-size:12px;line-height:1.4">
-          <strong style="font-size:13px;color:${isSos ? '#dc2626' : '#1565c0'}">${isSos ? '🚨 SOS EMERGENCY: ' : ''}${icon} ${u.name}</strong>
+          <strong style="font-size:13px;color:${isSos ? '#dc2626' : '#1565c0'}">${isSos ? '🚨 SOS EMERGENCY: ' : ''}${typeIcons[u.unit_type] || '🚜'} ${u.name}</strong>
           ${u.code ? `<span style="color:#64748b;font-size:11px">(${u.code})</span>` : ''}
           <hr style="margin:6px 0;border:0;border-top:1px solid #e2e8f0">
           <div>Status: <strong style="color:${isSos ? '#dc2626' : (isMoving ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8'))}">${isSos ? '🆘 EMERGENCY SOS ACTIVE!' : (!isOnline ? 'OFFLINE' : (isMoving ? 'MOVING ➔' : 'STATIONARY ⛔'))}</strong></div>
           <div>Speed: <strong>${Math.round(u.speed || 0)} km/h</strong></div>
+          <div>Driver: <strong>${u.driver_name || 'Unassigned'}</strong></div>
           <div>Ignition: <strong>${(u.ignition && isOnline) ? 'ON' : 'OFF'}</strong></div>
           <div>Battery: <strong>${u.battery !== null ? u.battery + '%' : '85%'}</strong></div>
           <div>Coordinates: <code>${lat.toFixed(5)}, ${lng.toFixed(5)}</code></div>
@@ -1259,6 +1419,15 @@ document.addEventListener('DOMContentLoaded', () => {
         marker.on('mouseover', (e) => showUnitHoverCard(u, e.originalEvent));
         marker.on('mouseout', hideUnitHoverCard);
         unitMarkers[id] = marker;
+      }
+    });
+
+    // Remove unselected units
+    unitsData.forEach(u => {
+      const id = parseInt(u.id);
+      if (!selectedUnitIds.has(id)) {
+        if (unitMarkers[id] && map.hasLayer(unitMarkers[id])) map.removeLayer(unitMarkers[id]);
+        if (unitTrailsPolylines[id] && map.hasLayer(unitTrailsPolylines[id])) map.removeLayer(unitTrailsPolylines[id]);
       }
     });
   }
@@ -1615,6 +1784,25 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       unitsData = data.units || [];
       geofencesData = data.geofences || [];
+
+      // Update unit trailing lines (Unit trace)
+      if (data.trails) {
+        for (const [uid, pts] of Object.entries(data.trails)) {
+          const id = parseInt(uid);
+          unitTrails[id] = pts.map(p => [parseFloat(p[0]), parseFloat(p[1])]);
+        }
+      }
+      unitsData.forEach(u => {
+        if (!u.lat || !u.lng) return;
+        const id = parseInt(u.id);
+        const pt = [parseFloat(u.lat), parseFloat(u.lng)];
+        if (!unitTrails[id]) unitTrails[id] = [];
+        const last = unitTrails[id][unitTrails[id].length - 1];
+        if (!last || Math.abs(last[0] - pt[0]) > 0.00002 || Math.abs(last[1] - pt[1]) > 0.00002) {
+          unitTrails[id].push(pt);
+          if (unitTrails[id].length > 35) unitTrails[id].shift();
+        }
+      });
 
       renderUnitsTable();
       updateMarkers();

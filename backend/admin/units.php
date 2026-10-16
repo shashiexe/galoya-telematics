@@ -55,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($act === 'delete_unit') {
             $id = (int)$_POST['id'];
             if ($id !== (int)$me['id']) {
+                q("UPDATE drivers SET assigned_unit_id = NULL WHERE assigned_unit_id = ?", [$id]);
                 q("DELETE FROM users WHERE id = ? AND role = 'staff'", [$id]);
                 flash("Unit removed from fleet");
             }
@@ -165,15 +166,27 @@ layout_start('Fleet Units', 'units.php');
     <form method="get" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0">
       <input type="text" name="search" value="<?= h($search) ?>" placeholder="Search unit name, code, IMEI..." style="width:240px;font-size:12px;padding:6px 10px;height:32px">
       
-      <select name="type" style="width:150px;font-size:12px;padding:4px 8px;height:32px" onchange="this.form.submit()">
-        <option value="all" <?= $type_filter === 'all' ? 'selected' : '' ?>>All Machinery Types</option>
-        <option value="tractor" <?= $type_filter === 'tractor' ? 'selected' : '' ?>>Tractors</option>
-        <option value="harvester" <?= $type_filter === 'harvester' ? 'selected' : '' ?>>Harvesters</option>
-        <option value="infielder" <?= $type_filter === 'infielder' ? 'selected' : '' ?>>Infielders</option>
-        <option value="excavator" <?= $type_filter === 'excavator' ? 'selected' : '' ?>>Excavators</option>
-        <option value="lorry" <?= $type_filter === 'lorry' ? 'selected' : '' ?>>Lorries & Trucks</option>
-        <option value="bolero" <?= $type_filter === 'bolero' ? 'selected' : '' ?>>Bolero / Pickups</option>
-        <option value="phone" <?= $type_filter === 'phone' ? 'selected' : '' ?>>WiaTag Phones</option>
+      <select name="type" style="width:175px;font-size:12px;padding:4px 8px;height:32px" onchange="this.form.submit()">
+        <option value="all" <?= $type_filter === 'all' ? 'selected' : '' ?>>All Unit Types</option>
+        <optgroup label="👨‍💼 Field Personnel">
+          <option value="field_staff" <?= $type_filter === 'field_staff' ? 'selected' : '' ?>>👨‍🌾 Field Staff / Officers</option>
+          <option value="supervisor" <?= $type_filter === 'supervisor' ? 'selected' : '' ?>>👷‍♂️ Field Supervisors</option>
+          <option value="manager" <?= $type_filter === 'manager' ? 'selected' : '' ?>>👔 Division / Managers</option>
+          <option value="security" <?= $type_filter === 'security' ? 'selected' : '' ?>>🛡️ Security / Watchers</option>
+          <option value="staff" <?= $type_filter === 'staff' ? 'selected' : '' ?>>📱 Mobile Staff (App)</option>
+        </optgroup>
+        <optgroup label="🚜 Estate Machinery">
+          <option value="tractor" <?= $type_filter === 'tractor' ? 'selected' : '' ?>>🚜 Tractors</option>
+          <option value="harvester" <?= $type_filter === 'harvester' ? 'selected' : '' ?>>🌾 Sugarcane Harvesters</option>
+          <option value="infielder" <?= $type_filter === 'infielder' ? 'selected' : '' ?>>🚛 Infielders</option>
+          <option value="excavator" <?= $type_filter === 'excavator' ? 'selected' : '' ?>>🏗️ Backhoes & Excavators</option>
+        </optgroup>
+        <optgroup label="🚚 Vehicles & Transport">
+          <option value="lorry" <?= $type_filter === 'lorry' ? 'selected' : '' ?>>🚚 Cane Transport Lorries</option>
+          <option value="bolero" <?= $type_filter === 'bolero' ? 'selected' : '' ?>>🚙 Bolero / Pickups (4x4)</option>
+          <option value="motorcycle" <?= $type_filter === 'motorcycle' ? 'selected' : '' ?>>🏍️ Field Motorcycles</option>
+          <option value="bicycle" <?= $type_filter === 'bicycle' ? 'selected' : '' ?>>🚲 Service Bicycles</option>
+        </optgroup>
       </select>
 
       <select name="status" style="width:130px;font-size:12px;padding:4px 8px;height:32px" onchange="this.form.submit()">
@@ -211,14 +224,21 @@ layout_start('Fleet Units', 'units.php');
       <tbody>
         <?php foreach ($units as $idx => $u): 
           $iconEmoji = match($u['unit_type'] ?? '') {
-              'tractor' => '🚜',
-              'harvester' => '🌾',
-              'infielder' => '🚛',
-              'excavator' => '🏗️',
+              'field_staff' => '👨‍🌾',
+              'supervisor'  => '👷‍♂️',
+              'manager'     => '👔',
+              'security'    => '🛡️',
+              'staff'       => '👨‍🌾',
+              'tractor'     => '🚜',
+              'harvester'   => '🌾',
+              'infielder'   => '🚛',
+              'excavator'   => '🏗️',
               'lorry', 'truck' => '🚚',
-              'bolero', 'car' => '🚙',
-              'phone' => '📱',
-              default => '🚜'
+              'bolero', 'car', 'vehicle' => '🚙',
+              'motorcycle', 'bike' => '🏍️',
+              'bicycle'     => '🚲',
+              'phone'       => '📱',
+              default       => '🚜'
           };
           $speed = (float)($u['latest_speed'] ?? 0);
           $isMoving = $speed > 0;
@@ -236,7 +256,7 @@ layout_start('Fleet Units', 'units.php');
               </div>
               <div style="font-size:11px;color:#64748b;display:flex;gap:6px;margin-top:2px">
                 <span style="font-family:monospace;background:#f1f5f9;padding:1px 5px;border-radius:3px"><?= h($u['code']) ?></span>
-                <span>• <?= ucfirst($u['unit_type']) ?></span>
+                <span>• <?= ucfirst(str_replace('_', ' ', $u['unit_type'] ?: 'staff')) ?></span>
               </div>
             </td>
             <td style="padding:10px 14px">
@@ -335,15 +355,27 @@ layout_start('Fleet Units', 'units.php');
           <input type="text" name="code" id="unit_code" placeholder="e.g. 49-1665" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
         </div>
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Machinery Type</label>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Unit Category / Type *</label>
           <select name="unit_type" id="unit_type" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
-            <option value="tractor">🚜 Tractor</option>
-            <option value="harvester">🌾 Sugarcane Harvester</option>
-            <option value="infielder">🚛 Infield Transporter</option>
-            <option value="excavator">🏗️ Backhoe / Excavator</option>
-            <option value="lorry">🚚 Cane Transport Lorry</option>
-            <option value="bolero">🚙 Bolero Field Inspection</option>
-            <option value="phone">📱 WiaTag Mobile App</option>
+            <optgroup label="👨‍💼 Personnel & Field Staff">
+              <option value="field_staff">👨‍🌾 Field Staff / Field Officer</option>
+              <option value="supervisor">👷‍♂️ Field Supervisor</option>
+              <option value="manager">👔 Division / Estate Manager</option>
+              <option value="security">🛡️ Field Security / Watcher</option>
+              <option value="staff">📱 WiaTag Mobile App / Staff</option>
+            </optgroup>
+            <optgroup label="🚜 Agricultural Machinery">
+              <option value="tractor" selected>🚜 Agricultural Tractor</option>
+              <option value="harvester">🌾 Sugarcane Harvester</option>
+              <option value="infielder">🚛 Infield Transporter</option>
+              <option value="excavator">🏗️ Backhoe / Excavator</option>
+            </optgroup>
+            <optgroup label="🚚 Fleet Vehicles & Transport">
+              <option value="lorry">🚚 Cane Transport Lorry</option>
+              <option value="bolero">🚙 Bolero Field Inspection (4x4)</option>
+              <option value="motorcycle">🏍️ Field Motorcycle / Trail Bike</option>
+              <option value="bicycle">🚲 Service Bicycle</option>
+            </optgroup>
           </select>
         </div>
       </div>
@@ -425,6 +457,13 @@ function editUnit(u) {
 function openPropertiesModal(unitId) {
   window.location.href = 'index.php?open_prop=' + unitId;
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('add') === '1' || urlParams.get('new') === '1') {
+    openUnitModal();
+  }
+});
 </script>
 
 <?php layout_end(); ?>

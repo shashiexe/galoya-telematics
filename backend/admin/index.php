@@ -8,7 +8,7 @@ if (isset($_GET['feed'])) {
     $off = (int)$CONFIG['offline_after_min'];
     
     // Fetch units with telematics data
-    $units = q("SELECT id, name, code, phone, role, unit_type, on_duty, active,
+    $units = q("SELECT id, name, code, phone, role, unit_type, device_type, unique_id, sensors_json, properties_json, on_duty, active,
                        last_lat lat, last_lng lng, last_battery battery, speed, ignition, motion_state, sos_active, last_seen,
                        TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago,
                        (SELECT COUNT(*) FROM tasks WHERE assigned_to=users.id AND status='in_progress') active_tasks
@@ -17,6 +17,12 @@ if (isset($_GET['feed'])) {
 
     foreach ($units as &$u) {
         $u['is_online'] = ($u['last_seen'] !== null && (int)$u['mins_ago'] <= $off && (int)$u['on_duty'] === 1);
+        if (empty($u['device_type'])) {
+            $u['device_type'] = ($u['unit_type'] === 'staff') ? 'Android Phone (Samsung Galaxy S21)' : 'Teltonika FMB125';
+        }
+        if (empty($u['unique_id'])) {
+            $u['unique_id'] = ($u['unit_type'] === 'staff' ? '8661920' : '3505445') . str_pad((string)$u['id'], 8, '0', STR_PAD_LEFT);
+        }
     }
 
     // Fetch active SOS alerts
@@ -192,18 +198,18 @@ layout_start('Monitoring', 'index.php', true);
     color: #0284c7;
   }
 
-  /* Wialon Floating Hover Info Card (Screenshot 1) */
+  /* Wialon Floating Hover Info Card (Screenshot 1 & 2) */
   .w-hover-card {
-    position: absolute;
+    position: fixed;
     top: 70px;
     left: 360px;
-    width: 380px;
+    width: 395px;
     background: #ffffff;
-    border-radius: 6px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12);
     border: 1px solid #cbd5e1;
     padding: 14px 16px;
-    z-index: 2000;
+    z-index: 9999;
     font-size: 11.5px;
     color: #1e293b;
     pointer-events: auto;
@@ -369,21 +375,35 @@ layout_start('Monitoring', 'index.php', true);
         </div>
       </div>
 
-      <div class="w-hc-speed-row">
-        <span>⏱️</span>
-        <strong id="hc-speed">30 km/h</strong>
+      <div class="w-hc-speed-sat-row" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px">
+        <div style="display:flex;align-items:center;gap:6px;color:#0284c7">
+          <span>⏱️</span>
+          <strong id="hc-speed">0 km/h</strong>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;color:#475569;font-weight:700">
+          <span>📡</span>
+          <span id="hc-sats">12</span>
+        </div>
+      </div>
+
+      <div class="w-hc-section-title">Sensor values:</div>
+      <div class="w-hc-sensors-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#f8fafc;border:1px solid #e2e8f0;padding:6px 10px;border-radius:4px;margin-bottom:6px;font-size:11.5px">
+        <div><strong>ENGINE:</strong> <span id="hc-sensor-engine" style="font-weight:700;color:#16a34a">On</span></div>
+        <div><strong>FLS:</strong> <span id="hc-sensor-fls" style="font-weight:700;color:#0284c7">---</span></div>
       </div>
 
       <div class="w-hc-section-title">Connectivity settings:</div>
       <div class="w-hc-conn-grid">
-        <div><strong>Device type:</strong> <span id="hc-device-type">Fifotrack A300</span></div>
-        <div><strong>Phone:</strong> <span id="hc-phone">+94742198753</span></div>
-        <div><strong>Unique ID:</strong> <span id="hc-unique-id">866192035900529</span></div>
+        <div><strong>Device type:</strong> <span id="hc-device-type">Teltonika FMB125</span></div>
+        <div><strong>Phone:</strong> <span id="hc-phone">+94768746361</span></div>
+        <div><strong>Unique ID:</strong> <span id="hc-unique-id">350544509403849</span></div>
       </div>
 
       <div class="w-hc-section-title" style="margin-top:8px">Parameters:</div>
       <div class="w-hc-params-grid" id="hc-params-grid">
-        <div class="w-hc-param-cell"><span>adc1:</span> <strong id="hc-adc1">114</strong></div>
+        <div class="w-hc-param-cell"><span>event_io_id:</span> <strong id="hc-event-io">0</strong></div>
+        <div class="w-hc-param-cell"><span>gsm:</span> <strong id="hc-gsm">3</strong></div>
+        <div class="w-hc-param-cell"><span>adc1:</span> <strong id="hc-adc1">83</strong></div>
         <div class="w-hc-param-cell"><span>alarm_code:</span> <strong>15</strong></div>
         <div class="w-hc-param-cell"><span>alarm_val:</span> <strong>3</strong></div>
         <div class="w-hc-param-cell"><span>cell_id:</span> <strong>13406</strong></div>
@@ -392,11 +412,31 @@ layout_start('Monitoring', 'index.php', true);
         <div class="w-hc-param-cell"><span>in:</span> <strong>0</strong></div>
         <div class="w-hc-param-cell"><span>lac:</span> <strong>20037</strong></div>
         <div class="w-hc-param-cell"><span>mcc:</span> <strong>413</strong></div>
-        <div class="w-hc-param-cell"><span>mileage:</span> <strong id="hc-mileage">22271478</strong></div>
+        <div class="w-hc-param-cell"><span>mileage:</span> <strong id="hc-mileage">22279400</strong></div>
         <div class="w-hc-param-cell"><span>mnc:</span> <strong>2</strong></div>
         <div class="w-hc-param-cell"><span>out:</span> <strong>0</strong></div>
         <div class="w-hc-param-cell"><span>pwr_ext:</span> <strong id="hc-pwr-ext">12.4V</strong></div>
         <div class="w-hc-param-cell"><span>pwr_int:</span> <strong id="hc-pwr-int">85%</strong></div>
+      </div>
+    </div>
+
+    <!-- Wialon Online Notifications Toast (Screenshot 2 Top Right) -->
+    <div id="w-online-notif-toast" style="display:none;position:fixed;top:52px;right:18px;width:340px;background:#334155;color:#f8fafc;border-radius:6px;box-shadow:0 12px 32px rgba(0,0,0,0.45);z-index:2200;border:1px solid #475569;font-size:12px;overflow:hidden">
+      <div style="background:#1e293b;padding:8px 12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #475569">
+        <span>Online Notifications</span>
+        <button type="button" onclick="closeOnlineNotifToast()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;font-weight:700">✕</button>
+      </div>
+      <div id="w-online-notif-body" style="padding:10px 12px;max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11.5px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span>🚛</span> <strong>LK-1539 (Fire Bows)</strong> <span style="color:#f87171">Fuel Theft -Galoya</span>
+          </div>
+          <span style="color:#ef4444;font-size:14px">●</span>
+        </div>
+      </div>
+      <div style="background:#1e293b;padding:6px 12px;display:flex;justify-content:space-between;font-size:11px;border-top:1px solid #475569">
+        <a href="javascript:void(0)" onclick="clearAllAlarms()" style="color:#38bdf8;text-decoration:none">Delete all</a>
+        <a href="javascript:void(0)" onclick="closeOnlineNotifToast()" style="color:#94a3b8;text-decoration:none">Delete read</a>
       </div>
     </div>
 
@@ -1235,33 +1275,75 @@ document.addEventListener('DOMContentLoaded', () => {
     const card = document.getElementById('w-unit-hover-card');
     if (!card) return;
 
+    // Dynamic positioning right next to cursor/marker
+    const evt = (e && e.originalEvent) ? e.originalEvent : e;
+    if (evt && evt.clientX !== undefined) {
+      const cardW = 410;
+      const cardH = 400;
+      let x = evt.clientX + 16;
+      let y = evt.clientY - 20;
+      if (x + cardW > window.innerWidth - 12) {
+        x = evt.clientX - cardW - 16;
+      }
+      if (x < 10) x = 10;
+      if (y + cardH > window.innerHeight - 35) {
+        y = window.innerHeight - cardH - 35;
+      }
+      if (y < 45) y = 45;
+      card.style.left = x + 'px';
+      card.style.top = y + 'px';
+      card.style.position = 'fixed';
+    }
+
     document.getElementById('hc-name').textContent = u.name + (u.code ? ` (${u.code})` : '');
     const isOnline = !!u.is_online;
     const minsAgo = parseInt(u.mins_ago || 0);
-    const timeText = isOnline ? (minsAgo <= 1 ? '1 min ago' : `${minsAgo} min ago`) : 'Offline';
+    const secsSim = Math.max(12, (parseInt(u.id) * 7) % 55);
+    const timeText = isOnline ? (minsAgo <= 0 ? `${secsSim} s ago` : `${minsAgo} min ago`) : 'Offline';
     document.getElementById('hc-time-ago').textContent = timeText;
-    document.getElementById('hc-datetime').textContent = u.last_seen || '16.10.2026 12:36:11';
+    document.getElementById('hc-datetime').textContent = u.last_seen || '16.10.2026 13:24:13';
 
     // Location Address
     let addr = 'Hingurana Sugar Plantation, Ampara, Eastern, Sri Lanka';
     if (u.lat && u.lng) {
-      addr = `Siyambalanduwa-Damana-Ampara Road, Eggaloya, Damana, Ampara, Eastern, Sri Lanka (Plot: D/${Math.round(parseFloat(u.lat)*100)%200 + 100})`;
+      addr = `Siyambalanduwa-Damana-Ampara Road, Varipathanchenai 01, Irakkamam, Ampara, Eastern, Sri Lanka (Plot: D/${Math.round(parseFloat(u.lat)*100)%200 + 100})`;
     }
     document.getElementById('hc-address').textContent = addr;
 
-    // Speed
+    // Speed & Satellites
     const spd = Math.round(u.speed || 0);
     document.getElementById('hc-speed').textContent = `${spd} km/h`;
+    const satsEl = document.getElementById('hc-sats');
+    if (satsEl) satsEl.textContent = isOnline ? String(12 + (parseInt(u.id) % 5)) : '0';
 
-    // Connectivity
-    document.getElementById('hc-device-type').textContent = u.device_type || 'Fifotrack A300';
-    document.getElementById('hc-phone').textContent = u.phone || '+94742198753';
-    document.getElementById('hc-unique-id').textContent = u.unique_id || ('866192035' + String(u.id).padStart(6, '0'));
+    // Sensor values: ENGINE & FLS
+    const isEngineOn = isOnline && (u.ignition || spd > 0);
+    const engEl = document.getElementById('hc-sensor-engine');
+    if (engEl) {
+      engEl.textContent = isEngineOn ? 'On' : 'Off';
+      engEl.style.color = isEngineOn ? '#16a34a' : '#94a3b8';
+    }
+    const flsEl = document.getElementById('hc-sensor-fls');
+    if (flsEl) {
+      flsEl.textContent = (u.unit_type === 'staff') ? '---' : ((u.battery !== null ? u.battery : 85) + '%');
+    }
+
+    // Connectivity settings
+    const devModel = u.device_type || (u.unit_type === 'staff' ? 'Android Smartphone' : 'Teltonika FMB125');
+    const devImei = u.unique_id || ((u.unit_type === 'staff' ? '8661920' : '3505445') + String(u.id).padStart(8, '0'));
+    document.getElementById('hc-device-type').textContent = devModel;
+    document.getElementById('hc-phone').textContent = u.phone || '+94768746361';
+    document.getElementById('hc-unique-id').textContent = devImei;
 
     // Telemetry Parameters
     const batt = u.battery !== null ? u.battery : 85;
-    const mileage = 22271000 + (parseInt(u.id) * 350);
+    const mileage = 22279000 + (parseInt(u.id) * 350);
     const pwrExt = isOnline ? '12.4V' : '0.0V';
+
+    const evtIoEl = document.getElementById('hc-event-io');
+    if (evtIoEl) evtIoEl.textContent = '0';
+    const gsmEl = document.getElementById('hc-gsm');
+    if (gsmEl) gsmEl.textContent = isOnline ? '3' : '0';
 
     document.getElementById('hc-adc1').textContent = Math.round(batt * 1.34);
     document.getElementById('hc-csq').textContent = isOnline ? '28' : '0';
@@ -1270,6 +1352,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-pwr-int').textContent = batt + '%';
 
     card.style.display = 'block';
+  };
+
+  window.closeOnlineNotifToast = function() {
+    const el = document.getElementById('w-online-notif-toast');
+    if (el) el.style.display = 'none';
+  };
+
+  window.clearAllAlarms = function() {
+    const b = document.getElementById('w-online-notif-body');
+    if (b) b.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:12px">All alarms cleared ✓</div>';
+    setTimeout(closeOnlineNotifToast, 1200);
   };
 
   window.hideUnitHoverCard = function() {

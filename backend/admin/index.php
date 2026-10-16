@@ -68,7 +68,7 @@ layout_start('Monitoring', 'index.php', true);
 <style>
   /* Smooth Marker Glide for Live Telematics (Eliminates abrupt jumping) */
   .leaflet-marker-pane .w-telematics-pin {
-    transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
+    transition: transform 0.4s ease-out !important;
   }
 
   /* Emergency SOS Alert Top Banner */
@@ -138,8 +138,8 @@ layout_start('Monitoring', 'index.php', true);
     position: absolute;
     width: 70px;
     height: 70px;
-    top: -15px;
-    left: 20px;
+    top: -35px;
+    left: -35px;
     border-radius: 50%;
     border: 3px solid #dc2626;
     background: rgba(220, 38, 38, 0.35);
@@ -1432,18 +1432,26 @@ document.addEventListener('DOMContentLoaded', () => {
         heading = lastHeadings[id];
       }
 
+      // Ensure trailing line connects seamlessly to the exact current vehicle [lat, lng]
+      const trailPts = [...tr];
+      if (trailPts.length > 0) {
+        trailPts[trailPts.length - 1] = [lat, lng];
+      } else {
+        trailPts.push([lat, lng]);
+      }
+
       // Live Trailing Line (Unit trace)
       // "unit trace ... click karoth witharai map1 wahanaya giya para live line1 adigena yanawa"
-      if (vis.unit_trace && tr.length >= 2) {
+      if (vis.unit_trace && trailPts.length >= 2) {
         if (!unitTrailsPolylines[id]) {
-          unitTrailsPolylines[id] = L.polyline(tr, {
+          unitTrailsPolylines[id] = L.polyline(trailPts, {
             color: '#0040dd',
             weight: 4,
             opacity: 0.9,
             lineJoin: 'round'
           }).addTo(map);
         } else {
-          unitTrailsPolylines[id].setLatLngs(tr);
+          unitTrailsPolylines[id].setLatLngs(trailPts);
           if (!map.hasLayer(unitTrailsPolylines[id])) map.addLayer(unitTrailsPolylines[id]);
         }
       } else {
@@ -1456,7 +1464,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // "move vena object walata witharai green arrow 1 yana paththata yanna"
       const showDir = (vis.unit_direction !== false) && isMoving;
       const arrowHtml = `
-        <div class="w-unit-direction-arrow" style="${showDir ? '' : 'display:none;'}; transform: rotate(${Math.round(heading)}deg)">
+        <div class="w-unit-direction-arrow" style="${showDir ? '' : 'display:none;'}">
           <svg width="18" height="18" viewBox="0 0 24 24" style="display:block;margin:0 auto">
             <polygon points="12,2 22,21 12,16 2,21" fill="#00e676" stroke="#15803d" stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
@@ -1484,8 +1492,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const markerHtml = `
         <div class="w-wialon-marker-wrap" data-id="${u.id}">
           ${isSos ? '<div class="w-sos-marker-ring"></div>' : ''}
-          ${arrowHtml}
           <div class="w-vehicle-icon-box" style="transform: rotate(${vehicleRotation}deg); transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);">
+            ${arrowHtml}
             ${vSvg}
           </div>
           ${nameHtml}
@@ -1496,8 +1504,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const customIcon = L.divIcon({
         className: 'w-telematics-pin',
         html: markerHtml,
-        iconSize: [110, 56],
-        iconAnchor: [55, 28]
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
       });
 
       const popupContent = `

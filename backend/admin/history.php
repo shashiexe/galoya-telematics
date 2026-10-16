@@ -414,7 +414,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const defaultCenter = <?= json_encode($CONFIG['map_center']) ?>;
   const defaultZoom = <?= (int)$CONFIG['map_zoom'] ?>;
 
-  const map = StMap.create(mapElement, defaultCenter, defaultZoom);
+  let map;
+  if (typeof StMap !== 'undefined' && StMap.create) {
+    map = StMap.create(mapElement, defaultCenter, defaultZoom);
+  } else {
+    map = L.map(mapElement, { zoomControl: false }).setView(defaultCenter, defaultZoom);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    L.control.scale({ imperial: true, metric: true, position: 'bottomleft' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  }
+  setTimeout(() => { if (map && map.invalidateSize) map.invalidateSize(); }, 250);
 
   // Coordinate HUD formatting
   map.on('mousemove', (e) => {
@@ -767,6 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
         spBtn.classList.add('active');
         playSpeed = parseFloat(spBtn.dataset.speed || 1);
       });
+    });
   }
 
   // If no track points but photos exist, render photos and fit bounds

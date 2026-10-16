@@ -23,6 +23,11 @@ $filesToUpdate = [
     'admin/index.php' => 'backend/admin/index.php',
     'admin/_common.php' => 'backend/admin/_common.php',
     'admin/geofences.php' => 'backend/admin/geofences.php',
+    'admin/reports.php' => 'backend/admin/reports.php',
+    'admin/unit_properties.php' => 'backend/admin/unit_properties.php',
+    'admin/units.php' => 'backend/admin/units.php',
+    'admin/assets/app.js' => 'backend/admin/assets/app.js',
+    'admin/assets/style.css' => 'backend/admin/assets/style.css',
     'sync_agriculture_kml.php' => 'backend/sync_agriculture_kml.php',
     'deploy_update.php' => 'backend/deploy_update.php',
 ];

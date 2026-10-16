@@ -179,3 +179,21 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Throwable $e) {}
 
+try {
+    q("ALTER TABLE task_photos ADD COLUMN geofence_name VARCHAR(128) NULL");
+} catch (Throwable $e) {}
+
+// Self-update deploy_update.php if needed
+try {
+    $duPath = __DIR__ . '/deploy_update.php';
+    if (file_exists($duPath)) {
+        $duContent = file_get_contents($duPath);
+        if (strpos($duContent, "'deploy_update.php'") === false) {
+            $latestDu = @file_get_contents('https://raw.githubusercontent.com/shashiexe/galoya-telematics/main/backend/deploy_update.php');
+            if ($latestDu && strlen($latestDu) > 200) {
+                file_put_contents($duPath, $latestDu);
+            }
+        }
+    }
+} catch (Throwable $e) {}
+

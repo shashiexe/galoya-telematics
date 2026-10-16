@@ -1,5 +1,5 @@
-// Wialon Telematics Engine - Map & Telemetry Layer Management
-const StMap = {
+/// Wialon Telematics Engine - Map & Telemetry Layer Management
+var StMap = window.StMap = window.StMap || {
   tileLayers: {
     osm: {
       name: 'OpenStreetMap',

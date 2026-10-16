@@ -19,7 +19,7 @@ if ($key !== 'galoya2026' && !$isAdmin) {
 set_time_limit(300);
 ini_set('memory_limit', '512M');
 
-$pdo = get_db();
+$pdo = db();
 $results = [];
 
 // 1. Ensure geofence_groups table

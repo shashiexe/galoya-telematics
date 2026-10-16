@@ -24,7 +24,6 @@ $filesToUpdate = [
     'admin/_common.php' => 'backend/admin/_common.php',
     'admin/geofences.php' => 'backend/admin/geofences.php',
     'sync_agriculture_kml.php' => 'backend/sync_agriculture_kml.php',
-    'agriculture_geofences_seed.sql.gz' => 'backend/agriculture_geofences_seed.sql.gz',
     'deploy_update.php' => 'backend/deploy_update.php',
 ];
 

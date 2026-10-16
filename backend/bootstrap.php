@@ -35,6 +35,10 @@ function db(): PDO {
     return $pdo;
 }
 
+function get_db(): PDO {
+    return db();
+}
+
 function q(string $sql, array $p = []): PDOStatement {
     $st = db()->prepare($sql);
     $st->execute($p);

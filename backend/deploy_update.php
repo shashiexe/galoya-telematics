@@ -50,13 +50,30 @@ foreach ($filesToUpdate as $localRel => $repoRel) {
 
 // 2. Run Database Migrations
 try {
+    q("CREATE TABLE IF NOT EXISTS field_photos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        file_path VARCHAR(255) NOT NULL,
+        lat DECIMAL(10,7) NULL,
+        lng DECIMAL(10,7) NULL,
+        note TEXT NULL,
+        geofence_name VARCHAR(128) NULL,
+        taken_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX(user_id),
+        INDEX(taken_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = ["✅ Database: Ensured field_photos table exists", "color:#10b981"];
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Database note (field_photos table): " . $e->getMessage(), "color:#f59e0b"];
+}
+
+try {
     q("ALTER TABLE field_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
     $results[] = ["✅ Database: Added geofence_name column to field_photos", "color:#10b981"];
 } catch (Throwable $e) {
     if (strpos($e->getMessage(), 'Duplicate column') !== false) {
         $results[] = ["ℹ️ Database: Column geofence_name already exists in field_photos", "color:#3b82f6"];
-    } else {
-        $results[] = ["⚠️ Database note (field_photos): " . $e->getMessage(), "color:#f59e0b"];
     }
 }
 

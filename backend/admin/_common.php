@@ -75,16 +75,16 @@ function layout_start(string $title, string $active, bool $map = false): void {
     } catch (Throwable $e) {}
 
     $nav = [
-        'dashboard.php'     => ['Dashboard', '📊'],
         'index.php'         => ['Monitoring', '🛰️'],
+        'units.php'         => ['Units', '🚜'],
         'history.php'       => ['Tracks', '↝'],
-        'photos.php'        => ['Photos', '📷'],
         'messages.php'      => ['Messages', '💬'],
         'reports.php'       => ['Reports', '📋'],
         'geofences.php'     => ['Geofences', '⬡'],
         'drivers.php'       => ['Drivers', '👨‍✈️'],
         'notifications.php' => ['Notifications', '🔔', $unread_notifs > 0 ? $unread_notifs : null],
-        'units.php'         => ['Units', '🚜'],
+        'dashboard.php'     => ['Dashboard', '📊'],
+        'photos.php'        => ['Photos', '📷'],
         'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null],
         'settings.php'      => ['Settings', '⚙️'],
     ];
@@ -126,12 +126,12 @@ function layout_start(string $title, string $active, bool $map = false): void {
     </nav>
 
     <div class="w-user">
-      <a href="../app/" target="_blank" class="w-tab" style="background:#0284c7;color:#fff;border-radius:4px;padding:4px 10px;height:28px;margin-right:8px;font-weight:700" title="Test Mobile Phone App on Laptop">📱 Phone App Test</a>
-      <div class="user-badge">
+      <a href="../app/" target="_blank" class="w-tab" style="background:#0284c7;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11.5px" title="Test Mobile Phone App on Laptop">📱 App</a>
+      <div class="user-badge" style="padding:2px 8px;font-size:11.5px">
         <span>👤</span>
         <span><?= h($a['name'] ?? 'galoyap.admin') ?></span>
       </div>
-      <a href="logout.php" class="logout-link">Logout</a>
+      <a href="logout.php" class="logout-link" style="padding:2px 8px;font-size:11.5px">Logout</a>
     </div>
   </header>
 

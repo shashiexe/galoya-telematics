@@ -485,16 +485,25 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const resp = await fetch(url);
         const data = await resp.json();
+        const roadPoints = [];
         if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
-          const roadPoints = [];
           data.matchings.forEach(m => {
             if (m.geometry && m.geometry.coordinates) {
               m.geometry.coordinates.forEach(c => roadPoints.push([c[1], c[0]]));
             }
           });
-          if (roadPoints.length > 0) {
-            polyline.setLatLngs(roadPoints);
+        }
+        // If match had gaps or failed, seamlessly route along roads
+        if (roadPoints.length === 0) {
+          const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
+          const rResp = await fetch(routeUrl);
+          const rData = await rResp.json();
+          if (rData.code === 'Ok' && rData.routes && rData.routes.length > 0) {
+            rData.routes[0].geometry.coordinates.forEach(c => roadPoints.push([c[1], c[0]]));
           }
+        }
+        if (roadPoints.length > 0) {
+          polyline.setLatLngs(roadPoints);
         }
       } catch (err) {
         console.warn('Snap to road fallback:', err);

@@ -319,13 +319,17 @@ $geofences = q("SELECT id, category, group_name, block_name, name, code, type, c
 $totalGeofences = (int)q("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
 
 // Fetch active field officers/vehicles to show live on map
-$liveUnits = q("
-    SELECT u.id, u.name, u.role, u.vehicle_plate, u.sos_active, u.duty_status,
-           l.lat, l.lng, l.speed, l.accuracy, l.created_at AS last_time
-    FROM users u
-    JOIN locations l ON l.id = (SELECT id FROM locations WHERE user_id = u.id ORDER BY id DESC LIMIT 1)
-    WHERE u.active = 1
-")->fetchAll();
+try {
+    $liveUnits = q("
+        SELECT u.id, u.name, u.role, u.code, u.unit_type, u.sos_active, u.on_duty,
+               l.lat, l.lng, l.speed, l.accuracy, l.created_at AS last_time
+        FROM users u
+        JOIN locations l ON l.id = (SELECT id FROM locations WHERE user_id = u.id ORDER BY id DESC LIMIT 1)
+        WHERE u.active = 1
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $liveUnits = [];
+}
 
 $activeTab = $_GET['tab'] ?? 'geofences';
 

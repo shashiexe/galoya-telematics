@@ -56,8 +56,12 @@ class Api {
 
   static Future<Map<String, dynamic>> upload(String action, Map<String, String> fields, File file) async {
     final t = await token();
+    final fMap = Map<String, String>.from(fields);
+    if (t != null) {
+      fMap['token'] = t;
+    }
     final req = http.MultipartRequest('POST', Uri.parse('$kApiUrl?action=$action'))
-      ..fields.addAll(fields)
+      ..fields.addAll(fMap)
       ..files.add(await http.MultipartFile.fromPath('photo', file.path));
     if (t != null) req.headers['Authorization'] = 'Bearer $t';
     final r = await http.Response.fromStream(await req.send().timeout(const Duration(seconds: 120)));

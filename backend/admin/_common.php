@@ -40,11 +40,13 @@ function map_assets(): string {
     global $CONFIG;
     if ($CONFIG['map_provider'] === 'google' && !empty($CONFIG['google_maps_key'])) {
         return '<script>window.MAP_PROVIDER="google"</script>'
-             . '<script src="https://maps.googleapis.com/maps/api/js?key=' . h($CONFIG['google_maps_key']) . '"></script>';
+             . '<script src="https://maps.googleapis.com/maps/api/js?key=' . h($CONFIG['google_maps_key']) . '"></script>'
+             . '<script src="assets/app.js"></script>';
     }
     return '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">'
          . '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
-         . '<script>window.MAP_PROVIDER="osm"</script>';
+         . '<script>window.MAP_PROVIDER="osm"</script>'
+         . '<script src="assets/app.js"></script>';
 }
 
 function layout_start(string $title, string $active, bool $map = false): void {

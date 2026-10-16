@@ -1,8 +1,8 @@
 <?php
-/**
- * 1-Click Update Script for Galoya Telematics (track.galoya.lk)
- * Automatically fetches the latest files from GitHub main branch and runs database migrations.
- */
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+
 header('Content-Type: text/html; charset=utf-8');
 require_once __DIR__ . '/bootstrap.php';
 
@@ -129,24 +129,7 @@ $totalGf = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fe
 $results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-weight:bold"];
 
 if ($totalGf < 100) {
-    $gzFile = __DIR__ . '/agriculture_geofences_seed.sql.gz';
-    if (file_exists($gzFile)) {
-        $rawSql = gzdecode(file_get_contents($gzFile));
-        if ($rawSql) {
-            $queries = explode(";\n\n", $rawSql);
-            $imported = 0;
-            foreach ($queries as $qStr) {
-                $qStr = trim($qStr);
-                if (!$qStr) continue;
-                try {
-                    $pdo->exec($qStr);
-                    $imported++;
-                } catch (Throwable $e) {}
-            }
-            $totalGfAfter = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
-            $results[] = ["🌾 Auto-Imported 5,034 Agriculture Sectors from seed! Now total: $totalGfAfter sectors.", "color:#10b981;font-weight:bold"];
-        }
-    }
+    $results[] = ["🌾 Tip: Click 'Fast Agriculture Sync' below to import all 5,034 sectors across the 5 Zones.", "color:#f59e0b;font-weight:bold"];
 }
 
 ?><!doctype html>

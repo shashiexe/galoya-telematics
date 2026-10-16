@@ -65,6 +65,21 @@ try {
 $gzPath = __DIR__ . '/agriculture_geofences_seed.sql.gz';
 $sqlPath = __DIR__ . '/agriculture_geofences_seed.sql';
 
+if (!file_exists($gzPath) && !file_exists($sqlPath)) {
+    // Download directly from GitHub raw
+    $remoteUrl = 'https://raw.githubusercontent.com/shashiexe/galoya-telematics/main/backend/agriculture_geofences_seed.sql.gz';
+    $ch = curl_init($remoteUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $gzData = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($httpCode === 200 && $gzData && strlen($gzData) > 1000) {
+        file_put_contents($gzPath, $gzData);
+        $results[] = ["📥 Downloaded agriculture_geofences_seed.sql.gz from GitHub (" . round(strlen($gzData)/1024) . " KB)", "color:#38bdf8"];
+    }
+}
+
 if (file_exists($gzPath)) {
     $rawSql = gzdecode(file_get_contents($gzPath));
 } elseif (file_exists($sqlPath)) {

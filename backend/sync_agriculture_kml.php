@@ -1,13 +1,12 @@
 <?php
-/**
- * Fast Agriculture KML / KMZ Sync Script for Galoya Telematics
- * Imports 5,034 Plantation Sectors across 5 Zones:
- * - Deegawapiya Zone
- * - Galmaduwa Zone
- * - Hingurana Zone
- * - Neeththa Zone
- * - Varipathanchena Zone
- */
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+
+@ini_set('zlib.output_compression', '0');
+@ini_set('implicit_flush', '1');
+if (function_exists('ob_implicit_flush')) @ob_implicit_flush(true);
+
 header('Content-Type: text/html; charset=utf-8');
 require_once __DIR__ . '/bootstrap.php';
 

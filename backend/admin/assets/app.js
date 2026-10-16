@@ -157,11 +157,19 @@ const StMap = {
       if (toolFit) toolFit.click();
     });
 
-    // Geofences button
-    toolbar.querySelector('#vtool-geofence').addEventListener('click', () => {
-      const toolGf = document.getElementById('tool-geofences');
-      if (toolGf) toolGf.click();
-    });
+    // Geofences button (Toggle geofences layer on-demand from Wialon side toolbar)
+    const gfBtn = toolbar.querySelector('#vtool-geofence');
+    if (gfBtn) {
+      gfBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.toggleMonitoringGeofences === 'function') {
+          window.toggleMonitoringGeofences(gfBtn);
+        } else {
+          const toolGf = document.getElementById('tool-geofences');
+          if (toolGf) toolGf.click();
+        }
+      });
+    }
   }
 };
 

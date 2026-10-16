@@ -73,22 +73,41 @@ const StMap = {
     return map;
   },
 
-  // Vertical floating toolbar matching Wialon Screenshot 3 & 4
+  // Vertical floating toolbar matching Wialon Screenshot 1, 2, 3, 4 & 6
   attachWialonToolbar(container, map) {
     if (!container || container.querySelector('.w-wialon-vtoolbar')) return;
+
+    // Load persisted visibility settings
+    window.wialonVisibility = Object.assign({
+      monitoring: true,
+      tracks: true,
+      messages: false,
+      reports: false,
+      geofences: false,
+      drivers: false,
+      passengers: false,
+      unit_trace: true,
+      unit_name: true,
+      driver_name: false,
+      unit_direction: true
+    }, JSON.parse(localStorage.getItem('wialon_visibility') || '{}'));
 
     const toolbar = document.createElement('div');
     toolbar.className = 'w-wialon-vtoolbar';
     toolbar.innerHTML = `
+      <div class="w-vtool-btn active-tool" id="vtool-eye" title="View & Visibility Layers">
+        <span>👁️</span>
+      </div>
+      <div class="w-vtool-btn" id="vtool-map" title="Switch Map Source">
+        <span>🗺️</span>
+      </div>
+      <div class="w-vtool-btn" id="vtool-cluster" title="Overlapping Units">
+        <span>🖧</span>
+      </div>
       <div class="w-vtool-btn" id="vtool-fit" title="Fit all units on map">
         <span>⛶</span>
       </div>
-      <div class="w-vtool-btn" id="vtool-eye" title="Toggle Units Layer">
-        <span>👁️</span>
-      </div>
-      <div class="w-vtool-btn active-tool" id="vtool-map" title="Switch Map Source">
-        <span>🗺️</span>
-      </div>
+      <div class="w-vtool-divider"></div>
       <div class="w-vtool-btn" id="vtool-geofence" title="Toggle Geofence Zones">
         <span>⬡</span>
       </div>
@@ -100,54 +119,185 @@ const StMap = {
       </div>
     `;
 
-    // Map switcher popup menu matching user's screenshot!
-    const menu = document.createElement('div');
-    menu.className = 'w-map-popup-menu';
-    menu.id = 'w-map-layers-popup';
+    // 1. Eye Popup Menu (Exact match to User Screenshot 6)
+    const eyeMenu = document.createElement('div');
+    eyeMenu.className = 'w-map-popup-menu w-eye-menu';
+    eyeMenu.id = 'w-eye-layers-popup';
+    eyeMenu.innerHTML = `
+      <div class="w-eye-menu-inner">
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="monitoring" ${window.wialonVisibility.monitoring ? 'checked' : ''}>
+          <span>Monitoring</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="tracks" ${window.wialonVisibility.tracks ? 'checked' : ''}>
+          <span>Tracks</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="messages" ${window.wialonVisibility.messages ? 'checked' : ''}>
+          <span>Messages</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="reports" ${window.wialonVisibility.reports ? 'checked' : ''}>
+          <span>Reports</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="geofences" ${window.wialonVisibility.geofences ? 'checked' : ''}>
+          <span>Geofences</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="drivers" ${window.wialonVisibility.drivers ? 'checked' : ''}>
+          <span>Drivers</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="passengers" ${window.wialonVisibility.passengers ? 'checked' : ''}>
+          <span>Passengers</span>
+        </label>
+        <div class="w-eye-divider"></div>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="unit_trace" ${window.wialonVisibility.unit_trace ? 'checked' : ''}>
+          <span>Unit trace</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="unit_name" ${window.wialonVisibility.unit_name ? 'checked' : ''}>
+          <span>Unit name</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="driver_name" ${window.wialonVisibility.driver_name ? 'checked' : ''}>
+          <span>Driver's name</span>
+        </label>
+        <label class="w-eye-item">
+          <input type="checkbox" data-vis="unit_direction" ${window.wialonVisibility.unit_direction ? 'checked' : ''}>
+          <span>Unit movement direction</span>
+        </label>
+      </div>
+    `;
+
+    // 2. Map Switcher Popup Menu (Screenshot 2)
+    const mapMenu = document.createElement('div');
+    mapMenu.className = 'w-map-popup-menu';
+    mapMenu.id = 'w-map-layers-popup';
 
     const currentKey = map.getCurrentLayer ? map.getCurrentLayer() : 'gurtam';
-
-    let menuHtml = '';
+    let mapMenuHtml = '';
     for (const [key, conf] of Object.entries(StMap.tileLayers)) {
       const isSelected = (key === currentKey);
-      menuHtml += `
+      mapMenuHtml += `
         <div class="w-map-layer-item ${isSelected ? 'selected' : ''}" data-layer="${key}">
           <span>${conf.name}</span>
           <span class="chk-indicator" style="font-weight:bold;color:#1976d2">${isSelected ? '✓' : ''}</span>
         </div>
       `;
     }
-    menu.innerHTML = menuHtml;
+    mapMenu.innerHTML = mapMenuHtml;
+
+    // 3. Overlapping Units Clustering Popup (Screenshot 3)
+    const clusterMenu = document.createElement('div');
+    clusterMenu.className = 'w-map-popup-menu w-cluster-popup';
+    clusterMenu.id = 'w-cluster-layers-popup';
+    const isClustering = localStorage.getItem('wialon_cluster_units') === 'true';
+    clusterMenu.innerHTML = `
+      <div style="padding:10px 14px;font-size:12px;color:#334155;white-space:nowrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="chk-wialon-cluster" ${isClustering ? 'checked' : ''} style="width:14px;height:14px;accent-color:#2563eb">
+          <span>Display overlapping units in one icon</span>
+        </label>
+      </div>
+    `;
 
     container.appendChild(toolbar);
-    container.appendChild(menu);
+    container.appendChild(eyeMenu);
+    container.appendChild(mapMenu);
+    container.appendChild(clusterMenu);
 
-    // Toggle map layers popup on click or hover of map icon
+    // Helpers to position & toggle popups
+    function positionMenu(btn, menuEl) {
+      const rect = btn.getBoundingClientRect();
+      const parentRect = container.getBoundingClientRect();
+      menuEl.style.top = (rect.top - parentRect.top) + 'px';
+      menuEl.style.left = (rect.right - parentRect.left + 8) + 'px';
+    }
+
+    function hideAllPopups() {
+      eyeMenu.style.display = 'none';
+      mapMenu.style.display = 'none';
+      clusterMenu.style.display = 'none';
+    }
+
+    // Toggle Eye Menu
+    const eyeBtn = toolbar.querySelector('#vtool-eye');
+    eyeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = (eyeMenu.style.display === 'block');
+      hideAllPopups();
+      if (!isVisible) {
+        eyeMenu.style.display = 'block';
+        positionMenu(eyeBtn, eyeMenu);
+      }
+    });
+
+    // Handle Eye Checkbox Changes
+    eyeMenu.addEventListener('change', (e) => {
+      const chk = e.target.closest('input[type="checkbox"]');
+      if (!chk) return;
+      const key = chk.dataset.vis;
+      if (!key) return;
+      window.wialonVisibility[key] = chk.checked;
+      localStorage.setItem('wialon_visibility', JSON.stringify(window.wialonVisibility));
+
+      // Trigger map visibility updates
+      if (typeof window.applyVisibilitySettings === 'function') {
+        window.applyVisibilitySettings(key, chk.checked);
+      }
+    });
+
+    // Toggle Map Layers Menu
     const mapBtn = toolbar.querySelector('#vtool-map');
     mapBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const isVisible = (menu.style.display === 'block');
-      menu.style.display = isVisible ? 'none' : 'block';
-      
-      const rect = mapBtn.getBoundingClientRect();
-      const parentRect = container.getBoundingClientRect();
-      menu.style.top = (rect.top - parentRect.top) + 'px';
-      menu.style.left = (rect.right - parentRect.left + 6) + 'px';
+      const isVisible = (mapMenu.style.display === 'block');
+      hideAllPopups();
+      if (!isVisible) {
+        mapMenu.style.display = 'block';
+        positionMenu(mapBtn, mapMenu);
+      }
     });
 
-    // Handle layer selection
-    menu.addEventListener('click', (e) => {
+    // Handle Map Layer selection
+    mapMenu.addEventListener('click', (e) => {
       const item = e.target.closest('.w-map-layer-item');
       if (!item) return;
       const key = item.dataset.layer;
       if (map.switchLayer) map.switchLayer(key);
-      menu.style.display = 'none';
+      mapMenu.style.display = 'none';
     });
 
-    // Close menu when clicking elsewhere
+    // Toggle Cluster Menu
+    const clusterBtn = toolbar.querySelector('#vtool-cluster');
+    clusterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = (clusterMenu.style.display === 'block');
+      hideAllPopups();
+      if (!isVisible) {
+        clusterMenu.style.display = 'block';
+        positionMenu(clusterBtn, clusterMenu);
+      }
+    });
+
+    clusterMenu.querySelector('#chk-wialon-cluster').addEventListener('change', (e) => {
+      localStorage.setItem('wialon_cluster_units', e.target.checked ? 'true' : 'false');
+      if (typeof window.updateMarkers === 'function') {
+        window.updateMarkers();
+      }
+    });
+
+    // Close all popups when clicking anywhere outside
     document.addEventListener('click', (e) => {
-      if (!menu.contains(e.target) && e.target !== mapBtn && !mapBtn.contains(e.target)) {
-        menu.style.display = 'none';
+      if (!container.contains(e.target)) {
+        hideAllPopups();
+      } else if (!eyeMenu.contains(e.target) && !mapMenu.contains(e.target) && !clusterMenu.contains(e.target) &&
+                 !eyeBtn.contains(e.target) && !mapBtn.contains(e.target) && !clusterBtn.contains(e.target)) {
+        hideAllPopups();
       }
     });
 
@@ -157,7 +307,7 @@ const StMap = {
       if (toolFit) toolFit.click();
     });
 
-    // Geofences button (Toggle geofences layer on-demand from Wialon side toolbar)
+    // Geofences button
     const gfBtn = toolbar.querySelector('#vtool-geofence');
     if (gfBtn) {
       gfBtn.addEventListener('click', (e) => {

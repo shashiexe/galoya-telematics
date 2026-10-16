@@ -19,18 +19,11 @@ if (isset($_GET['feed'])) {
         $u['is_online'] = ($u['last_seen'] !== null && (int)$u['mins_ago'] <= $off && (int)$u['on_duty'] === 1);
     }
 
-    // Fetch geofences
-    $geofences = q("SELECT id, name, code, type, coordinates, color FROM geofences WHERE active=1")->fetchAll();
-    foreach ($geofences as &$g) {
-        $g['coords'] = json_decode($g['coordinates'], true) ?: [];
-    }
-
     // Fetch active SOS alerts
     $sos_alerts = q("SELECT s.*, u.name, u.phone FROM sos_alerts s JOIN users u ON u.id=s.user_id WHERE s.status='active' ORDER BY s.id DESC LIMIT 5")->fetchAll();
 
     echo json_encode([
         'units' => $units,
-        'geofences' => $geofences,
         'sos' => $sos_alerts,
         'center' => $CONFIG['map_center'],
         'zoom' => (int)$CONFIG['map_zoom']
@@ -631,8 +624,35 @@ document.addEventListener('DOMContentLoaded', () => {
   let unitsData = [];
   let geofencesData = [];
   const unitMarkers = {};
-  const geofenceLayers = [];
-  let showGeofences = true;
+  let showGeofences = false; // OFF by default so Monitoring opens instantly!
+  let geofencesLoaded = false;
+  const geofencesGroup = L.featureGroup();
+  map.addLayer(geofencesGroup);
+
+  // Toggle geofences on map on-demand from the map toolbar hexagon button
+  window.toggleMonitoringGeofences = function(btn) {
+    showGeofences = !showGeofences;
+    if (btn) btn.classList.toggle('active-tool', showGeofences);
+
+    if (showGeofences) {
+      if (!geofencesLoaded) {
+        if (btn) btn.style.opacity = '0.5';
+        fetch('geofences.php?ajax=group_coords')
+          .then(r => r.json())
+          .then(data => {
+            if (btn) btn.style.opacity = '1';
+            geofencesData = data || [];
+            geofencesLoaded = true;
+            renderGeofences(geofencesData);
+          })
+          .catch(() => { if (btn) btn.style.opacity = '1'; });
+      } else {
+        renderGeofences(geofencesData);
+      }
+    } else {
+      geofencesGroup.clearLayers();
+    }
+  };
 
   // Icons mapping for unit types
   const typeIcons = {
@@ -661,36 +681,31 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('w-coord-hud').innerHTML = toDMM(e.latlng.lat, e.latlng.lng);
   });
 
-  // Render Geofences on Map
+  // Render Geofences on Map safely with high-contrast labels
   function renderGeofences(geofences) {
-    geofenceLayers.forEach(l => map.removeLayer(l));
-    geofenceLayers.length = 0;
-
-    if (!showGeofences) return;
+    geofencesGroup.clearLayers();
+    if (!showGeofences || !geofences || !geofences.length) return;
 
     geofences.forEach(gf => {
-      if (!gf.coords || gf.coords.length < 3) return;
-      
-      const poly = L.polygon(gf.coords, {
-        color: gf.color || '#4caf50',
-        fillColor: gf.color || '#4caf50',
-        fillOpacity: 0.25,
-        weight: 2
-      }).addTo(map);
+      try {
+        if (!gf.coords || gf.coords.length < 3) return;
+        
+        const poly = L.polygon(gf.coords, {
+          color: '#ffffff',
+          fillColor: gf.color || '#10b981',
+          fillOpacity: 0.45,
+          weight: 1.5
+        });
 
-      // Centered label (e.g. D/207/01)
-      const center = poly.getBounds().getCenter();
-      const label = L.marker(center, {
-        icon: L.divIcon({
-          className: 'w-geofence-label',
-          html: `<div style="color:${gf.color || '#e65100'};font-weight:700;font-size:12px;background:rgba(255,255,255,0.7);padding:2px 6px;border-radius:3px">${gf.name}</div>`,
-          iconSize: [80, 20],
-          iconAnchor: [40, 10]
-        })
-      }).addTo(map);
+        // Centered label (e.g. D/207/01)
+        poly.bindTooltip(gf.name, {
+          direction: 'center',
+          className: 'sector-label'
+        });
 
-      poly.bindPopup(`<strong>Geofence: ${gf.name}</strong><br>${gf.description || ''}`);
-      geofenceLayers.push(poly, label);
+        poly.bindPopup(`<strong>Geofence: ${gf.name}</strong><br>Zone: <strong>${gf.group_name || 'N/A'}</strong><br>${gf.description || ''}`);
+        geofencesGroup.addLayer(poly);
+      } catch (err) {}
     });
   }
 

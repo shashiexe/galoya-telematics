@@ -8,8 +8,12 @@ import 'sync.dart';
 import 'theme.dart';
 import 'tracker.dart';
 
+import 'vault.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Auto-restore session from persistent vault if phone cache/storage was cleared
+  await AuthVault.restoreIfMissing();
   await Tracker.init();
   final sp = await SharedPreferences.getInstance();
   final loggedIn = sp.getString('token') != null;

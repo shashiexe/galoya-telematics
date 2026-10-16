@@ -78,10 +78,36 @@ try {
 }
 
 try {
-    q("ALTER TABLE task_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
-    $results[] = ["✅ Database: Added geofence_name column to task_photos", "color:#10b981"];
+    $fpCount = (int)q("SELECT COUNT(*) FROM field_photos")->fetchColumn();
+    $latestFp = q("SELECT * FROM field_photos ORDER BY id DESC LIMIT 5")->fetchAll();
+    $results[] = ["📸 Total field_photos in DB: $fpCount", "color:#38bdf8;font-weight:bold"];
+    foreach ($latestFp as $p) {
+        $results[] = ["   - Photo #{$p['id']}: User {$p['user_id']} | Path: {$p['file_path']} | Geofence: {$p['geofence_name']} | Taken: {$p['taken_at']}", "color:#94a3b8"];
+    }
 } catch (Throwable $e) {
-    $results[] = ["ℹ️ Database note (task_photos): " . $e->getMessage(), "color:#3b82f6"];
+    $results[] = ["⚠️ Error querying field_photos: " . $e->getMessage(), "color:#ef4444"];
+}
+
+// Check uploads directory
+$uploadDir = $CONFIG['upload_dir'];
+if (is_dir($uploadDir)) {
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($uploadDir));
+    $fileCount = 0;
+    $recentFiles = [];
+    foreach ($it as $file) {
+        if ($file->isFile()) {
+            $fileCount++;
+            if (count($recentFiles) < 5) {
+                $recentFiles[] = $file->getPathname() . " (" . round($file->getSize()/1024) . " KB)";
+            }
+        }
+    }
+    $results[] = ["📁 Uploads folder exists ($uploadDir), total files: $fileCount", "color:#38bdf8"];
+    foreach ($recentFiles as $rf) {
+        $results[] = ["   - $rf", "color:#94a3b8"];
+    }
+} else {
+    $results[] = ["❌ Uploads folder does NOT exist ($uploadDir)!", "color:#ef4444"];
 }
 
 ?><!doctype html>

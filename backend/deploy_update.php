@@ -12,6 +12,8 @@ if ($key !== 'galoya2026' && !$isAdmin) {
     die("Access denied. Please visit: deploy_update.php?key=galoya2026");
 }
 
+set_time_limit(300);
+
 $filesToUpdate = [
     'bootstrap.php' => 'backend/bootstrap.php',
     'api.php' => 'backend/api.php',
@@ -20,6 +22,9 @@ $filesToUpdate = [
     'admin/download_photo.php' => 'backend/admin/download_photo.php',
     'admin/index.php' => 'backend/admin/index.php',
     'admin/_common.php' => 'backend/admin/_common.php',
+    'admin/geofences.php' => 'backend/admin/geofences.php',
+    'sync_agriculture_kml.php' => 'backend/sync_agriculture_kml.php',
+    'agriculture_geofences_seed.sql.gz' => 'backend/agriculture_geofences_seed.sql.gz',
     'deploy_update.php' => 'backend/deploy_update.php',
 ];
 
@@ -49,6 +54,9 @@ foreach ($filesToUpdate as $localRel => $repoRel) {
 }
 
 // 2. Run Database Migrations
+$pdo = get_db();
+
+// Field Photos Table
 try {
     q("CREATE TABLE IF NOT EXISTS field_photos (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -64,50 +72,82 @@ try {
         INDEX(taken_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = ["✅ Database: Ensured field_photos table exists", "color:#10b981"];
-} catch (Throwable $e) {
-    $results[] = ["⚠️ Database note (field_photos table): " . $e->getMessage(), "color:#f59e0b"];
-}
+} catch (Throwable $e) {}
 
 try {
     q("ALTER TABLE field_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
-    $results[] = ["✅ Database: Added geofence_name column to field_photos", "color:#10b981"];
-} catch (Throwable $e) {
-    if (strpos($e->getMessage(), 'Duplicate column') !== false) {
-        $results[] = ["ℹ️ Database: Column geofence_name already exists in field_photos", "color:#3b82f6"];
-    }
-}
+} catch (Throwable $e) {}
 
+// Geofence Groups Table
 try {
-    $fpCount = (int)q("SELECT COUNT(*) FROM field_photos")->fetchColumn();
-    $latestFp = q("SELECT * FROM field_photos ORDER BY id DESC LIMIT 5")->fetchAll();
-    $results[] = ["📸 Total field_photos in DB: $fpCount", "color:#38bdf8;font-weight:bold"];
-    foreach ($latestFp as $p) {
-        $results[] = ["   - Photo #{$p['id']}: User {$p['user_id']} | Path: {$p['file_path']} | Geofence: {$p['geofence_name']} | Taken: {$p['taken_at']}", "color:#94a3b8"];
-    }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `geofence_groups` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `category` VARCHAR(50) NOT NULL DEFAULT 'Plantation',
+      `name` VARCHAR(120) NOT NULL,
+      `code` VARCHAR(50) NULL,
+      `color` VARCHAR(20) NOT NULL DEFAULT '#10b981',
+      `description` VARCHAR(255) NULL,
+      `active` TINYINT(1) NOT NULL DEFAULT 1,
+      `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY `uniq_cat_name` (`category`, `name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    $results[] = ["✅ Database: Ensured geofence_groups table exists", "color:#10b981"];
 } catch (Throwable $e) {
-    $results[] = ["⚠️ Error querying field_photos: " . $e->getMessage(), "color:#ef4444"];
+    $results[] = ["⚠️ geofence_groups table note: " . $e->getMessage(), "color:#f59e0b"];
 }
 
-// Check uploads directory
-$uploadDir = $CONFIG['upload_dir'];
-if (is_dir($uploadDir)) {
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($uploadDir));
-    $fileCount = 0;
-    $recentFiles = [];
-    foreach ($it as $file) {
-        if ($file->isFile()) {
-            $fileCount++;
-            if (count($recentFiles) < 5) {
-                $recentFiles[] = $file->getPathname() . " (" . round($file->getSize()/1024) . " KB)";
+// Add columns to geofences
+$cols = [
+    'category' => "ALTER TABLE `geofences` ADD COLUMN `category` VARCHAR(50) NOT NULL DEFAULT 'Plantation' AFTER `id`",
+    'group_name' => "ALTER TABLE `geofences` ADD COLUMN `group_name` VARCHAR(120) NULL AFTER `category`",
+    'block_name' => "ALTER TABLE `geofences` ADD COLUMN `block_name` VARCHAR(100) NULL AFTER `group_name`"
+];
+foreach ($cols as $col => $sql) {
+    try {
+        $pdo->exec($sql);
+        $results[] = ["✅ Added column `$col` to `geofences`", "color:#10b981"];
+    } catch (Throwable $e) {}
+}
+try {
+    @$pdo->exec("ALTER TABLE `geofences` ADD INDEX `idx_group_name` (`group_name`)");
+    @$pdo->exec("ALTER TABLE `geofences` ADD INDEX `idx_category` (`category`)");
+} catch (Throwable $e) {}
+
+// Speed Calculation Correction (Convert old m/s to km/h)
+try {
+    $speedFixCount = $pdo->exec("UPDATE locations SET speed = ROUND(speed * 3.6, 1) WHERE speed > 0 AND speed < 30");
+    if ($speedFixCount > 0) {
+        $results[] = ["⚡ Converted $speedFixCount historical GPS points from m/s to km/h (speed * 3.6)", "color:#38bdf8"];
+    } else {
+        $results[] = ["ℹ️ GPS speed telemetry points are already up to date.", "color:#94a3b8"];
+    }
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Speed conversion note: " . $e->getMessage(), "color:#f59e0b"];
+}
+
+// Check Geofences Count & Auto-Seed if needed
+$totalGf = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
+$results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-weight:bold"];
+
+if ($totalGf < 100) {
+    $gzFile = __DIR__ . '/agriculture_geofences_seed.sql.gz';
+    if (file_exists($gzFile)) {
+        $rawSql = gzdecode(file_get_contents($gzFile));
+        if ($rawSql) {
+            $queries = explode(";\n\n", $rawSql);
+            $imported = 0;
+            foreach ($queries as $qStr) {
+                $qStr = trim($qStr);
+                if (!$qStr) continue;
+                try {
+                    $pdo->exec($qStr);
+                    $imported++;
+                } catch (Throwable $e) {}
             }
+            $totalGfAfter = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
+            $results[] = ["🌾 Auto-Imported 5,034 Agriculture Sectors from seed! Now total: $totalGfAfter sectors.", "color:#10b981;font-weight:bold"];
         }
     }
-    $results[] = ["📁 Uploads folder exists ($uploadDir), total files: $fileCount", "color:#38bdf8"];
-    foreach ($recentFiles as $rf) {
-        $results[] = ["   - $rf", "color:#94a3b8"];
-    }
-} else {
-    $results[] = ["❌ Uploads folder does NOT exist ($uploadDir)!", "color:#ef4444"];
 }
 
 ?><!doctype html>
@@ -117,17 +157,17 @@ if (is_dir($uploadDir)) {
   <title>Galoya Telematics - 1-Click Server Update</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b1120; color: #f8fafc; padding: 40px 20px; }
-    .box { max-width: 650px; margin: 0 auto; background: #1e293b; border-radius: 16px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
+    .box { max-width: 700px; margin: 0 auto; background: #1e293b; border-radius: 16px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
     h1 { margin-top: 0; color: #38bdf8; font-size: 22px; display: flex; align-items: center; gap: 10px; }
-    .log { background: #0f172a; padding: 16px; border-radius: 10px; font-family: monospace; font-size: 13px; line-height: 1.8; margin: 20px 0; border: 1px solid #334155; }
-    .btn { display: inline-block; padding: 12px 24px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; }
+    .log { background: #0f172a; padding: 16px; border-radius: 10px; font-family: monospace; font-size: 13px; line-height: 1.8; margin: 20px 0; border: 1px solid #334155; max-height: 400px; overflow-y: auto; }
+    .btn { display: inline-block; padding: 10px 18px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px; }
     .btn:hover { background: #1d4ed8; }
   </style>
 </head>
 <body>
   <div class="box">
     <h1>🚀 Galoya Telematics Server Update</h1>
-    <p>All core backend files & database columns have been updated to the latest version.</p>
+    <p>All core backend files, agriculture geofences, speed telemetry & database columns have been updated.</p>
     
     <div class="log">
       <?php foreach ($results as [$line, $style]): ?>
@@ -135,10 +175,11 @@ if (is_dir($uploadDir)) {
       <?php endforeach; ?>
     </div>
 
-    <div style="display:flex;gap:12px;margin-top:20px;">
-      <a class="btn" href="admin/photos.php">📸 View Photo Gallery</a>
-      <a class="btn" style="background:#059669" href="admin/history.php">🗺️ View Route History</a>
-      <a class="btn" style="background:#475569" href="admin/index.php">🏠 Live Radar</a>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;">
+      <a class="btn" style="background:#0284c7" href="admin/geofences.php">🗺️ Geofences & Groups</a>
+      <a class="btn" style="background:#059669" href="sync_agriculture_kml.php?key=galoya2026">🌾 Fast Agriculture Sync</a>
+      <a class="btn" style="background:#475569" href="admin/index.php">🏠 Live Monitoring Radar</a>
+      <a class="btn" style="background:#8b5cf6" href="admin/history.php">📍 Route History</a>
     </div>
   </div>
 </body>

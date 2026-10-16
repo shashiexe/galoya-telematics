@@ -121,9 +121,10 @@ class Tracker {
   static Future<void> recordPosition(Position pos) async {
     int? battery;
     try { battery = await Battery().batteryLevel; } catch (_) {}
+    final speedKmh = pos.speed >= 0 ? (pos.speed * 3.6) : 0.0;
     await LocalDb.addPoint({
       'lat': pos.latitude, 'lng': pos.longitude, 'accuracy': pos.accuracy,
-      'speed': pos.speed, 'battery': battery, 't': pos.timestamp.millisecondsSinceEpoch,
+      'speed': speedKmh, 'battery': battery, 't': pos.timestamp.millisecondsSinceEpoch,
     });
   }
 }

@@ -490,15 +490,26 @@ layout_start('Monitoring', 'index.php', true);
         <label><strong>Code / Plate:</strong></label>
         <input type="text" id="new-unit-code" class="w-prop-input" placeholder="e.g. 2813 or DAH-8852">
 
-        <label><strong>Category:</strong></label>
+        <label><strong>Category / Type: *</strong></label>
         <select id="new-unit-type" class="w-prop-input" style="height:32px">
-          <option value="harvester">Harvester (Sugarcane Combine)</option>
-          <option value="infielder">Infielder / Cane Loader</option>
-          <option value="tractor">Tractor (Estate Agriculture)</option>
-          <option value="vehicle">Vehicle (Bolero 4x4 / Crew Cab)</option>
-          <option value="truck">Heavy Truck (10-Wheeler Sugar Hauler)</option>
-          <option value="excavator">Excavator / Backhoe</option>
-          <option value="staff">Staff / Service Bicycle</option>
+          <optgroup label="👨‍💼 Personnel & Field Staff">
+            <option value="field_staff">👨‍🌾 Field Staff / Officer</option>
+            <option value="supervisor">👷‍♂️ Field Supervisor</option>
+            <option value="manager">👔 Division / Estate Manager</option>
+            <option value="security">🛡️ Field Security / Watcher</option>
+            <option value="staff">📱 WiaTag Mobile Staff</option>
+          </optgroup>
+          <optgroup label="🚜 Agricultural Machinery">
+            <option value="tractor" selected>🚜 Agricultural Tractor</option>
+            <option value="harvester">🌾 Sugarcane Harvester</option>
+            <option value="infielder">🚛 Infield Transporter</option>
+            <option value="excavator">🏗️ Backhoe / Excavator</option>
+          </optgroup>
+          <optgroup label="🚚 Fleet Vehicles & Transport">
+            <option value="truck">🚚 Cane Transport Lorry</option>
+            <option value="vehicle">🚙 Bolero 4x4 / Inspection</option>
+            <option value="motorcycle">🏍️ Field Motorcycle</option>
+          </optgroup>
         </select>
 
         <label><strong>Device Model:</strong></label>
@@ -568,12 +579,25 @@ layout_start('Monitoring', 'index.php', true);
 
           <label>Unit type:</label>
           <select class="w-prop-input" id="prop-unit-type" style="height:30px">
-            <option value="tractor">Tractor (Estate Agriculture)</option>
-            <option value="harvester">Harvester (Sugarcane Combine)</option>
-            <option value="infielder">Infielder / Cane Loader</option>
-            <option value="vehicle">Vehicle / Bolero 4x4 / Heavy Truck</option>
-            <option value="excavator">Excavator / Backhoe</option>
-            <option value="staff">Staff Officer (Field Tracking)</option>
+            <optgroup label="👨‍💼 Personnel & Field Staff">
+              <option value="field_staff">👨‍🌾 Field Staff / Officer</option>
+              <option value="supervisor">👷‍♂️ Field Supervisor</option>
+              <option value="manager">👔 Division / Estate Manager</option>
+              <option value="security">🛡️ Field Security / Watcher</option>
+              <option value="staff">📱 WiaTag Mobile App / Staff</option>
+            </optgroup>
+            <optgroup label="🚜 Agricultural Machinery">
+              <option value="tractor">🚜 Tractor (Estate Agriculture)</option>
+              <option value="harvester">🌾 Harvester (Sugarcane Combine)</option>
+              <option value="infielder">🚛 Infielder / Cane Loader</option>
+              <option value="excavator">🏗️ Excavator / Backhoe</option>
+            </optgroup>
+            <optgroup label="🚚 Fleet Vehicles & Transport">
+              <option value="truck">🚚 Cane Transport Lorry</option>
+              <option value="vehicle">🚙 Vehicle / Bolero 4x4 / Heavy Truck</option>
+              <option value="motorcycle">🏍️ Field Motorcycle / Trail Bike</option>
+              <option value="bicycle">🚲 Service Bicycle</option>
+            </optgroup>
           </select>
 
           <label class="required">Device type:</label>
@@ -998,12 +1022,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Icons mapping for unit types
   const typeIcons = {
+    field_staff: '👨‍🌾',
+    supervisor: '👷‍♂️',
+    manager: '👔',
+    security: '🛡️',
+    staff: '👨‍🌾',
     tractor: '🚜',
     harvester: '🌾',
-    infielder: '🚜',
-    vehicle: '🚚',
+    infielder: '🚛',
+    vehicle: '🚙',
+    bolero: '🚙',
+    truck: '🚚',
+    lorry: '🚚',
     excavator: '🏗️',
-    staff: '👤'
+    motorcycle: '🏍️',
+    bike: '🏍️',
+    bicycle: '🚲',
+    phone: '📱'
   };
 
   function toDMM(lat, lng) {
@@ -1296,6 +1331,33 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="17" cy="14" r="8" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
       <path d="M6 36C6 26 11 22 17 22C23 22 28 26 28 36" fill="#2563eb" stroke="#1d4ed8" stroke-width="2"/>
       <polygon points="17,1 21,8 13,8" fill="#00e676" stroke="#15803d" stroke-width="1"/>
+    </svg>`,
+    field_staff: `<svg width="26" height="34" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="17" cy="14" r="8" fill="#10b981" stroke="#047857" stroke-width="2"/>
+      <path d="M6 36C6 26 11 22 17 22C23 22 28 26 28 36" fill="#059669" stroke="#047857" stroke-width="2"/>
+      <polygon points="17,1 21,8 13,8" fill="#00e676" stroke="#15803d" stroke-width="1"/>
+    </svg>`,
+    supervisor: `<svg width="26" height="34" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="17" cy="14" r="8" fill="#eab308" stroke="#a16207" stroke-width="2"/>
+      <path d="M6 36C6 26 11 22 17 22C23 22 28 26 28 36" fill="#ca8a04" stroke="#854d0e" stroke-width="2"/>
+      <polygon points="17,1 21,8 13,8" fill="#00e676" stroke="#15803d" stroke-width="1"/>
+    </svg>`,
+    manager: `<svg width="26" height="34" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="17" cy="14" r="8" fill="#8b5cf6" stroke="#6d28d9" stroke-width="2"/>
+      <path d="M6 36C6 26 11 22 17 22C23 22 28 26 28 36" fill="#7c3aed" stroke="#5b21b6" stroke-width="2"/>
+      <polygon points="17,1 21,8 13,8" fill="#00e676" stroke="#15803d" stroke-width="1"/>
+    </svg>`,
+    security: `<svg width="26" height="34" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="17" cy="14" r="8" fill="#ef4444" stroke="#b91c1c" stroke-width="2"/>
+      <path d="M6 36C6 26 11 22 17 22C23 22 28 26 28 36" fill="#dc2626" stroke="#991b1b" stroke-width="2"/>
+      <polygon points="17,1 21,8 13,8" fill="#00e676" stroke="#15803d" stroke-width="1"/>
+    </svg>`,
+    motorcycle: `<svg width="22" height="38" viewBox="0 0 28 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="11" y="2" width="6" height="12" rx="2" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+      <rect x="11" y="28" width="6" height="14" rx="2" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+      <rect x="4" y="10" width="20" height="3" rx="1.5" fill="#64748b"/>
+      <rect x="10" y="14" width="8" height="14" rx="2" fill="#dc2626" stroke="#991b1b" stroke-width="1"/>
+      <circle cx="14" cy="20" r="3.5" fill="#f8fafc" stroke="#1e293b" stroke-width="1"/>
     </svg>`
   };
 
@@ -1403,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Vehicle Icon (Turns towards the direction it is traveling!)
       // "wihical1 symbel1 yana paththata harunoth lassanai"
-      const vSvg = VEHICLE_SVGS[u.unit_type] || VEHICLE_SVGS.tractor;
+      const vSvg = VEHICLE_SVGS[u.unit_type] || (['field_staff','supervisor','manager','security','staff','phone'].includes(u.unit_type) ? VEHICLE_SVGS.staff : VEHICLE_SVGS.tractor);
       const vehicleRotation = Math.round(heading);
 
       // Unit Name Label: shown ONLY if unit_name is true

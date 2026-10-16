@@ -53,7 +53,7 @@ foreach ($filesToUpdate as $localRel => $repoRel) {
 }
 
 // 2. Run Database Migrations
-$pdo = get_db();
+$pdo = db();
 
 // Field Photos Table
 try {

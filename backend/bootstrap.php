@@ -162,3 +162,20 @@ function insert_field_photo(int $userId, string $filePath, ?float $lat, ?float $
     }
 }
 
+// Ensure field_photos table exists globally
+try {
+    q("CREATE TABLE IF NOT EXISTS field_photos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        file_path VARCHAR(255) NOT NULL,
+        lat DECIMAL(10,7) NULL,
+        lng DECIMAL(10,7) NULL,
+        note TEXT NULL,
+        geofence_name VARCHAR(128) NULL,
+        taken_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX(user_id),
+        INDEX(taken_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Throwable $e) {}
+

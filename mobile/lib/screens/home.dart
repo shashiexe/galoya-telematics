@@ -310,7 +310,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _snapPhoto(ImageSource source) async {
     try {
       final picker = ImagePicker();
-      final photo = await picker.pickImage(source: source, imageQuality: 80);
+      final photo = await picker.pickImage(
+        source: source,
+        imageQuality: 75,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
       if (photo == null) return;
 
       // Ensure GPS position

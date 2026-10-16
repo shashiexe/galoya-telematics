@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'db.dart';
 import 'sync.dart';
+import 'vault.dart';
 
 const _channelId = 'stafftrack_tracking';
 
@@ -143,6 +144,7 @@ void _serviceMain(ServiceInstance service) async {
     service.stopSelf();
   });
 
+  await AuthVault.restoreIfMissing();
   final sp = await SharedPreferences.getInstance();
   await sp.reload();
   if (sp.getBool('tracking') != true) {

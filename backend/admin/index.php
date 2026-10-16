@@ -1057,6 +1057,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let initializedUnitSelection = false;
   let hoverCardTimeout = null;
   let currentHoverUnit = null;
+  let currentSelectedUnitId = null;
 
   // Render Unit list in left panel
   function renderUnitsTable() {
@@ -1154,10 +1155,10 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Group by Category
       const groups = {
-        '🌾 Sugarcane Harvesters': filtered.filter(u => u.unit_type === 'harvester' || u.name.includes('Harvester')),
-        '🚜 Infielders & Tractors': filtered.filter(u => u.unit_type === 'infielder' || u.unit_type === 'tractor' || u.name.includes('Infielder')),
-        '🚚 Commercial & Bowsers': filtered.filter(u => u.unit_type === 'truck' || u.name.includes('Bowser') || u.code.startsWith('49-')),
-        '🚙 Utility, Boleros & Staff': filtered.filter(u => u.unit_type === 'vehicle' || u.unit_type === 'staff' || u.name.includes('Bolero') || u.name.includes('Cab') || u.name.includes('Bicycle'))
+        '🌾 Sugarcane Harvesters': filtered.filter(u => u.unit_type === 'harvester' || (u.name && u.name.includes('Harvester'))),
+        '🚜 Infielders & Tractors': filtered.filter(u => u.unit_type === 'infielder' || u.unit_type === 'tractor' || (u.name && u.name.includes('Infielder'))),
+        '🚚 Commercial & Bowsers': filtered.filter(u => u.unit_type === 'truck' || (u.name && u.name.includes('Bowser')) || (u.code && u.code.startsWith('49-'))),
+        '🚙 Utility, Boleros & Staff': filtered.filter(u => u.unit_type === 'vehicle' || u.unit_type === 'staff' || (u.name && (u.name.includes('Bolero') || u.name.includes('Cab') || u.name.includes('Bicycle'))))
       };
 
       let html = '';
@@ -1216,7 +1217,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const VEHICLE_SVGS = {
   const VEHICLE_SVGS = {
     tractor: `<svg width="34" height="40" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">
       <!-- Front Axle & Front Tires -->

@@ -256,12 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await Tracker.start();
       setState(() => _tracking = true);
     } else {
-      // Require supervisor PIN to stop tracking
-      final authorized = await _requestAdminPassword('pause or stop live tracking');
-      if (!authorized) {
-        setState(() => _tracking = true);
-        return;
-      }
+      // User can freely pause/stop tracking without a password
       await Tracker.stop();
       try {
         await Api.post('set_offline', {});

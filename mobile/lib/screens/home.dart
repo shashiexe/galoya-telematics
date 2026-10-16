@@ -65,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _locationTimer;
   Timer? _syncTimer;
   List<Map<String, dynamic>> _tasks = [];
+  final List<Map<String, dynamic>> _capturedPhotos = [];
 
   // Default Galoya Plantation / Damana center
   static const LatLng _defaultCenter = LatLng(7.2050, 81.6580);
@@ -399,11 +400,82 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       Sync.run();
 
+      final photoItem = {
+        'client_id': cid,
+        'lat': lat,
+        'lng': lng,
+        'note': note,
+        'file': photo.path,
+        'time': DateTime.now(),
+      };
+      setState(() {
+        _capturedPhotos.insert(0, photoItem);
+      });
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xff16a34a),
-            content: Text('Field photo captured ($lat, $lng) & uploaded!'),
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xff1e293b),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Color(0xff22c55e), size: 24),
+                SizedBox(width: 8),
+                Text('Photo Uploaded!', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(
+                    File(photo.path),
+                    height: 160,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f172a),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('📍 GPS: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+                          style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      const SizedBox(height: 4),
+                      const Text('☁️ Status: Synced to Galoya Server',
+                          style: TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.bold)),
+                      if (note.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text('📝 Note: $note', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _mapController.move(LatLng(lat, lng), 16.5);
+                },
+                child: const Text('View on Map', style: TextStyle(color: Color(0xff38bdf8))),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff16a34a)),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Done', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
         );
       }
@@ -412,6 +484,154 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error capturing photo: $e')));
       }
     }
+  }
+
+  void _viewPhotoDetail(Map<String, dynamic> item) {
+    final f = File(item['file'] as String);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xff1e293b),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                item['note']?.toString().isNotEmpty == true ? item['note'] : 'Field Photo',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: f.existsSync()
+                  ? Image.file(f, height: 180, width: double.infinity, fit: BoxFit.cover)
+                  : const SizedBox(height: 100, child: Center(child: Icon(Icons.broken_image, color: Colors.white38, size: 40))),
+            ),
+            const SizedBox(height: 12),
+            Text('📍 GPS: ${(item['lat'] as double).toStringAsFixed(5)}, ${(item['lng'] as double).toStringAsFixed(5)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 4),
+            Text('🕒 Time: ${(item['time'] as DateTime).toString().substring(0, 19)}',
+                style: const TextStyle(color: Colors.white60, fontSize: 11)),
+            const SizedBox(height: 4),
+            const Text('☁️ Status: Saved & Uploaded to Server',
+                style: TextStyle(color: Color(0xff22c55e), fontSize: 11, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGalleryModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xff0f172a),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Field Photos Gallery',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.add_photo_alternate, color: Color(0xff38bdf8)),
+                        tooltip: 'Upload from phone gallery',
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _snapPhoto(ImageSource.gallery);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_capturedPhotos.isEmpty)
+                const Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.photo_library_outlined, size: 48, color: Colors.white24),
+                        SizedBox(height: 12),
+                        Text('No photos captured yet today', style: TextStyle(color: Colors.white54)),
+                        SizedBox(height: 4),
+                        Text('Tap camera button to snap and tag field photos',
+                            style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _capturedPhotos.length,
+                    itemBuilder: (ctx, idx) {
+                      final item = _capturedPhotos[idx];
+                      final f = File(item['file'] as String);
+                      final dt = item['time'] as DateTime;
+                      return Card(
+                        color: const Color(0xff1e293b),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: f.existsSync()
+                                ? Image.file(f, width: 50, height: 50, fit: BoxFit.cover)
+                                : const Icon(Icons.image, color: Colors.white54),
+                          ),
+                          title: Text(
+                            item['note']?.toString().isNotEmpty == true ? item['note'] : 'Field Photo',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          subtitle: Text(
+                            '📍 ${(item['lat'] as double).toStringAsFixed(4)}, ${(item['lng'] as double).toStringAsFixed(4)}\n🕒 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+                            style: const TextStyle(color: Colors.white60, fontSize: 11),
+                          ),
+                          trailing: const Icon(Icons.check_circle, color: Color(0xff22c55e), size: 20),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _viewPhotoDetail(item);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // --- Tasks Bottom Sheet ---
@@ -528,6 +748,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
+                      ..._capturedPhotos.map((p) {
+                        return Marker(
+                          point: LatLng(p['lat'] as double, p['lng'] as double),
+                          width: 38,
+                          height: 38,
+                          child: GestureDetector(
+                            onTap: () => _viewPhotoDetail(p),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xff0284c7),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2)),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     ],
                   ),
                 ],
@@ -730,7 +973,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildWiaActionBtn(
                     color: const Color(0xfff97316), // Orange
                     icon: Icons.image,
-                    onTap: () => _snapPhoto(ImageSource.gallery),
+                    onTap: _showGalleryModal,
                   ),
                   _buildWiaActionBtn(
                     color: const Color(0xff475569), // Slate

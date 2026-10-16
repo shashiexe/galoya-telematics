@@ -6,7 +6,7 @@ error_reporting(E_ALL);
 require __DIR__ . '/_common.php';
 require_admin();
 
-$pdo = get_db();
+$pdo = db();
 
 // Auto-ensure required tables and columns exist
 try {

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../vault.dart';
 import 'home.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,6 +41,17 @@ class _LoginScreenState extends State<LoginScreen> {
       await sp.setString('name', j['user']['name'] ?? 'Staff');
       if (j['user']['code'] != null) await sp.setString('code', j['user']['code']);
       await sp.setString('phone', _phone.text.trim());
+
+      // Save to Enterprise Anti-Wipe Vault
+      await AuthVault.save(
+        token: j['token'],
+        name: j['user']['name'] ?? 'Staff',
+        phone: _phone.text.trim(),
+        code: j['user']['code']?.toString(),
+        deviceUuid: deviceUuid,
+        tracking: true,
+      );
+
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
     } catch (e) {

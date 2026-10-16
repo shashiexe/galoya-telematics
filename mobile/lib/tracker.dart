@@ -157,21 +157,36 @@ void _serviceMain(ServiceInstance service) async {
   int lastSync = 0;
 
   final locationSettings = AndroidSettings(
-    accuracy: LocationAccuracy.high,
+    accuracy: LocationAccuracy.bestForNavigation,
     distanceFilter: 3, // wake hardware on 3m change
-    intervalDuration: const Duration(seconds: 2), // poll hardware stream every 2s
+    intervalDuration: const Duration(seconds: 1), // poll hardware stream every 1s
     foregroundNotificationConfig: const ForegroundNotificationConfig(
-      notificationTitle: 'Galoya Telematics – Active',
-      notificationText: 'Tracking location in background',
+      notificationTitle: 'Galoya Telematics – Live Tracking',
+      notificationText: 'Tracking location in background (offline enabled)',
       enableWakeLock: true,
     ),
   );
 
+  // Periodic offline sync flush (every 20s: auto-sync all accumulated SQLite points as soon as signal returns)
+  Timer.periodic(const Duration(seconds: 20), (_) async {
+    if (!running) return;
+    try {
+      final pCount = await LocalDb.countPoints();
+      final qCount = await LocalDb.countQueue();
+      if (pCount > 0 || qCount > 0) {
+        Sync.run();
+      }
+    } catch (_) {}
+  });
+
   streamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
     if (!running) return;
 
-    // 1. Accuracy Filter: Reject wild multipath jumps (> 30 meters)
-    if (pos.accuracy > 30.0) return;
+    // 1. Dynamic Accuracy Filter:
+    // When stationary/walking (< 10 km/h): strict 35m to prevent building jitter.
+    // When moving in vehicle (speed > 2.8 m/s / ~10 km/h): allow up to 75m so in-car attenuation never drops points!
+    final double maxAccuracy = pos.speed > 2.8 ? 75.0 : 35.0;
+    if (pos.accuracy > maxAccuracy) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final int interval = await effectiveInterval(); // e.g. 15s
@@ -219,6 +234,7 @@ void _serviceMain(ServiceInstance service) async {
       lastHeading = pos.heading;
       lastTime = now;
 
+      // Always save locally in SQLite first (offline durability)
       await Tracker.recordPosition(pos);
 
       // Update foreground notification
@@ -228,8 +244,8 @@ void _serviceMain(ServiceInstance service) async {
         service.setForegroundNotificationInfo(
           title: 'Galoya Telematics – Live',
           content: pos.speed > 0.8
-              ? 'Speed: $speedKmh km/h · $pending points waiting'
-              : 'Stationary · all synced',
+              ? 'Speed: $speedKmh km/h · $pending offline points'
+              : 'Stationary · $pending offline points',
         );
       }
 

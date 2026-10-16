@@ -4,6 +4,25 @@ require_admin();
 
 $pdo = get_db();
 
+// Auto-ensure required tables and columns exist
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `geofence_groups` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `category` VARCHAR(50) NOT NULL DEFAULT 'Plantation',
+      `name` VARCHAR(120) NOT NULL,
+      `code` VARCHAR(50) NULL,
+      `color` VARCHAR(20) NOT NULL DEFAULT '#10b981',
+      `description` VARCHAR(255) NULL,
+      `active` TINYINT(1) NOT NULL DEFAULT 1,
+      `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY `uniq_cat_name` (`category`, `name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    
+    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `category` VARCHAR(50) NOT NULL DEFAULT 'Plantation' AFTER `id`");
+    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `group_name` VARCHAR(120) NULL AFTER `category`");
+    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `block_name` VARCHAR(100) NULL AFTER `group_name`");
+} catch (Throwable $e) {}
+
 // Handle AJAX: Fetch geofence coordinates for a specific group or all active
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'group_coords') {
     header('Content-Type: application/json; charset=utf-8');
@@ -256,20 +275,24 @@ if (isset($_GET['delete'])) {
 }
 
 // Fetch all Groups with count of geofences
-$groupsData = q("
-    SELECT gg.*, COUNT(g.id) AS sector_count 
-    FROM geofence_groups gg
-    LEFT JOIN geofences g ON g.group_name = gg.name AND g.active = 1
-    WHERE gg.active = 1
-    GROUP BY gg.id
-    ORDER BY 
-      CASE gg.category 
-        WHEN 'Plantation' THEN 1 
-        WHEN 'Outgrower' THEN 2 
-        ELSE 3 
-      END, 
-      gg.name ASC
-")->fetchAll();
+try {
+    $groupsData = q("
+        SELECT gg.*, COUNT(g.id) AS sector_count 
+        FROM geofence_groups gg
+        LEFT JOIN geofences g ON g.group_name = gg.name AND g.active = 1
+        WHERE gg.active = 1
+        GROUP BY gg.id
+        ORDER BY 
+          CASE gg.category 
+            WHEN 'Plantation' THEN 1 
+            WHEN 'Outgrower' THEN 2 
+            ELSE 3 
+          END, 
+          gg.name ASC
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $groupsData = [];
+}
 
 // If groups table was empty, fallback or group from geofences
 if (empty($groupsData)) {

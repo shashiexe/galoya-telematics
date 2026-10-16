@@ -23,11 +23,19 @@ function get_auth_user(): ?array {
     if (!$hdr && function_exists('getallheaders')) {
         foreach (getallheaders() as $k => $v) if (strtolower($k) === 'authorization') $hdr = $v;
     }
-    if (!preg_match('/Bearer\s+(\S+)/', $hdr, $m)) return null;
+    $token = '';
+    if (preg_match('/Bearer\s+(\S+)/', $hdr, $m)) {
+        $token = $m[1];
+    } elseif (!empty($_REQUEST['token'])) {
+        $token = trim($_REQUEST['token']);
+    } elseif (!empty($_POST['token'])) {
+        $token = trim($_POST['token']);
+    }
+    if (!$token) return null;
     $u = q('SELECT u.* FROM api_tokens t JOIN users u ON u.id=t.user_id
-            WHERE t.token_hash=? AND u.active=1', [hash('sha256', $m[1])])->fetch();
+            WHERE t.token_hash=? AND u.active=1', [hash('sha256', $token)])->fetch();
     if (!$u) return null;
-    q('UPDATE api_tokens SET last_used=NOW() WHERE token_hash=?', [hash('sha256', $m[1])]);
+    q('UPDATE api_tokens SET last_used=NOW() WHERE token_hash=?', [hash('sha256', $token)]);
     return $u;
 }
 
@@ -235,11 +243,15 @@ try {
         global $CONFIG;
         $u = auth_user();
         $f = $_FILES['photo'] ?? null;
-        if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed');
+        if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed (code ' . ($f['error'] ?? 'none') . ')');
         if ($f['size'] > $CONFIG['max_photo_mb'] * 1048576) fail('Photo too large');
+        $validTypes = [IMAGETYPE_JPEG, IMAGETYPE_PNG];
+        if (defined('IMAGETYPE_WEBP')) $validTypes[] = IMAGETYPE_WEBP;
         $info = @getimagesize($f['tmp_name']);
-        if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) fail('Invalid image');
-        $ext = $info[2] === IMAGETYPE_PNG ? 'png' : 'jpg';
+        if (!$info || !in_array($info[2], $validTypes, true)) fail('Invalid image');
+        $ext = 'jpg';
+        if ($info[2] === IMAGETYPE_PNG) $ext = 'png';
+        elseif (defined('IMAGETYPE_WEBP') && $info[2] === IMAGETYPE_WEBP) $ext = 'webp';
 
         $sub = date('Y/m');
         $dir = $CONFIG['upload_dir'] . '/' . $sub;
@@ -302,9 +314,13 @@ try {
         $f = $_FILES['photo'] ?? null;
         if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed');
         if ($f['size'] > $CONFIG['max_photo_mb'] * 1048576) fail('Photo too large');
+        $validTypes = [IMAGETYPE_JPEG, IMAGETYPE_PNG];
+        if (defined('IMAGETYPE_WEBP')) $validTypes[] = IMAGETYPE_WEBP;
         $info = @getimagesize($f['tmp_name']);
-        if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) fail('Invalid image');
-        $ext = $info[2] === IMAGETYPE_PNG ? 'png' : 'jpg';
+        if (!$info || !in_array($info[2], $validTypes, true)) fail('Invalid image');
+        $ext = 'jpg';
+        if ($info[2] === IMAGETYPE_PNG) $ext = 'png';
+        elseif (defined('IMAGETYPE_WEBP') && $info[2] === IMAGETYPE_WEBP) $ext = 'webp';
 
         $sub = date('Y/m');
         $dir = $CONFIG['upload_dir'] . '/' . $sub;

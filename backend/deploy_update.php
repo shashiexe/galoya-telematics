@@ -118,6 +118,12 @@ try {
     @$pdo->exec("ALTER TABLE `geofences` ADD INDEX `idx_category` (`category`)");
 } catch (Throwable $e) {}
 
+// Ensure users.unit_type supports all roles (field_staff, supervisor, manager, etc.)
+try {
+    $pdo->exec("ALTER TABLE `users` MODIFY `unit_type` VARCHAR(50) NOT NULL DEFAULT 'staff'");
+    $results[] = ["✅ Ensured `users.unit_type` supports all roles (VARCHAR 50)", "color:#10b981"];
+} catch (Throwable $e) {}
+
 // Speed Calculation Correction (Convert old m/s to km/h)
 try {
     $speedFixCount = $pdo->exec("UPDATE locations SET speed = ROUND(speed * 3.6, 1) WHERE speed > 0 AND speed < 30");

@@ -51,9 +51,28 @@ android {
         multiDexEnabled true
     }
 
+    signingConfigs {
+        release {
+            def keystorePropertiesFile = rootProject.file('key.properties')
+            if (keystorePropertiesFile.exists()) {
+                def keyProperties = new Properties()
+                keyProperties.load(new FileInputStream(keystorePropertiesFile))
+                storeFile = file(keyProperties['storeFile'])
+                storePassword = keyProperties['storePassword']
+                keyAlias = keyProperties['keyAlias']
+                keyPassword = keyProperties['keyPassword']
+            } else {
+                storeFile = signingConfigs.debug.storeFile
+                storePassword = signingConfigs.debug.storePassword
+                keyAlias = signingConfigs.debug.keyAlias
+                keyPassword = signingConfigs.debug.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
         }

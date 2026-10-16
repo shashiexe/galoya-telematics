@@ -11,7 +11,7 @@ if (isset($_GET['feed'])) {
     $units = q("SELECT id, name, code, phone, role, unit_type, device_type, unique_id, sensors_json, properties_json, on_duty, active,
                        last_lat lat, last_lng lng, last_battery battery, speed, ignition, motion_state, sos_active, last_seen,
                        TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago,
-                       (SELECT name FROM drivers WHERE unit_id=users.id LIMIT 1) driver_name,
+                       (SELECT name FROM drivers WHERE assigned_unit_id=users.id LIMIT 1) driver_name,
                        (SELECT COUNT(*) FROM tasks WHERE assigned_to=users.id AND status='in_progress') active_tasks
                 FROM users WHERE role='staff' AND active=1 
                 ORDER BY sos_active DESC, (motion_state='moving') DESC, on_duty DESC, name ASC")->fetchAll();

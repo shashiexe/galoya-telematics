@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,8 +22,20 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     setState(() { _busy = true; _err = null; });
     try {
-      final j = await Api.post('login', {'phone': _phone.text.trim(), 'password': _pass.text}, auth: false);
       final sp = await SharedPreferences.getInstance();
+      String? deviceUuid = sp.getString('app_device_uuid');
+      if (deviceUuid == null) {
+        deviceUuid = '8661920' + DateTime.now().millisecondsSinceEpoch.toString().substring(5);
+        await sp.setString('app_device_uuid', deviceUuid);
+      }
+
+      final j = await Api.post('login', {
+        'phone': _phone.text.trim(),
+        'password': _pass.text,
+        'device_model': 'Android Phone (${Platform.operatingSystem})',
+        'unique_id': deviceUuid,
+      }, auth: false);
+
       await sp.setString('token', j['token']);
       await sp.setString('name', j['user']['name'] ?? 'Staff');
       if (j['user']['code'] != null) await sp.setString('code', j['user']['code']);

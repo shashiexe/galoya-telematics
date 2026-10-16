@@ -20,7 +20,7 @@ $filesToUpdate = [
     'admin/download_photo.php' => 'backend/admin/download_photo.php',
     'admin/index.php' => 'backend/admin/index.php',
     'admin/_common.php' => 'backend/admin/_common.php',
-    'migrate_geofence_photos.php' => 'backend/migrate_geofence_photos.php',
+    'deploy_update.php' => 'backend/deploy_update.php',
 ];
 
 $githubBase = 'https://raw.githubusercontent.com/shashiexe/galoya-telematics/main/';

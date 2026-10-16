@@ -66,23 +66,23 @@ a:hover { text-decoration: underline; }
 .w-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   letter-spacing: 0.5px;
   color: #fff;
-  min-width: 220px;
+  min-width: 175px;
 }
 .w-brand .globe-icon {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #42a5f5, #0d47a1);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 0 10px rgba(66, 165, 245, 0.5);
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .w-nav {
@@ -97,11 +97,11 @@ a:hover { text-decoration: underline; }
 .w-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 14px;
+  gap: 5px;
+  padding: 0 9px;
   height: 100%;
   color: #cfd8dc;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   text-decoration: none;
   border-bottom: 3px solid transparent;

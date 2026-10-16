@@ -347,18 +347,24 @@ try {
     case 'resolve_sos': {
         $id = (int)($_GET['id'] ?? ($_POST['id'] ?? 0));
         $uid = (int)($_GET['user_id'] ?? ($_POST['user_id'] ?? 0));
+        $clearAll = !empty($_GET['all']) || !empty($_POST['all']);
+
+        if ($clearAll) {
+            q("UPDATE sos_alerts SET status='resolved' WHERE status='active'");
+            q("UPDATE users SET sos_active=0");
+            out(['ok' => true, 'cleared_all' => true]);
+        }
+
         if ($id > 0) {
             $alert = q('SELECT * FROM sos_alerts WHERE id=?', [$id])->fetch();
-            if ($alert) {
-                q("UPDATE sos_alerts SET status='resolved' WHERE id=?", [$id]);
+            if ($alert && !$uid) {
                 $uid = (int)$alert['user_id'];
             }
+            q("UPDATE sos_alerts SET status='resolved' WHERE id=?", [$id]);
         }
         if ($uid > 0) {
-            $rem = (int)q("SELECT COUNT(*) FROM sos_alerts WHERE user_id=? AND status='active'", [$uid])->fetchColumn();
-            if ($rem === 0) {
-                q("UPDATE users SET sos_active=0 WHERE id=?", [$uid]);
-            }
+            q("UPDATE sos_alerts SET status='resolved' WHERE user_id=? AND status='active'", [$uid]);
+            q("UPDATE users SET sos_active=0 WHERE id=?", [$uid]);
         }
         out(['ok' => true]);
     }

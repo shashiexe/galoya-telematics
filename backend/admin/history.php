@@ -459,6 +459,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (colorMode === 'speed') lineColor = '#2e7d32';
     else if (colorMode === 'trips') lineColor = '#7b1fa2';
 
+    const polyline = L.polyline(latlngs, {
+      color: lineColor,
+      weight: thickness || 3,
+      opacity: 0.9,
+      lineJoin: 'round'
+    }).addTo(map);
+
     // Compute bounds including both track and all photos
     let allBounds = latlngs.length > 0 ? polyline.getBounds() : null;
     trackPhotos.forEach(p => {

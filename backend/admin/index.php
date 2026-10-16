@@ -1217,53 +1217,92 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const VEHICLE_SVGS = {
-    tractor: `<svg width="36" height="28" viewBox="0 0 48 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M14 12H24V24H14V12Z" fill="#dc2626"/>
-      <path d="M24 16H38L42 22V26H24V16Z" fill="#b91c1c"/>
-      <path d="M16 8H22L24 12H14L16 8Z" fill="#ef4444"/>
-      <rect x="34" y="6" width="3" height="10" fill="#334155" rx="1"/>
-      <path d="M16 13H22V19H16V13Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
-      <circle cx="14" cy="25" r="9" fill="#1e293b" stroke="#64748b" stroke-width="2.5"/>
-      <circle cx="14" cy="25" r="4.5" fill="#f8fafc" stroke="#dc2626" stroke-width="2"/>
-      <circle cx="38" cy="27" r="6" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-      <circle cx="38" cy="27" r="3" fill="#f8fafc" stroke="#dc2626" stroke-width="1.5"/>
+  const VEHICLE_SVGS = {
+    tractor: `<svg width="34" height="40" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Front Axle & Front Tires -->
+      <rect x="6" y="8" width="6" height="12" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="28" y="8" width="6" height="12" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="11" y="13" width="18" height="3" fill="#64748b"/>
+      <!-- Huge Knobby Rear Tires -->
+      <rect x="3" y="24" width="8" height="20" rx="3" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+      <line x1="3" y1="28" x2="11" y2="28" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="3" y1="34" x2="11" y2="34" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="3" y1="40" x2="11" y2="40" stroke="#94a3b8" stroke-width="1.5"/>
+      <rect x="29" y="24" width="8" height="20" rx="3" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+      <line x1="29" y1="28" x2="37" y2="28" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="29" y1="34" x2="37" y2="34" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="29" y1="40" x2="37" y2="40" stroke="#94a3b8" stroke-width="1.5"/>
+      <!-- Engine Hood (Front) -->
+      <path d="M14 6C14 4 16 3 20 3C24 3 26 4 26 6V22H14V6Z" fill="#dc2626" stroke="#991b1b" stroke-width="1.5"/>
+      <rect x="17" y="5" width="6" height="4" rx="1" fill="#f87171"/>
+      <circle cx="24" cy="14" r="2" fill="#334155" stroke="#0f172a" stroke-width="1"/>
+      <!-- Cabin Roof (Center) -->
+      <rect x="12" y="20" width="16" height="18" rx="3" fill="#ef4444" stroke="#b91c1c" stroke-width="1.5"/>
+      <path d="M14 22H26L25 26H15L14 22Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
+      <rect x="15" y="28" width="10" height="8" rx="1" fill="#fca5a5"/>
+      <!-- Rear Hitch -->
+      <rect x="18" y="42" width="4" height="4" fill="#334155"/>
     </svg>`,
-    harvester: `<svg width="38" height="28" viewBox="0 0 50 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="12" y="10" width="24" height="15" rx="2" fill="#16a34a"/>
-      <path d="M36 14H46L48 24H36V14Z" fill="#15803d"/>
-      <circle cx="43" cy="22" r="5" fill="#eab308" stroke="#ca8a04" stroke-width="1.5"/>
-      <circle cx="16" cy="26" r="7" fill="#1e293b" stroke="#475569" stroke-width="2"/>
-      <circle cx="32" cy="27" r="5" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+    harvester: `<svg width="36" height="40" viewBox="0 0 46 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Front Cutter Bar (Header) -->
+      <rect x="4" y="2" width="38" height="6" rx="2" fill="#eab308" stroke="#ca8a04" stroke-width="1.5"/>
+      <line x1="10" y1="2" x2="10" y2="8" stroke="#a16207" stroke-width="1"/>
+      <line x1="18" y1="2" x2="18" y2="8" stroke="#a16207" stroke-width="1"/>
+      <line x1="26" y1="2" x2="26" y2="8" stroke="#a16207" stroke-width="1"/>
+      <line x1="34" y1="2" x2="34" y2="8" stroke="#a16207" stroke-width="1"/>
+      <rect x="16" y="8" width="14" height="8" fill="#15803d"/>
+      <!-- Front Drive Wheels -->
+      <rect x="5" y="14" width="7" height="18" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="34" y="14" width="7" height="18" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <!-- Cabin & Body -->
+      <rect x="12" y="14" width="22" height="30" rx="3" fill="#16a34a" stroke="#14532d" stroke-width="1.5"/>
+      <path d="M14 16H32L30 22H16L14 16Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
+      <rect x="15" y="24" width="16" height="14" rx="2" fill="#ca8a04" stroke="#a16207" stroke-width="1"/>
+      <!-- Rear Steering Wheels -->
+      <rect x="8" y="36" width="5" height="10" rx="2" fill="#1e293b"/>
+      <rect x="33" y="36" width="5" height="10" rx="2" fill="#1e293b"/>
     </svg>`,
-    infielder: `<svg width="36" height="28" viewBox="0 0 48 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M14 12H24V24H14V12Z" fill="#2563eb"/>
-      <path d="M24 16H38L42 22V26H24V16Z" fill="#1d4ed8"/>
-      <path d="M16 8H22L24 12H14L16 8Z" fill="#3b82f6"/>
-      <rect x="34" y="6" width="3" height="10" fill="#334155" rx="1"/>
-      <circle cx="14" cy="25" r="9" fill="#1e293b" stroke="#64748b" stroke-width="2.5"/>
-      <circle cx="38" cy="27" r="6" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+    infielder: `<svg width="34" height="40" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="8" width="6" height="12" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="28" y="8" width="6" height="12" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="3" y="24" width="8" height="20" rx="3" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+      <rect x="29" y="24" width="8" height="20" rx="3" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+      <path d="M14 6C14 4 16 3 20 3C24 3 26 4 26 6V22H14V6Z" fill="#2563eb" stroke="#1d4ed8" stroke-width="1.5"/>
+      <rect x="12" y="20" width="16" height="18" rx="3" fill="#3b82f6" stroke="#1d4ed8" stroke-width="1.5"/>
+      <path d="M14 22H26L25 26H15L14 22Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
     </svg>`,
-    vehicle: `<svg width="34" height="24" viewBox="0 0 44 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 14L12 8H30L36 14L40 16V22H4V16L6 14Z" fill="#0284c7"/>
-      <path d="M13 10H19V14H9L13 10Z" fill="#bae6fd"/>
-      <path d="M22 10H28L32 14H22V10Z" fill="#bae6fd"/>
-      <circle cx="12" cy="22" r="4.5" fill="#1e293b" stroke="#94a3b8" stroke-width="1.5"/>
-      <circle cx="32" cy="22" r="4.5" fill="#1e293b" stroke="#94a3b8" stroke-width="1.5"/>
+    vehicle: `<svg width="28" height="40" viewBox="0 0 36 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 8C8 4 12 2 18 2C24 2 28 4 28 8V40C28 44 24 46 18 46C12 46 8 44 8 40V8Z" fill="#2563eb" stroke="#1d4ed8" stroke-width="1.5"/>
+      <rect x="4" y="14" width="4" height="3" rx="1" fill="#334155"/>
+      <rect x="28" y="14" width="4" height="3" rx="1" fill="#334155"/>
+      <path d="M11 11H25L23 18H13L11 11Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
+      <rect x="12" y="18" width="12" height="14" rx="2" fill="#1d4ed8"/>
+      <path d="M12 32H24L25 36H11L12 32Z" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
+      <rect x="5" y="8" width="3" height="7" rx="1" fill="#1e293b"/>
+      <rect x="28" y="8" width="3" height="7" rx="1" fill="#1e293b"/>
+      <rect x="5" y="33" width="3" height="7" rx="1" fill="#1e293b"/>
+      <rect x="28" y="33" width="3" height="7" rx="1" fill="#1e293b"/>
     </svg>`,
-    excavator: `<svg width="36" height="28" viewBox="0 0 48 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="14" y="12" width="18" height="12" rx="2" fill="#f59e0b"/>
-      <path d="M28 14L38 6L44 14" stroke="#d97706" stroke-width="3" stroke-linecap="round"/>
-      <rect x="10" y="24" width="26" height="6" rx="3" fill="#1e293b" stroke="#78716c" stroke-width="1.5"/>
+    excavator: `<svg width="32" height="40" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="10" width="7" height="30" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="29" y="10" width="7" height="30" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+      <rect x="11" y="14" width="18" height="22" rx="3" fill="#f59e0b" stroke="#d97706" stroke-width="1.5"/>
+      <rect x="13" y="16" width="7" height="10" rx="1" fill="#bae6fd" stroke="#0284c7" stroke-width="0.8"/>
+      <rect x="12" y="31" width="16" height="4" fill="#b45309"/>
+      <rect x="18" y="2" width="4" height="16" rx="1" fill="#d97706" stroke="#b45309" stroke-width="1"/>
+      <circle cx="20" cy="3" r="2.5" fill="#1e293b"/>
     </svg>`,
-    staff: `<svg width="26" height="28" viewBox="0 0 32 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="16" cy="10" r="6" fill="#3b82f6"/>
-      <path d="M6 28C6 22.4772 10.4772 18 16 18C21.5228 18 26 22.4772 26 28V30H6V28Z" fill="#1d4ed8"/>
+    staff: `<svg width="26" height="34" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="17" cy="14" r="8" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+      <path d="M6 36C6 26 11 22 17 22C23 22 28 26 28 36" fill="#2563eb" stroke="#1d4ed8" stroke-width="2"/>
+      <polygon points="17,1 21,8 13,8" fill="#00e676" stroke="#15803d" stroke-width="1"/>
     </svg>`
   };
 
   const unitTrails = {};
   const unitTrailsPolylines = {};
   const clusterMarkers = {};
+  const lastHeadings = {};
 
   function calculateHeading(lat1, lon1, lat2, lon2) {
     const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -1313,7 +1352,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const lat = parseFloat(u.lat);
       const lng = parseFloat(u.lng);
       const isOnline = !!u.is_online;
-      const isMoving = isOnline && (u.motion_state === 'moving' || parseFloat(u.speed || 0) > 0);
+      const spd = parseFloat(u.speed || 0);
+      const isMoving = isOnline && (u.motion_state === 'moving' || spd > 0.5);
       const isSos = parseInt(u.sos_active || 0) === 1;
 
       // Calculate Heading from trail or movement
@@ -1323,6 +1363,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const p1 = tr[tr.length - 2];
         const p2 = tr[tr.length - 1];
         heading = calculateHeading(p1[0], p1[1], p2[0], p2[1]);
+      }
+      if (heading !== 0) {
+        lastHeadings[id] = heading;
+      } else if (lastHeadings[id] !== undefined) {
+        heading = lastHeadings[id];
       }
 
       // Live Trailing Line (Unit trace)
@@ -1345,8 +1390,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Direction Arrow: shown when unit_direction is true
-      const showDir = vis.unit_direction !== false;
+      // Direction Arrow: ONLY for moving objects in the direction of movement!
+      // "move vena object walata witharai green arrow 1 yana paththata yanna"
+      const showDir = (vis.unit_direction !== false) && isMoving;
       const arrowHtml = `
         <div class="w-unit-direction-arrow" style="${showDir ? '' : 'display:none;'}; transform: rotate(${Math.round(heading)}deg)">
           <svg width="18" height="18" viewBox="0 0 24 24" style="display:block;margin:0 auto">
@@ -1355,8 +1401,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
 
-      // Vehicle Icon
+      // Vehicle Icon (Turns towards the direction it is traveling!)
+      // "wihical1 symbel1 yana paththata harunoth lassanai"
       const vSvg = VEHICLE_SVGS[u.unit_type] || VEHICLE_SVGS.tractor;
+      const vehicleRotation = Math.round(heading);
 
       // Unit Name Label: shown ONLY if unit_name is true
       // "unit name click karoth witharai ... sahaunit name1 penna thiyenawa"
@@ -1375,7 +1423,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="w-wialon-marker-wrap" data-id="${u.id}">
           ${isSos ? '<div class="w-sos-marker-ring"></div>' : ''}
           ${arrowHtml}
-          <div class="w-vehicle-icon-box">
+          <div class="w-vehicle-icon-box" style="transform: rotate(${vehicleRotation}deg); transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);">
             ${vSvg}
           </div>
           ${nameHtml}
@@ -1386,8 +1434,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const customIcon = L.divIcon({
         className: 'w-telematics-pin',
         html: markerHtml,
-        iconSize: [110, 50],
-        iconAnchor: [55, 25]
+        iconSize: [110, 56],
+        iconAnchor: [55, 28]
       });
 
       const popupContent = `

@@ -459,13 +459,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (colorMode === 'speed') lineColor = '#2e7d32';
     else if (colorMode === 'trips') lineColor = '#7b1fa2';
 
-    const polyline = L.polyline(latlngs, {
-      color: lineColor,
-      weight: thickness,
-      opacity: 0.85
-    }).addTo(map);
-
-    map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+    // Compute bounds including both track and all photos
+    let allBounds = latlngs.length > 0 ? polyline.getBounds() : null;
+    trackPhotos.forEach(p => {
+      if (p.lat && p.lng) {
+        const pt = [parseFloat(p.lat), parseFloat(p.lng)];
+        if (!allBounds) allBounds = L.latLngBounds([pt, pt]);
+        else allBounds.extend(pt);
+      }
+    });
+    if (allBounds) {
+      map.fitBounds(allBounds, { padding: [50, 50] });
+    }
 
     // Snap to Road (OSRM Map Matching) for smooth road-following tracks
     async function applySnapToRoads() {
@@ -753,7 +758,46 @@ document.addEventListener('DOMContentLoaded', () => {
         spBtn.classList.add('active');
         playSpeed = parseFloat(spBtn.dataset.speed || 1);
       });
+  }
+
+  // If no track points but photos exist, render photos and fit bounds
+  if (rawPts.length === 0 && trackPhotos.length > 0) {
+    let pBounds = null;
+    trackPhotos.forEach(p => {
+      if (!p.lat || !p.lng) return;
+      const photoUrl = `../<?= $CONFIG['upload_url'] ?>/${p.file_path}`;
+      const pIcon = L.divIcon({
+        className: 'w-photo-marker-icon',
+        html: `<div class="w-photo-pin" title="Click to view photo taken at this location">📷</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      const popupContent = `
+        <div style="width:230px;font-family:sans-serif">
+          <div style="font-weight:700;font-size:12px;color:#0f172a;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+            <span>📷 ${p.type === 'field' ? 'Field Snap' : 'Task Photo'}</span>
+            <span style="font-size:10px;color:#64748b">${p.taken_at.substr(11, 5)}</span>
+          </div>
+          <div style="width:100%;height:140px;background:#0f172a;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer" onclick="window.open('${photoUrl}', '_blank')">
+            <img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Photo" loading="lazy">
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:4px">🕒 <strong>${p.taken_at}</strong></div>
+          ${p.geofence_name ? `<div style="font-size:11px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;padding:3px 6px;border-radius:4px;margin-bottom:6px;font-weight:700">⬡ ${p.geofence_name}</div>` : ''}
+          ${p.note ? `<div style="font-size:11px;color:#334155;background:#f8fafc;border-left:3px solid #0284c7;padding:4px 6px;border-radius:3px;margin-bottom:6px">${p.note}</div>` : ''}
+          <div style="font-size:10.5px;color:#94a3b8;margin-bottom:8px">📍 ${parseFloat(p.lat).toFixed(5)}, ${parseFloat(p.lng).toFixed(5)}</div>
+          <div style="display:flex;gap:6px">
+            <a href="download_photo.php?file=${encodeURIComponent(p.file_path)}" class="w-icon-btn primary" style="flex:1;justify-content:center;padding:5px;font-size:11.5px;font-weight:700;border-radius:4px">⬇️ Download Photo</a>
+          </div>
+        </div>
+      `;
+
+      const pt = [parseFloat(p.lat), parseFloat(p.lng)];
+      L.marker(pt, { icon: pIcon, zIndexOffset: 800 }).addTo(map).bindPopup(popupContent);
+      if (!pBounds) pBounds = L.latLngBounds([pt, pt]);
+      else pBounds.extend(pt);
     });
+    if (pBounds) map.fitBounds(pBounds, { padding: [60, 60] });
   }
 
   // Preset Date buttons handler

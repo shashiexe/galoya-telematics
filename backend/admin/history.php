@@ -93,11 +93,14 @@ if (count($pts) >= 2) {
     $duration_str = ($hrs > 0 ? $hrs . 'h ' : '') . $mins . 'm';
 }
 
-// Fetch geofences to render alongside track
-$geofences = q("SELECT id, name, coordinates, color FROM geofences WHERE active=1")->fetchAll();
-foreach ($geofences as &$g) {
-    $g['coords'] = json_decode($g['coordinates'], true) ?: [];
-}
+// Fetch a limited sample of active geofences near Hingurana/tracks to avoid browser freeze
+$geofences = [];
+try {
+    $geofences = q("SELECT id, name, coordinates, color FROM geofences WHERE active=1 LIMIT 30")->fetchAll();
+    foreach ($geofences as &$g) {
+        $g['coords'] = json_decode($g['coordinates'], true) ?: [];
+    }
+} catch (Throwable $e) {}
 
 layout_start('Tracks', 'history.php', true);
 ?>
@@ -422,27 +425,26 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('w-coord-hud').innerHTML = `${fLat} &nbsp; ${fLng}`;
   });
 
-  // Render Geofences in background (matching user screenshot)
+  // Render nearby Geofences in background safely
   const geofences = <?= json_encode($geofences) ?>;
-  geofences.forEach(gf => {
-    if (!gf.coords || gf.coords.length < 3) return;
-    const poly = L.polygon(gf.coords, {
-      color: gf.color || '#4caf50',
-      fillColor: gf.color || '#4caf50',
-      fillOpacity: 0.22,
-      weight: 2
-    }).addTo(map);
+  if (Array.isArray(geofences)) {
+    geofences.forEach(gf => {
+      try {
+        if (!gf.coords || gf.coords.length < 3) return;
+        const poly = L.polygon(gf.coords, {
+          color: gf.color || '#4caf50',
+          fillColor: gf.color || '#4caf50',
+          fillOpacity: 0.15,
+          weight: 1.5
+        }).addTo(map);
 
-    const center = poly.getBounds().getCenter();
-    L.marker(center, {
-      icon: L.divIcon({
-        className: 'w-geofence-label',
-        html: `<div style="color:#e65100;font-weight:700;font-size:12px;background:rgba(255,255,255,0.7);padding:2px 6px;border-radius:3px">${gf.name}</div>`,
-        iconSize: [80, 20],
-        iconAnchor: [40, 10]
-      })
-    }).addTo(map);
-  });
+        poly.bindTooltip(gf.name, {
+          direction: 'center',
+          className: 'sector-label'
+        });
+      } catch (e) {}
+    });
+  }
 
   // Track points from PHP
   const rawPts = <?= json_encode($pts) ?>;

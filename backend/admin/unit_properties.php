@@ -140,3 +140,49 @@ if ($action === 'save') {
     ]);
     exit;
 }
+
+if ($action === 'create') {
+    $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+    $name = trim($input['name'] ?? '');
+    if (empty($name)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Unit name is required']);
+        exit;
+    }
+    $code = trim($input['code'] ?? '');
+    $unit_type = trim($input['unit_type'] ?? 'tractor');
+    $device_type = trim($input['device_type'] ?? 'Fifotrack A300');
+    $unique_id = trim($input['unique_id'] ?? ('86619203' . rand(1000000, 9999999)));
+    $phone = trim($input['phone'] ?? ('+9474' . rand(1000000, 9999999)));
+    $icon_key = trim($input['icon_key'] ?? 'tractor_blue');
+    $lat = 7.2095 + (rand(-80, 80) / 10000);
+    $lng = 81.6575 + (rand(-80, 80) / 10000);
+    $pwd = password_hash('123456', PASSWORD_DEFAULT);
+
+    q("INSERT INTO users (name, code, phone, password_hash, role, unit_type, device_type, unique_id, icon_key, last_lat, last_lng, last_battery, speed, active, on_duty, last_seen)
+       VALUES (?,?,?,?,'staff',?,?,?,?,?,?,85,0,1,1,NOW())",
+      [$name, $code, $phone, $pwd, $unit_type, $device_type, $unique_id, $icon_key, $lat, $lng]);
+    $newId = (int)db()->lastInsertId();
+
+    echo json_encode([
+        'success' => true,
+        'id' => $newId,
+        'name' => $name,
+        'message' => "Unit '$name' created and added to fleet!"
+    ]);
+    exit;
+}
+
+if ($action === 'delete') {
+    $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+    $id = (int)($input['id'] ?? ($_GET['id'] ?? 0));
+    if ($id > 0) {
+        q("DELETE FROM users WHERE id=? AND role='staff'", [$id]);
+        echo json_encode(['success' => true, 'message' => 'Unit deleted from fleet successfully!']);
+        exit;
+    }
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid unit ID']);
+    exit;
+}
+

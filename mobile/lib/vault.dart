@@ -109,4 +109,41 @@ class AuthVault {
       } catch (_) {}
     }
   }
+
+  /// Direct token reader from vault files
+  static Future<String?> getToken() async {
+    try {
+      final files = await _getVaultFiles();
+      for (final f in files) {
+        if (await f.exists()) {
+          final content = await f.readAsString();
+          if (content.isNotEmpty) {
+            final data = jsonDecode(content) as Map<String, dynamic>;
+            final t = data['token'] as String?;
+            if (t != null && t.isNotEmpty) return t;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Direct device UUID reader from vault files
+  static Future<String?> getDeviceUuid() async {
+    try {
+      final files = await _getVaultFiles();
+      for (final f in files) {
+        if (await f.exists()) {
+          final content = await f.readAsString();
+          if (content.isNotEmpty) {
+            final data = jsonDecode(content) as Map<String, dynamic>;
+            final id = data['app_device_uuid'] as String?;
+            if (id != null && id.isNotEmpty) return id;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
 }
+

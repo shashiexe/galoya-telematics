@@ -80,7 +80,7 @@ if (fs.existsSync(gradlePath)) {
     if (content.includes('buildTypes {') && content.includes('release {')) {
         content = content.replace(
             'release {',
-            "release {\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'"
+            "release {\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
         );
     }
 
@@ -121,7 +121,7 @@ if (fs.existsSync(ktsPath)) {
     if (content.includes('release {') && !content.includes('isMinifyEnabled')) {
         content = content.replace(
             'signingConfig = signingConfigs.getByName("debug")',
-            'signingConfig = signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'
+            'signingConfig = signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'
         );
         console.log('[Patch] Disabled isMinifyEnabled and isShrinkResources in kts');
     }

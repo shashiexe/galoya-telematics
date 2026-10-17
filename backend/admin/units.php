@@ -18,12 +18,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $unique_id = trim($_POST['unique_id'] ?? '');
             $icon_key = trim($_POST['icon_key'] ?? 'tractor_blue');
             $driver_id = !empty($_POST['driver_id']) ? (int)$_POST['driver_id'] : null;
+            $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
+            $section_id = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
 
             if (empty($name)) throw new Exception("Unit name is required");
 
             if ($id > 0) {
-                q("UPDATE users SET name=?, code=?, phone=?, unit_type=?, device_type=?, unique_id=?, icon_key=? WHERE id=?",
-                  [$name, $code, $phone, $unit_type, $device_type, $unique_id, $icon_key, $id]);
+                q("UPDATE users SET name=?, code=?, phone=?, unit_type=?, device_type=?, unique_id=?, icon_key=?, department_id=?, section_id=? WHERE id=?",
+                  [$name, $code, $phone, $unit_type, $device_type, $unique_id, $icon_key, $department_id, $section_id, $id]);
                 if (!empty($_POST['password'])) {
                     q("UPDATE users SET password_hash=? WHERE id=?", [password_hash($_POST['password'], PASSWORD_DEFAULT), $id]);
                 }
@@ -38,9 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pwd = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_DEFAULT) : password_hash('123456', PASSWORD_DEFAULT);
                 $phoneVal = !empty($phone) ? $phone : 'unit_' . time();
                 
-                q("INSERT INTO users (name, code, phone, password_hash, role, unit_type, device_type, unique_id, icon_key, active, on_duty) 
-                   VALUES (?,?,?,?,'staff',?,?,?,?,1,1)",
-                  [$name, $code, $phoneVal, $pwd, $unit_type, $device_type, $unique_id, $icon_key]);
+                q("INSERT INTO users (name, code, phone, password_hash, role, unit_type, device_type, unique_id, icon_key, department_id, section_id, active, on_duty) 
+                   VALUES (?,?,?,?,'staff',?,?,?,?,?,?,1,1)",
+                  [$name, $code, $phoneVal, $pwd, $unit_type, $device_type, $unique_id, $icon_key, $department_id, $section_id]);
                 $newId = (int)db()->lastInsertId();
 
                 if ($driver_id) {
@@ -70,6 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch all available drivers
 $drivers = q("SELECT id, name, code, assigned_unit_id FROM drivers WHERE active=1 ORDER BY name ASC")->fetchAll();
+$departments = q("SELECT id, name FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
+$sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY name ASC")->fetchAll();
 
 // Filter & Search
 $search = trim($_GET['search'] ?? '');
@@ -77,12 +81,15 @@ $type_filter = $_GET['type'] ?? 'all';
 $status_filter = $_GET['status'] ?? 'all';
 
 $sql = "SELECT u.*, 
+        dept.name as dept_name, sec.name as sec_name,
         d.name as driver_name, d.id as driver_id, d.phone as driver_phone,
         (SELECT speed FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_speed,
         (SELECT lat FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_lat,
         (SELECT lng FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_lng,
         (SELECT recorded_at FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_time
         FROM users u
+        LEFT JOIN departments dept ON dept.id = u.department_id
+        LEFT JOIN sections sec ON sec.id = u.section_id
         LEFT JOIN drivers d ON d.assigned_unit_id = u.id
         WHERE u.role = 'staff'";
 $params = [];
@@ -132,6 +139,9 @@ layout_start('Fleet Units', 'units.php');
       </div>
     </div>
     <div style="display:flex;gap:8px">
+      <a href="staff.php" class="btn ghost sm" style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #cbd5e1" title="Manage Departments, Sections & Personnel">
+        <span>🏢</span> <span>Staff & Departments</span>
+      </a>
       <button class="btn" onclick="openUnitModal()" style="display:flex;align-items:center;gap:6px;background:#0284c7">
         <span>➕</span> <span>New Unit</span>
       </button>
@@ -254,9 +264,15 @@ layout_start('Fleet Units', 'units.php');
                   <?= h($u['name']) ?>
                 </a>
               </div>
-              <div style="font-size:11px;color:#64748b;display:flex;gap:6px;margin-top:2px">
+              <div style="font-size:11px;color:#64748b;display:flex;gap:6px;margin-top:2px;align-items:center;flex-wrap:wrap">
                 <span style="font-family:monospace;background:#f1f5f9;padding:1px 5px;border-radius:3px"><?= h($u['code']) ?></span>
                 <span>• <?= ucfirst(str_replace('_', ' ', $u['unit_type'] ?: 'staff')) ?></span>
+                <?php if (!empty($u['dept_name'])): ?>
+                  <span style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:4px;font-weight:600;font-size:10.5px">🏢 <?= h($u['dept_name']) ?></span>
+                <?php endif; ?>
+                <?php if (!empty($u['sec_name'])): ?>
+                  <span style="background:#ecfdf5;color:#047857;padding:1px 6px;border-radius:4px;font-weight:600;font-size:10.5px">🌾 <?= h($u['sec_name']) ?></span>
+                <?php endif; ?>
               </div>
             </td>
             <td style="padding:10px 14px">
@@ -407,6 +423,27 @@ layout_start('Fleet Units', 'units.php');
         </div>
       </div>
 
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Department</label>
+          <select name="department_id" id="unit_dept" onchange="filterUnitSections()" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+            <option value="">-- No Department --</option>
+            <?php foreach ($departments as $d): ?>
+              <option value="<?= $d['id'] ?>">🏢 <?= h($d['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Section</label>
+          <select name="section_id" id="unit_sec" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+            <option value="">-- No Section --</option>
+            <?php foreach ($sections as $s): ?>
+              <option value="<?= $s['id'] ?>" data-dept="<?= $s['department_id'] ?>">🌾 <?= h($s['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </div>
+
       <div style="margin-bottom:16px">
         <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Password <span style="font-weight:400;color:#94a3b8">(leave blank to keep current)</span></label>
         <input type="password" name="password" id="unit_password" placeholder="••••••••" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
@@ -438,6 +475,9 @@ function openUnitModal() {
   document.getElementById('unique_id').value = '';
   document.getElementById('driver_id').value = '';
   document.getElementById('unit_phone').value = '';
+  document.getElementById('unit_dept').value = '';
+  document.getElementById('unit_sec').value = '';
+  filterUnitSections();
   document.getElementById('unit-modal').style.display = 'flex';
 }
 
@@ -451,7 +491,26 @@ function editUnit(u) {
   document.getElementById('unique_id').value = u.unique_id || '';
   document.getElementById('driver_id').value = u.driver_id || '';
   document.getElementById('unit_phone').value = u.phone || '';
+  document.getElementById('unit_dept').value = u.department_id || '';
+  filterUnitSections();
+  document.getElementById('unit_sec').value = u.section_id || '';
   document.getElementById('unit-modal').style.display = 'flex';
+}
+
+function filterUnitSections() {
+  const deptId = document.getElementById('unit_dept').value;
+  const secSelect = document.getElementById('unit_sec');
+  const opts = secSelect.querySelectorAll('option');
+  opts.forEach(opt => {
+    if (!opt.value) { opt.style.display = ''; return; }
+    const optDept = opt.getAttribute('data-dept');
+    if (!deptId || optDept === deptId) {
+      opt.style.display = '';
+    } else {
+      opt.style.display = 'none';
+      if (secSelect.value === opt.value) secSelect.value = '';
+    }
+  });
 }
 
 function openPropertiesModal(unitId) {

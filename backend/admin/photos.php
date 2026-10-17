@@ -14,7 +14,10 @@ $type = $_GET['type'] ?? 'all'; // all, field, task
 $params1 = [];
 $params2 = [];
 
-$sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, fp.taken_at, 'field' as photo_type, 
+$sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, 
+                COALESCE(fp.activity_type, 'Field Photo') as activity_type,
+                fp.auto_geofence, fp.selected_geofence,
+                fp.taken_at, 'field' as photo_type, 
                 u.name as user_name, u.code as user_code, u.unit_type
          FROM field_photos fp
          JOIN users u ON u.id = fp.user_id
@@ -25,6 +28,8 @@ $params1[] = $to_dt;
 $sql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng, 
                 CONCAT('Task #', tp.task_id, ' (', tp.type, ')', IF(t.title IS NOT NULL, CONCAT(' - ', t.title), '')) as note, 
                 NULL as geofence_name,
+                'Task Work' as activity_type,
+                NULL as auto_geofence, NULL as selected_geofence,
                 tp.taken_at, 'task' as photo_type,
                 u.name as user_name, u.code as user_code, u.unit_type
          FROM task_photos tp
@@ -158,10 +163,38 @@ layout_start('Photos & Field Media', 'photos.php');
                 🕒 <?= h($p['taken_at']) ?>
               </div>
 
-              <?php if (!empty($p['geofence_name'])): ?>
-                <div style="font-size:11px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;padding:3px 8px;border-radius:4px;margin-bottom:6px;font-weight:700">
-                  ⬡ <?= h($p['geofence_name']) ?>
+              <?php if (!empty($p['activity_type'])): ?>
+                <div style="margin-bottom:6px">
+                  <span style="display:inline-block;background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px">
+                    🏷️ <?= h($p['activity_type']) ?>
+                  </span>
                 </div>
+              <?php endif; ?>
+
+              <?php 
+                $autoGeo = $p['auto_geofence'] ?? null;
+                $selGeo = $p['selected_geofence'] ?? null;
+                $legacyGeo = $p['geofence_name'] ?? null;
+              ?>
+              <?php if (!empty($selGeo) && !empty($autoGeo) && $selGeo === $autoGeo): ?>
+                <div style="font-size:11px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;padding:3px 8px;border-radius:4px;margin-bottom:6px;font-weight:700">
+                  🎯 Verified Plot: <?= h($selGeo) ?>
+                </div>
+              <?php else: ?>
+                <?php if (!empty($selGeo)): ?>
+                  <div style="font-size:11px;color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;padding:3px 8px;border-radius:4px;margin-bottom:4px;font-weight:600">
+                    📍 Selected Plot: <?= h($selGeo) ?>
+                  </div>
+                <?php endif; ?>
+                <?php if (!empty($autoGeo)): ?>
+                  <div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;padding:2px 6px;border-radius:4px;margin-bottom:6px">
+                    🤖 Auto Detected: <?= h($autoGeo) ?>
+                  </div>
+                <?php elseif (!empty($legacyGeo)): ?>
+                  <div style="font-size:11px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;padding:3px 8px;border-radius:4px;margin-bottom:6px;font-weight:700">
+                    ⬡ <?= h($legacyGeo) ?>
+                  </div>
+                <?php endif; ?>
               <?php endif; ?>
 
               <?php if (!empty($p['note'])): ?>

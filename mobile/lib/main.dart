@@ -26,8 +26,8 @@ Future<void> main() async {
   try {
     // Auto-restore session from persistent vault if phone cache/storage was cleared
     await AuthVault.restoreIfMissing().catchError((_) => false);
-    final sp = await SharedPreferences.getInstance();
-    loggedIn = sp.getString('token') != null;
+    final token = await Api.token();
+    loggedIn = token != null && token.isNotEmpty;
   } catch (e) {
     debugPrint('AuthVault/Prefs init error: $e');
   }

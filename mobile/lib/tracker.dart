@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api.dart';
 import 'db.dart';
 import 'sync.dart';
 import 'vault.dart';
@@ -169,6 +170,9 @@ class Tracker {
 void _serviceMain(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    HttpOverrides.global = AppHttpOverrides();
+  } catch (_) {}
   var running = true;
   StreamSubscription<Position>? streamSub;
 

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../config.dart';
@@ -67,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _syncTimer;
   List<Map<String, dynamic>> _tasks = [];
   final List<Map<String, dynamic>> _capturedPhotos = [];
+  Map<String, dynamic>? _targetPlot;
 
   // Default Galoya Plantation / Damana center
   static const LatLng _defaultCenter = LatLng(7.2050, 81.6580);
@@ -970,6 +972,78 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _formatDistanceMeters(double meters) {
+    if (meters < 1000) {
+      return '${meters.round()} m';
+    }
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  Future<void> _openGoogleMapsNavigation(double lat, double lng, String label) async {
+    final googleNavUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+    final webMapsUri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    try {
+      if (await canLaunchUrl(googleNavUri)) {
+        await launchUrl(googleNavUri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(webMapsUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      try {
+        await launchUrl(webMapsUri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open navigation: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  void _selectPlotForNavigation(Map<String, dynamic> plot) {
+    setState(() {
+      _targetPlot = plot;
+    });
+    final gLat = (plot['lat'] as num?)?.toDouble() ?? 0.0;
+    final gLng = (plot['lng'] as num?)?.toDouble() ?? 0.0;
+    if (gLat != 0.0 && gLng != 0.0) {
+      _mapController.move(LatLng(gLat, gLng), 16.5);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xff0284c7),
+        content: Text('Target Plot: ${plot['name']} (${plot['code'] ?? ''})'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Google Maps',
+          textColor: Colors.white,
+          onPressed: () => _openGoogleMapsNavigation(gLat, gLng, plot['name'] ?? 'Plot'),
+        ),
+      ),
+    );
+  }
+
+  void _showPlotNavigatorModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _PlotNavigatorModalSheet(
+        currentPosition: _currentPosition,
+        onSelectPlot: (plot) {
+          Navigator.pop(ctx);
+          _selectPlotForNavigation(plot);
+        },
+        onGoogleNavigate: (lat, lng, name) {
+          Navigator.pop(ctx);
+          _openGoogleMapsNavigation(lat, lng, name);
+        },
+        formatDistance: _formatDistanceMeters,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentLatLng = _currentPosition != null
@@ -998,8 +1072,55 @@ class _HomeScreenState extends State<HomeScreen> {
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'lk.galoya.stafftrack',
                   ),
+                  if (_targetPlot != null)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: [
+                            currentLatLng,
+                            LatLng(
+                              (_targetPlot!['lat'] as num).toDouble(),
+                              (_targetPlot!['lng'] as num).toDouble(),
+                            ),
+                          ],
+                          strokeWidth: 4.5,
+                          color: const Color(0xfff59e0b),
+                        ),
+                      ],
+                    ),
                   MarkerLayer(
                     markers: [
+                      if (_targetPlot != null)
+                        Marker(
+                          point: LatLng(
+                            (_targetPlot!['lat'] as num).toDouble(),
+                            (_targetPlot!['lng'] as num).toDouble(),
+                          ),
+                          width: 140,
+                          height: 65,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xfff59e0b),
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: const [
+                                    BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
+                                  ],
+                                ),
+                                child: Text(
+                                  _targetPlot!['name'] ?? 'Target Plot',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+                                ),
+                              ),
+                              const Icon(Icons.location_on, color: Color(0xfff59e0b), size: 34),
+                            ],
+                          ),
+                        ),
                       Marker(
                         point: currentLatLng,
                         width: 50,
@@ -1097,6 +1218,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Text('Galoya', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xff475569))),
                     ),
                     const Spacer(),
+                    // Find & Navigate to Plot Icon
+                    IconButton(
+                      icon: const Icon(Icons.explore, color: Color(0xff0284c7)),
+                      tooltip: 'Plot Navigator & Directions',
+                      onPressed: _showPlotNavigatorModal,
+                    ),
                     // Assigned Tasks Icon
                     IconButton(
                       icon: Stack(
@@ -1147,9 +1274,82 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+            // 2.5. FLOATING TARGET PLOT NAVIGATION HUD
+            if (_targetPlot != null)
+              Positioned(
+                top: 66,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff1e293b),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xfff59e0b), width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4)),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xfff59e0b).withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.near_me, color: Color(0xfff59e0b), size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _targetPlot!['name'] ?? 'Target Plot',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              _currentPosition != null
+                                  ? 'Distance: ${_formatDistanceMeters(
+                                      Geolocator.distanceBetween(
+                                        _currentPosition!.latitude,
+                                        _currentPosition!.longitude,
+                                        (_targetPlot!['lat'] as num).toDouble(),
+                                        (_targetPlot!['lng'] as num).toDouble(),
+                                      ),
+                                    )}'
+                                  : 'Target plot active',
+                              style: const TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.navigation, color: Colors.greenAccent),
+                        tooltip: 'Google Maps Turn-by-Turn',
+                        onPressed: () {
+                          final lat = (_targetPlot!['lat'] as num).toDouble();
+                          final lng = (_targetPlot!['lng'] as num).toDouble();
+                          _openGoogleMapsNavigation(lat, lng, _targetPlot!['name'] ?? 'Plot');
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white60),
+                        tooltip: 'Cancel Navigation',
+                        onPressed: () => setState(() => _targetPlot = null),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // 3. FLOATING TOP SOS CARD
             Positioned(
-              top: 68,
+              top: _targetPlot != null ? 144 : 68,
               left: 16,
               right: 16,
               child: GestureDetector(
@@ -1191,7 +1391,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // 4. FLOATING MAP CONTROLS (Right side: Layers, Center, Compass)
             Positioned(
-              top: 130,
+              top: _targetPlot != null ? 206 : 130,
               right: 16,
               child: Column(
                 children: [
@@ -1244,13 +1444,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: _showGalleryModal,
                   ),
                   _buildWiaActionBtn(
-                    color: const Color(0xff475569), // Slate
-                    icon: Icons.crop_free,
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Unit: $_code verified on field.')),
-                      );
-                    },
+                    color: const Color(0xff059669), // Emerald
+                    icon: Icons.explore,
+                    onTap: _showPlotNavigatorModal,
                   ),
                   _buildWiaActionBtn(
                     color: const Color(0xff0284c7), // Cyan Camera
@@ -1419,6 +1615,305 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+}
+
+/// Modal bottom sheet for searching plantation plots and launching turn-by-turn navigation
+class _PlotNavigatorModalSheet extends StatefulWidget {
+  final Position? currentPosition;
+  final ValueChanged<Map<String, dynamic>> onSelectPlot;
+  final void Function(double lat, double lng, String name) onGoogleNavigate;
+  final String Function(double meters) formatDistance;
+
+  const _PlotNavigatorModalSheet({
+    required this.currentPosition,
+    required this.onSelectPlot,
+    required this.onGoogleNavigate,
+    required this.formatDistance,
+  });
+
+  @override
+  State<_PlotNavigatorModalSheet> createState() => _PlotNavigatorModalSheetState();
+}
+
+class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+  String _modeLabel = 'Nearest Plots Around You';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialPlots();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialPlots() async {
+    setState(() => _loading = true);
+    try {
+      if (widget.currentPosition != null) {
+        final list = await LocalDb.getNearbyGeofences(
+          widget.currentPosition!.latitude,
+          widget.currentPosition!.longitude,
+          limit: 15,
+        );
+        if (mounted) {
+          setState(() {
+            _results = list;
+            _modeLabel = 'Nearest Plots Around You (${list.length})';
+            _loading = false;
+          });
+        }
+      } else {
+        final list = await LocalDb.searchGeofences('', limit: 15);
+        if (mounted) {
+          setState(() {
+            _results = list;
+            _modeLabel = 'Plantation Plots (${list.length})';
+            _loading = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) {
+      _loadInitialPlots();
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final list = await LocalDb.searchGeofences(
+        q,
+        userLat: widget.currentPosition?.latitude,
+        userLng: widget.currentPosition?.longitude,
+        limit: 25,
+      );
+      if (mounted) {
+        setState(() {
+          _results = list;
+          _modeLabel = 'Search Results (${list.length})';
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.82,
+      padding: EdgeInsets.only(bottom: bottomInset),
+      decoration: const BoxDecoration(
+        color: Color(0xff0f172a),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0xff334155), width: 1.5)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 8),
+            width: 44,
+            height: 4,
+            decoration: BoxDecoration(color: const Color(0xff475569), borderRadius: BorderRadius.circular(2)),
+          ),
+          // Title Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0284c7).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.explore, color: Color(0xff38bdf8), size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Plot Navigator & Directions',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Find geofence and navigate to plot',
+                        style: TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          // Search Input
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: TextField(
+              controller: _searchCtrl,
+              autofocus: false,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              onChanged: (val) => _performSearch(val),
+              decoration: InputDecoration(
+                hintText: 'Search plot by name or code (e.g. 412, Sec D)...',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                prefixIcon: const Icon(Icons.search, color: Color(0xff38bdf8), size: 20),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          _loadInitialPlots();
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xff1e293b),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff0284c7), width: 1.5)),
+              ),
+            ),
+          ),
+          // Subheader
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: Row(
+              children: [
+                Text(_modeLabel, style: const TextStyle(color: Color(0xff94a3b8), fontSize: 12, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                if (_loading)
+                  const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff38bdf8))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Results list
+          Expanded(
+            child: _results.isEmpty && !_loading
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text(
+                        'No matching plots found.\nMake sure geofences are cached.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white38, fontSize: 13),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: _results.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (ctx, i) {
+                      final p = _results[i];
+                      final name = p['name'] ?? 'Unnamed Plot';
+                      final code = p['code'] ?? '';
+                      final dist = (p['distance'] as num?)?.toDouble() ?? 0.0;
+                      final lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+                      final lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff1e293b),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xff334155)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xff059669).withOpacity(0.18),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.terrain, color: Color(0xff34d399), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      if (code.isNotEmpty) ...[
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xff334155),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(code, style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 10, fontWeight: FontWeight.w600)),
+                                        ),
+                                        const SizedBox(width: 6),
+                                      ],
+                                      if (dist > 0)
+                                        Text(
+                                          '🚗 ${widget.formatDistance(dist)}',
+                                          style: const TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.w700),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Action 1: In-App Map
+                            IconButton(
+                              icon: const Icon(Icons.map_outlined, color: Color(0xff38bdf8), size: 22),
+                              tooltip: 'Show on Map',
+                              onPressed: () => widget.onSelectPlot(p),
+                            ),
+                            // Action 2: Google Maps Turn-by-Turn
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff059669),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.navigation, size: 14),
+                              label: const Text('Go', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              onPressed: () => widget.onGoogleNavigate(lat, lng, name),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

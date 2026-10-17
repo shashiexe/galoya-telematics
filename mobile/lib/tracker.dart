@@ -25,25 +25,30 @@ class Tracker {
 
   static Future<void> init() async {
     if (!Platform.isAndroid) return;
-    final n = FlutterLocalNotificationsPlugin();
-    await n
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(const AndroidNotificationChannel(
-            _channelId, 'Duty tracking', description: 'Shown while you are on duty', importance: Importance.low));
-    await FlutterBackgroundService().configure(
-      androidConfiguration: AndroidConfiguration(
-        onStart: _serviceMain,
-        autoStart: false,
-        autoStartOnBoot: true,
-        isForegroundMode: true,
-        notificationChannelId: _channelId,
-        initialNotificationTitle: 'StaffTrack',
-        initialNotificationContent: 'On duty – location tracking active',
-        foregroundServiceNotificationId: 888,
-        foregroundServiceTypes: [AndroidForegroundType.location],
-      ),
-      iosConfiguration: IosConfiguration(autoStart: false),
-    );
+    try {
+      final n = FlutterLocalNotificationsPlugin();
+      await n
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(const AndroidNotificationChannel(
+              _channelId, 'Duty tracking', description: 'Shown while you are on duty', importance: Importance.low));
+    } catch (_) {}
+
+    try {
+      await FlutterBackgroundService().configure(
+        androidConfiguration: AndroidConfiguration(
+          onStart: _serviceMain,
+          autoStart: false,
+          autoStartOnBoot: true,
+          isForegroundMode: true,
+          notificationChannelId: _channelId,
+          initialNotificationTitle: 'StaffTrack',
+          initialNotificationContent: 'On duty – location tracking active',
+          foregroundServiceNotificationId: 888,
+          foregroundServiceTypes: [AndroidForegroundType.location],
+        ),
+        iosConfiguration: IosConfiguration(autoStart: false),
+      );
+    } catch (_) {}
   }
 
   static Future<bool> ensurePermissions() async {
@@ -79,8 +84,12 @@ class Tracker {
     final sp = await SharedPreferences.getInstance();
     await sp.setBool('tracking', true);
     if (Platform.isAndroid) {
-      final s = FlutterBackgroundService();
-      if (!await s.isRunning()) await s.startService();
+      try {
+        final s = FlutterBackgroundService();
+        if (!await s.isRunning()) await s.startService();
+      } catch (e) {
+        debugPrint('Tracker start error: $e');
+      }
     } else {
       await _startIos();
     }

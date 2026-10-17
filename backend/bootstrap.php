@@ -124,50 +124,134 @@ function find_nearest_geofence(?float $lat, ?float $lng): ?string {
 }
 
 /**
- * Inserts a field photo record with automatic table creation & column migration fallback.
+ * Inserts a field photo record with activity type, auto geofence, and manual selection.
  */
-function insert_field_photo(int $userId, string $filePath, ?float $lat, ?float $lng, ?string $note, ?string $geofence, string $dt): void {
-    try {
-        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-          [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
-    } catch (Throwable $e) {
-        // If table doesn't exist, create it immediately
-        if (strpos($e->getMessage(), "doesn't exist") !== false || strpos($e->getMessage(), "Base table or view not found") !== false) {
-            try {
-                q("CREATE TABLE IF NOT EXISTS field_photos (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    file_path VARCHAR(255) NOT NULL,
-                    lat DECIMAL(10,7) NULL,
-                    lng DECIMAL(10,7) NULL,
-                    note TEXT NULL,
-                    geofence_name VARCHAR(128) NULL,
-                    taken_at DATETIME NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    INDEX(user_id),
-                    INDEX(taken_at)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-                  [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
-                return;
-            } catch (Throwable $e2) {}
-        }
+function insert_field_photo(
+    int $userId, 
+    string $filePath, 
+    ?float $lat, 
+    ?float $lng, 
+    ?string $note, 
+    ?string $geofence, 
+    string $dt,
+    ?string $activityType = 'General',
+    ?string $autoGeofence = null,
+    ?string $selectedGeofence = null
+): void {
+    $auto = $autoGeofence ?: $geofence;
+    $selected = $selectedGeofence ?: ($geofence ?: $auto);
+    $act = $activityType ?: 'General';
 
+    try {
+        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
+           VALUES (?,?,?,?,?,?,?,?,?,?)',
+          [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
+    } catch (Throwable $e) {
+        // Fallback with column migrations
         try {
-            q("ALTER TABLE field_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
-            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-              [$userId, $filePath, $lat, $lng, $note, $geofence, $dt]);
-        } catch (Throwable $e3) {
+            q("ALTER TABLE field_photos ADD COLUMN activity_type VARCHAR(64) NULL DEFAULT 'General' AFTER geofence_name");
+            q("ALTER TABLE field_photos ADD COLUMN auto_geofence VARCHAR(128) NULL AFTER activity_type");
+            q("ALTER TABLE field_photos ADD COLUMN selected_geofence VARCHAR(128) NULL AFTER auto_geofence");
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
+               VALUES (?,?,?,?,?,?,?,?,?,?)',
+              [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
+        } catch (Throwable $e2) {
             try {
-                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
-                  [$userId, $filePath, $lat, $lng, $note, $dt]);
-            } catch (Throwable $e4) {}
+                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+                  [$userId, $filePath, $lat, $lng, $note, $selected ?: $geofence, $dt]);
+            } catch (Throwable $e3) {
+                try {
+                    q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+                      [$userId, $filePath, $lat, $lng, $note, $dt]);
+                } catch (Throwable $e4) {}
+            }
         }
     }
 }
 
-// Ensure field_photos table exists globally
+// Global schema initialization & migrations
 try {
+    // 1. Departments table
+    q("CREATE TABLE IF NOT EXISTS `departments` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `name` VARCHAR(120) NOT NULL,
+        `code` VARCHAR(50) NULL,
+        `description` VARCHAR(255) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_dept_name` (`name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // 2. Sections table
+    q("CREATE TABLE IF NOT EXISTS `sections` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `department_id` INT NULL,
+        `name` VARCHAR(120) NOT NULL,
+        `code` VARCHAR(50) NULL,
+        `description` VARCHAR(255) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (`department_id`),
+        UNIQUE KEY `uniq_sec_dept` (`department_id`, `name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // 3. Designations table
+    q("CREATE TABLE IF NOT EXISTS `designations` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `name` VARCHAR(120) NOT NULL,
+        `code` VARCHAR(50) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_desig_name` (`name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Seed default departments if table is empty
+    $deptCount = (int)q("SELECT COUNT(*) FROM departments")->fetchColumn();
+    if ($deptCount === 0) {
+        q("INSERT IGNORE INTO `departments` (`id`, `name`, `code`, `description`) VALUES 
+            (1, 'Agriculture', 'AGRI', 'Sugarcane Plantation & Agronomy Field Operations'),
+            (2, 'Fleet & Transport', 'FLEET', 'Tractors, Harvesters, Infielders & Bowser Transport'),
+            (3, 'Factory & Mill', 'MILL', 'Hingurana Sugar Processing Complex & Weighbridge'),
+            (4, 'Irrigation & Drainage', 'IRRI', 'Canal Systems, Water Pumps & Drainage Division'),
+            (5, 'Civil & Security', 'SEC', 'Estate Security, Gate Controls & Estate Roads')");
+        
+        q("INSERT IGNORE INTO `sections` (`id`, `department_id`, `name`, `code`) VALUES 
+            (1, 1, 'Sector D (Sugarcane)', 'SEC-D'),
+            (2, 1, 'Sector C (Sugarcane)', 'SEC-C'),
+            (3, 1, 'Sector B (Sugarcane)', 'SEC-B'),
+            (4, 1, 'Sector A (Sugarcane)', 'SEC-A'),
+            (5, 2, 'Central Workshop & Garage', 'GARAGE'),
+            (6, 2, 'Haulage / Transport Yard', 'HAUL'),
+            (7, 3, 'Factory Complex & Yard', 'MILL-YD'),
+            (8, 4, 'Main Canal Division', 'CANAL')");
+
+        q("INSERT IGNORE INTO `designations` (`id`, `name`, `code`) VALUES 
+            (1, 'Field Officer', 'FO'),
+            (2, 'Agronomist', 'AGRO'),
+            (3, 'Tractor Operator', 'TRAC-OP'),
+            (4, 'Harvester Operator', 'HARV-OP'),
+            (5, 'Field Supervisor', 'SUP'),
+            (6, 'Field Inspector', 'INSP'),
+            (7, 'Mechanic / Technician', 'MECH'),
+            (8, 'Field Staff', 'STAFF')");
+    }
+
+    // 4. Alter users table for department, section, designation
+    try { q("ALTER TABLE `users` ADD COLUMN `department_id` INT NULL AFTER `role`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `users` ADD COLUMN `section_id` INT NULL AFTER `department_id`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `users` ADD COLUMN `designation_id` INT NULL AFTER `section_id`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `users` ADD COLUMN `designation` VARCHAR(100) NULL AFTER `designation_id`"); } catch (Throwable $e) {}
+
+    // 5. Alter tasks table for department & section
+    try { q("ALTER TABLE `tasks` ADD COLUMN `department_id` INT NULL AFTER `assigned_to`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `tasks` ADD COLUMN `section_id` INT NULL AFTER `department_id`"); } catch (Throwable $e) {}
+
+    // 6. Alter duty_logs for battery, event_type, note
+    try { q("ALTER TABLE `duty_logs` ADD COLUMN `battery` TINYINT NULL AFTER `lng`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `duty_logs` ADD COLUMN `event_type` VARCHAR(50) NULL DEFAULT 'duty' AFTER `battery`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `duty_logs` ADD COLUMN `note` VARCHAR(255) NULL AFTER `event_type`"); } catch (Throwable $e) {}
+
+    // 7. Field photos table and columns
     q("CREATE TABLE IF NOT EXISTS field_photos (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
@@ -176,15 +260,21 @@ try {
         lng DECIMAL(10,7) NULL,
         note TEXT NULL,
         geofence_name VARCHAR(128) NULL,
+        activity_type VARCHAR(64) NULL DEFAULT 'General',
+        auto_geofence VARCHAR(128) NULL,
+        selected_geofence VARCHAR(128) NULL,
         taken_at DATETIME NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX(user_id),
         INDEX(taken_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-} catch (Throwable $e) {}
 
-try {
-    q("ALTER TABLE task_photos ADD COLUMN geofence_name VARCHAR(128) NULL");
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `geofence_name` VARCHAR(128) NULL AFTER `note`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `activity_type` VARCHAR(64) NULL DEFAULT 'General' AFTER `geofence_name`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `auto_geofence` VARCHAR(128) NULL AFTER `activity_type`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `selected_geofence` VARCHAR(128) NULL AFTER `auto_geofence`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `task_photos` ADD COLUMN `geofence_name` VARCHAR(128) NULL"); } catch (Throwable $e) {}
+
 } catch (Throwable $e) {}
 
 // Self-update deploy_update.php if needed
@@ -200,4 +290,5 @@ try {
         }
     }
 } catch (Throwable $e) {}
+
 

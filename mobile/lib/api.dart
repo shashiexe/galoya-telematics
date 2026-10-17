@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'vault.dart';
 
 /// SSL override to trust galoya.lk server certificates on all Android versions
 class AppHttpOverrides extends HttpOverrides {
@@ -33,9 +34,13 @@ class Api {
   };
 
   static Future<String?> token() async {
-    final sp = await SharedPreferences.getInstance();
-    await sp.reload();
-    return sp.getString('token');
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.reload();
+      final t = sp.getString('token');
+      if (t != null && t.isNotEmpty) return t;
+    } catch (_) {}
+    return AuthVault.getToken();
   }
 
   static Future<Map<String, dynamic>> _handle(http.Response r) async {

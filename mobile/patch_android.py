@@ -65,19 +65,19 @@ if os.path.exists(kts_path):
         if "dependencies {" in content:
             content = content.replace(
                 "dependencies {",
-                'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")'
+                'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n    implementation("androidx.multidex:multidex:2.0.1")'
             )
-            print("[Patch] Added desugar_jdk_libs to kts dependencies")
+            print("[Patch] Added desugar_jdk_libs and multidex to kts dependencies")
         else:
-            content += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
-            print("[Patch] Appended kts dependencies block with desugar_jdk_libs")
+            content += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n    implementation("androidx.multidex:multidex:2.0.1")\n}\n'
+            print("[Patch] Appended kts dependencies block with desugar_jdk_libs and multidex")
 
     if "multiDexEnabled" not in content and "defaultConfig {" in content:
         content = content.replace(
             "defaultConfig {",
-            "defaultConfig {\n        multiDexEnabled = true"
+            'defaultConfig {\n        multiDexEnabled = true\n        ndk {\n            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86_64"))\n        }'
         )
-        print("[Patch] Added multiDexEnabled = true to kts defaultConfig")
+        print("[Patch] Added multiDexEnabled = true and abiFilters to kts defaultConfig")
 
     with open(kts_path, "w", encoding="utf-8") as f:
         f.write(content)

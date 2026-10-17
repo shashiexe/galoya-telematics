@@ -21,32 +21,56 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _err;
 
   Future<void> _login() async {
+    final phone = _phone.text.trim();
+    final pass = _pass.text;
+    if (phone.isEmpty || pass.isEmpty) {
+      setState(() => _err = '[ERR-INPUT] Please enter both phone number and password.');
+      return;
+    }
+
     setState(() { _busy = true; _err = null; });
     try {
-      final sp = await SharedPreferences.getInstance();
-      String? deviceUuid = sp.getString('app_device_uuid');
-      if (deviceUuid == null) {
+      String? deviceUuid;
+      SharedPreferences? sp;
+      try {
+        sp = await SharedPreferences.getInstance();
+        deviceUuid = sp.getString('app_device_uuid');
+      } catch (e) {
+        debugPrint('SharedPreferences init note: $e');
+      }
+
+      if (deviceUuid == null || deviceUuid.isEmpty) {
+        deviceUuid = await AuthVault.getDeviceUuid();
+      }
+
+      if (deviceUuid == null || deviceUuid.isEmpty) {
         deviceUuid = '8661920' + DateTime.now().millisecondsSinceEpoch.toString().substring(5);
-        await sp.setString('app_device_uuid', deviceUuid);
+        try {
+          await sp?.setString('app_device_uuid', deviceUuid);
+        } catch (_) {}
       }
 
       final j = await Api.post('login', {
-        'phone': _phone.text.trim(),
-        'password': _pass.text,
+        'phone': phone,
+        'password': pass,
         'device_model': 'Android Phone (${Platform.operatingSystem})',
         'unique_id': deviceUuid,
       }, auth: false);
 
-      await sp.setString('token', j['token']);
-      await sp.setString('name', j['user']['name'] ?? 'Staff');
-      if (j['user']['code'] != null) await sp.setString('code', j['user']['code']);
-      await sp.setString('phone', _phone.text.trim());
+      try {
+        await sp?.setString('token', j['token']);
+        await sp?.setString('name', j['user']['name'] ?? 'Staff');
+        if (j['user']['code'] != null) await sp?.setString('code', j['user']['code'].toString());
+        await sp?.setString('phone', phone);
+      } catch (e) {
+        debugPrint('SharedPreferences save note: $e');
+      }
 
       // Save to Enterprise Anti-Wipe Vault
       await AuthVault.save(
         token: j['token'],
         name: j['user']['name'] ?? 'Staff',
-        phone: _phone.text.trim(),
+        phone: phone,
         code: j['user']['code']?.toString(),
         deviceUuid: deviceUuid,
         tracking: true,
@@ -57,15 +81,28 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       String msg;
       if (e is ApiException) {
-        msg = e.message;
-      } else {
-        final err = e.toString();
-        if (err.contains('SocketException') || err.contains('Failed host lookup')) {
-          msg = 'Unable to reach server. Please check internet connection.';
-        } else if (err.contains('TimeoutException')) {
-          msg = 'Server request timed out. Please try again.';
+        final m = e.message.toLowerCase();
+        if (m.contains('phone') || m.contains('password') || m.contains('wrong') || m.contains('invalid') || e.status == 401) {
+          msg = '[ERR-AUTH-01] Phone number or password is incorrect.';
+        } else if (e.status != null) {
+          msg = '[ERR-SRV-${e.status}] ${e.message}';
         } else {
-          msg = 'Connection error: ${err.replaceAll("Exception:", "").trim()}';
+          msg = '[ERR-API] ${e.message}';
+        }
+      } else {
+        final err = e.toString().toLowerCase();
+        if (err.contains('socketexception') || err.contains('failed host lookup') || err.contains('network is unreachable')) {
+          msg = '[ERR-NET-01] Cannot reach server. Please check mobile data or WiFi.';
+        } else if (err.contains('timeoutexception') || err.contains('timed out')) {
+          msg = '[ERR-NET-02] Server response timed out. Please try again.';
+        } else if (err.contains('handshakeexception') || err.contains('certificate')) {
+          msg = '[ERR-SSL-01] Security handshake failed. Retrying...';
+        } else if (err.contains('sharedpreferences') || err.contains('nosuchmethoderror')) {
+          msg = '[ERR-SYS-01] System storage module error.';
+        } else {
+          final clean = e.toString().replaceAll('Exception:', '').replaceAll('PlatformException(', '').trim();
+          final shortMsg = clean.length > 70 ? clean.substring(0, 67) + '...' : clean;
+          msg = '[ERR-SYS-99] $shortMsg';
         }
       }
       setState(() => _err = msg);

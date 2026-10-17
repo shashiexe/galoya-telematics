@@ -10,6 +10,15 @@ if os.path.exists(manifest_template) and os.path.exists("android/app/src/main"):
     shutil.copyfile(manifest_template, manifest_target)
     print(f"[Patch] Copied {manifest_template} to {manifest_target}")
 
+# 1.1 Copy network_security_config.xml
+net_sec_template = "network_security_config.xml.template"
+net_sec_target_dir = "android/app/src/main/res/xml"
+net_sec_target = os.path.join(net_sec_target_dir, "network_security_config.xml")
+if os.path.exists(net_sec_template):
+    os.makedirs(net_sec_target_dir, exist_ok=True)
+    shutil.copyfile(net_sec_template, net_sec_target)
+    print(f"[Patch] Copied {net_sec_template} to {net_sec_target}")
+
 # 2. Patch build.gradle (Groovy)
 gradle_path = "android/app/build.gradle"
 if os.path.exists(gradle_path):
@@ -40,9 +49,9 @@ if os.path.exists(gradle_path):
     if "multiDexEnabled" not in content and "defaultConfig {" in content:
         content = content.replace(
             "defaultConfig {",
-            "defaultConfig {\n        multiDexEnabled true"
+            "defaultConfig {\n        multiDexEnabled true\n        ndk {\n            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'\n        }"
         )
-        print("[Patch] Added multiDexEnabled true to defaultConfig")
+        print("[Patch] Added multiDexEnabled true and abiFilters to defaultConfig")
 
     with open(gradle_path, "w", encoding="utf-8") as f:
         f.write(content)

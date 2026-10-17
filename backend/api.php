@@ -213,17 +213,54 @@ try {
     }
 
     case 'duty': {
-        // body: {client_id, status:'on'|'off', lat, lng, t}
+        // body: {client_id, status:'on'|'off', lat, lng, battery, event_type, note, t}
         $u = auth_user(); $b = body();
         $status = ($b['status'] ?? '') === 'on' ? 'on' : 'off';
         $dt = to_dt($b['t'] ?? time() * 1000);
-        $ins = q('INSERT IGNORE INTO duty_logs (user_id,client_id,status,lat,lng,at) VALUES (?,?,?,?,?,?)',
-                 [$u['id'], $b['client_id'] ?? bin2hex(random_bytes(8)), $status, $b['lat'] ?? null, $b['lng'] ?? null, $dt]);
+        $lat = !empty($b['lat']) ? (float)$b['lat'] : null;
+        $lng = !empty($b['lng']) ? (float)$b['lng'] : null;
+        $bat = isset($b['battery']) ? (int)$b['battery'] : null;
+        $eventType = trim($b['event_type'] ?? ($status === 'on' ? 'tracking_on' : 'tracking_off'));
+        $note = trim($b['note'] ?? '');
+        $cid = $b['client_id'] ?? bin2hex(random_bytes(8));
+
+        try {
+            $ins = q('INSERT IGNORE INTO duty_logs (user_id,client_id,status,lat,lng,battery,event_type,note,at) VALUES (?,?,?,?,?,?,?,?,?)',
+                     [$u['id'], $cid, $status, $lat, $lng, $bat, $eventType, $note, $dt]);
+        } catch (Throwable $e) {
+            $ins = q('INSERT IGNORE INTO duty_logs (user_id,client_id,status,lat,lng,at) VALUES (?,?,?,?,?,?)',
+                     [$u['id'], $cid, $status, $lat, $lng, $dt]);
+        }
+
         if ($ins->rowCount()) {
             $last = q('SELECT status FROM duty_logs WHERE user_id=? ORDER BY at DESC, id DESC LIMIT 1', [$u['id']])->fetchColumn();
             q('UPDATE users SET on_duty=? WHERE id=?', [$last === 'on' ? 1 : 0, $u['id']]);
         }
         out(['ok' => true]);
+    }
+
+    case 'geofences_light': {
+        // Returns lightweight centroids of active geofences for fast mobile proximity cache (< 50KB)
+        auth_user();
+        $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
+        $light = [];
+        foreach ($rows as $r) {
+            $coords = json_decode($r['coordinates'] ?? '[]', true);
+            if (!is_array($coords) || count($coords) < 3) continue;
+            $sumLat = 0.0; $sumLng = 0.0; $n = count($coords);
+            foreach ($coords as $c) {
+                $sumLat += (float)$c[0];
+                $sumLng += (float)$c[1];
+            }
+            $light[] = [
+                'id' => (int)$r['id'],
+                'name' => $r['name'],
+                'code' => $r['code'] ?: $r['name'],
+                'lat' => round($sumLat / $n, 6),
+                'lng' => round($sumLng / $n, 6),
+            ];
+        }
+        out(['ok' => true, 'geofences' => $light, 'total' => count($light)]);
     }
 
     case 'sos': {
@@ -270,13 +307,27 @@ try {
 
     case 'tasks': {
         $u = auth_user();
-        $rows = q("SELECT t.*, 
-                     (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) before_photo,
-                     (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) after_photo
-                   FROM tasks t WHERE t.assigned_to=? AND
-                     (t.status IN ('pending','in_progress') OR t.completed_at >= DATE_SUB(NOW(), INTERVAL 3 DAY))
-                   ORDER BY FIELD(t.status,'in_progress','pending','done','cancelled'), t.due_date IS NULL, t.due_date, t.id DESC",
-                  [$u['id']])->fetchAll();
+        $rows = [];
+        try {
+            $rows = q("SELECT t.*, s.name section_name, d.name department_name,
+                         (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) before_photo,
+                         (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) after_photo
+                       FROM tasks t 
+                       LEFT JOIN sections s ON s.id=t.section_id
+                       LEFT JOIN departments d ON d.id=t.department_id
+                       WHERE t.assigned_to=? AND
+                         (t.status IN ('pending','in_progress') OR t.completed_at >= DATE_SUB(NOW(), INTERVAL 3 DAY))
+                       ORDER BY FIELD(t.status,'in_progress','pending','done','cancelled'), t.due_date IS NULL, t.due_date, t.id DESC",
+                      [$u['id']])->fetchAll();
+        } catch (Throwable $e) {
+            $rows = q("SELECT t.*, 
+                         (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) before_photo,
+                         (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) after_photo
+                       FROM tasks t WHERE t.assigned_to=? AND
+                         (t.status IN ('pending','in_progress') OR t.completed_at >= DATE_SUB(NOW(), INTERVAL 3 DAY))
+                       ORDER BY FIELD(t.status,'in_progress','pending','done','cancelled'), t.due_date IS NULL, t.due_date, t.id DESC",
+                      [$u['id']])->fetchAll();
+        }
         foreach ($rows as &$r) {
             $r['id'] = (int)$r['id'];
             $r['lat'] = $r['lat'] !== null ? (float)$r['lat'] : null;
@@ -310,11 +361,14 @@ try {
         $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
         $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
         $note = trim($_POST['note'] ?? '');
-        $geofence = find_nearest_geofence($lat, $lng);
+        $activityType = trim($_POST['activity_type'] ?? 'Field Visit');
+        $autoGeofence = trim($_POST['auto_geofence'] ?? '');
+        $selectedGeofence = trim($_POST['selected_geofence'] ?? '');
+        $geofence = $selectedGeofence ?: ($autoGeofence ?: find_nearest_geofence($lat, $lng));
 
-        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt);
+        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt, $activityType, $autoGeofence, $selectedGeofence);
 
-        out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence]);
+        out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence, 'activity_type' => $activityType]);
     }
 
     case 'task_photo': {

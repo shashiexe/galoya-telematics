@@ -26,9 +26,13 @@ $filesToUpdate = [
     'admin/reports.php' => 'backend/admin/reports.php',
     'admin/unit_properties.php' => 'backend/admin/unit_properties.php',
     'admin/units.php' => 'backend/admin/units.php',
+    'admin/staff.php' => 'backend/admin/staff.php',
+    'admin/tasks.php' => 'backend/admin/tasks.php',
     'admin/assets/app.js' => 'backend/admin/assets/app.js',
     'admin/assets/style.css' => 'backend/admin/assets/style.css',
     'app/index.html' => 'backend/app/index.html',
+    'bootstrap.php' => 'backend/bootstrap.php',
+    'api.php' => 'backend/api.php',
     'sync_agriculture_kml.php' => 'backend/sync_agriculture_kml.php',
     'deploy_update.php' => 'backend/deploy_update.php',
 ];
@@ -82,6 +86,92 @@ try {
 try {
     q("ALTER TABLE field_photos ADD COLUMN geofence_name VARCHAR(128) NULL AFTER note");
 } catch (Throwable $e) {}
+try {
+    q("ALTER TABLE field_photos ADD COLUMN activity_type VARCHAR(64) NULL DEFAULT 'General' AFTER geofence_name");
+    q("ALTER TABLE field_photos ADD COLUMN auto_geofence VARCHAR(128) NULL AFTER activity_type");
+    q("ALTER TABLE field_photos ADD COLUMN selected_geofence VARCHAR(128) NULL AFTER auto_geofence");
+    $results[] = ["✅ Database: Ensured field_photos activity & dual geofence columns exist", "color:#10b981"];
+} catch (Throwable $e) {}
+
+// Departments, Sections, and Designations
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `departments` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `name` VARCHAR(120) NOT NULL,
+        `code` VARCHAR(50) NULL,
+        `description` VARCHAR(255) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_dept_name` (`name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `sections` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `department_id` INT NULL,
+        `name` VARCHAR(120) NOT NULL,
+        `code` VARCHAR(50) NULL,
+        `description` VARCHAR(255) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (`department_id`),
+        UNIQUE KEY `uniq_sec_dept` (`department_id`, `name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `designations` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `name` VARCHAR(120) NOT NULL,
+        `code` VARCHAR(50) NULL,
+        `active` TINYINT(1) NOT NULL DEFAULT 1,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_desig_name` (`name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Seed defaults if empty
+    $dCount = (int)$pdo->query("SELECT COUNT(*) FROM departments")->fetchColumn();
+    if ($dCount === 0) {
+        $pdo->exec("INSERT IGNORE INTO `departments` (`id`, `name`, `code`, `description`) VALUES 
+            (1, 'Agriculture', 'AGRI', 'Sugarcane Plantation & Agronomy Field Operations'),
+            (2, 'Fleet & Transport', 'FLEET', 'Tractors, Harvesters, Infielders & Bowser Transport'),
+            (3, 'Factory & Mill', 'MILL', 'Hingurana Sugar Processing Complex & Weighbridge'),
+            (4, 'Irrigation & Drainage', 'IRRI', 'Canal Systems, Water Pumps & Drainage Division'),
+            (5, 'Civil & Security', 'SEC', 'Estate Security, Gate Controls & Estate Roads')");
+        
+        $pdo->exec("INSERT IGNORE INTO `sections` (`id`, `department_id`, `name`, `code`) VALUES 
+            (1, 1, 'Sector D (Sugarcane)', 'SEC-D'),
+            (2, 1, 'Sector C (Sugarcane)', 'SEC-C'),
+            (3, 1, 'Sector B (Sugarcane)', 'SEC-B'),
+            (4, 1, 'Sector A (Sugarcane)', 'SEC-A'),
+            (5, 2, 'Central Workshop & Garage', 'GARAGE'),
+            (6, 2, 'Haulage / Transport Yard', 'HAUL'),
+            (7, 3, 'Factory Complex & Yard', 'MILL-YD'),
+            (8, 4, 'Main Canal Division', 'CANAL')");
+
+        $pdo->exec("INSERT IGNORE INTO `designations` (`id`, `name`, `code`) VALUES 
+            (1, 'Field Officer', 'FO'),
+            (2, 'Agronomist', 'AGRO'),
+            (3, 'Tractor Operator', 'TRAC-OP'),
+            (4, 'Harvester Operator', 'HARV-OP'),
+            (5, 'Field Supervisor', 'SUP'),
+            (6, 'Field Inspector', 'INSP'),
+            (7, 'Mechanic / Technician', 'MECH'),
+            (8, 'Field Staff', 'STAFF')");
+    }
+    $results[] = ["✅ Database: Ensured departments, sections, and designations exist", "color:#10b981"];
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Departments table note: " . $e->getMessage(), "color:#f59e0b"];
+}
+
+// Columns on users, tasks, and duty_logs
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `department_id` INT NULL AFTER `role`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `section_id` INT NULL AFTER `department_id`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `designation_id` INT NULL AFTER `section_id`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `designation` VARCHAR(100) NULL AFTER `designation_id`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `department_id` INT NULL AFTER `assigned_to`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `section_id` INT NULL AFTER `department_id`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `duty_logs` ADD COLUMN `battery` TINYINT NULL AFTER `lng`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `duty_logs` ADD COLUMN `event_type` VARCHAR(50) NULL DEFAULT 'duty' AFTER `battery`"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE `duty_logs` ADD COLUMN `note` VARCHAR(255) NULL AFTER `event_type`"); } catch (Throwable $e) {}
+
 
 // Geofence Groups Table
 try {

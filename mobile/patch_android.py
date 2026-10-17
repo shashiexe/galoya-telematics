@@ -19,6 +19,27 @@ if os.path.exists(net_sec_template):
     shutil.copyfile(net_sec_template, net_sec_target)
     print(f"[Patch] Copied {net_sec_template} to {net_sec_target}")
 
+# 1.2 Copy proguard-rules.pro
+proguard_template = "proguard-rules.pro.template"
+proguard_target = "android/app/proguard-rules.pro"
+if os.path.exists(proguard_template):
+    shutil.copyfile(proguard_template, proguard_target)
+    print(f"[Patch] Copied {proguard_template} to {proguard_target}")
+
+# 1.3 Configure gradle.properties (Disable R8 FullMode)
+gradle_props = "android/gradle.properties"
+if os.path.exists("gradle.properties.template") and not os.path.exists(gradle_props):
+    shutil.copyfile("gradle.properties.template", gradle_props)
+    print("[Patch] Copied gradle.properties.template to android/gradle.properties")
+elif os.path.exists(gradle_props):
+    with open(gradle_props, "r", encoding="utf-8") as f:
+        props = f.read()
+    if "android.enableR8.fullMode" not in props:
+        props += "\nandroid.enableR8.fullMode=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\n"
+        with open(gradle_props, "w", encoding="utf-8") as f:
+            f.write(props)
+        print("[Patch] Set android.enableR8.fullMode=false in gradle.properties")
+
 # 2. Patch build.gradle (Groovy)
 gradle_path = "android/app/build.gradle"
 if os.path.exists(gradle_path):
@@ -38,20 +59,27 @@ if os.path.exists(gradle_path):
         if "dependencies {" in content:
             content = content.replace(
                 "dependencies {",
-                "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'"
+                "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n    implementation 'androidx.multidex:multidex:2.0.1'"
             )
-            print("[Patch] Added desugar_jdk_libs to existing dependencies block")
+            print("[Patch] Added desugar_jdk_libs and multidex to Groovy dependencies")
         else:
-            content += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
-            print("[Patch] Appended dependencies block with desugar_jdk_libs")
+            content += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n    implementation 'androidx.multidex:multidex:2.0.1'\n}\n"
+            print("[Patch] Appended Groovy dependencies block with desugar_jdk_libs and multidex")
 
-    # Ensure multiDexEnabled true
+    # Ensure multiDexEnabled and abiFilters
     if "multiDexEnabled" not in content and "defaultConfig {" in content:
         content = content.replace(
             "defaultConfig {",
             "defaultConfig {\n        multiDexEnabled true\n        ndk {\n            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'\n        }"
         )
         print("[Patch] Added multiDexEnabled true and abiFilters to defaultConfig")
+
+    # Ensure minifyEnabled false and shrinkResources false in release buildType
+    if "buildTypes {" in content:
+        content = content.replace(
+            "release {",
+            "release {\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'"
+        )
 
     with open(gradle_path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -87,6 +115,14 @@ if os.path.exists(kts_path):
             'defaultConfig {\n        multiDexEnabled = true\n        ndk {\n            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86_64"))\n        }'
         )
         print("[Patch] Added multiDexEnabled = true and abiFilters to kts defaultConfig")
+
+    # Disable minification and add ProGuard in release build
+    if "release {" in content and "isMinifyEnabled" not in content:
+        content = content.replace(
+            'signingConfig = signingConfigs.getByName("debug")',
+            'signingConfig = signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'
+        )
+        print("[Patch] Disabled isMinifyEnabled and isShrinkResources in kts release build")
 
     with open(kts_path, "w", encoding="utf-8") as f:
         f.write(content)

@@ -1,17 +1,26 @@
+import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api.dart';
 import 'screens/home.dart';
 import 'screens/login.dart';
 import 'sync.dart';
 import 'theme.dart';
 import 'tracker.dart';
-
 import 'vault.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Ensure SSL validation issues with local/cPanel certificates are bypassed
+  try {
+    HttpOverrides.global = AppHttpOverrides();
+  } catch (e) {
+    debugPrint('HttpOverrides error: $e');
+  }
 
   bool loggedIn = false;
   try {

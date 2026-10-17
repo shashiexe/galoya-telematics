@@ -12,6 +12,16 @@ if (fs.existsSync(templatePath) && fs.existsSync(path.dirname(targetManifest))) 
     console.log('[Patch] Copied AndroidManifest.xml.template successfully');
 }
 
+// 1.1 Copy network_security_config.xml
+const netSecTemplate = path.join(__dirname, 'network_security_config.xml.template');
+const netSecTargetDir = path.join(__dirname, 'android/app/src/main/res/xml');
+const netSecTarget = path.join(netSecTargetDir, 'network_security_config.xml');
+if (fs.existsSync(netSecTemplate)) {
+    if (!fs.existsSync(netSecTargetDir)) fs.mkdirSync(netSecTargetDir, { recursive: true });
+    fs.copyFileSync(netSecTemplate, netSecTarget);
+    console.log('[Patch] Copied network_security_config.xml.template successfully');
+}
+
 // 2. Patch build.gradle (Groovy)
 const gradlePath = path.join(__dirname, 'android/app/build.gradle');
 if (fs.existsSync(gradlePath)) {
@@ -40,9 +50,9 @@ if (fs.existsSync(gradlePath)) {
     if (!content.includes('multiDexEnabled') && content.includes('defaultConfig {')) {
         content = content.replace(
             'defaultConfig {',
-            'defaultConfig {\n        multiDexEnabled true'
+            "defaultConfig {\n        multiDexEnabled true\n        ndk {\n            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'\n        }"
         );
-        console.log('[Patch] Added multiDexEnabled');
+        console.log('[Patch] Added multiDexEnabled and abiFilters');
     }
 
     fs.writeFileSync(gradlePath, content, 'utf8');

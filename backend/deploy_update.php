@@ -62,6 +62,30 @@ foreach ($filesToUpdate as $localRel => $repoRel) {
     }
 }
 
+// 1.5 Update Official Release APK on Live Web Root
+$apkReleaseUrl = 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.2.0/Galoya-Telematics.apk';
+$apkTargetPath = __DIR__ . '/Galoya-Telematics.apk';
+try {
+    $ch = curl_init($apkReleaseUrl);
+    $fp = fopen($apkTargetPath, 'w+');
+    curl_setopt($ch, CURLOPT_FILE, $fp);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+    $ok = curl_exec($ch);
+    $apkHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    fclose($fp);
+
+    if ($ok && ($apkHttpCode === 200 || $apkHttpCode === 302) && filesize($apkTargetPath) > 10000000) {
+        $results[] = ["✅ Live Web APK Updated: Galoya-Telematics.apk (" . round(filesize($apkTargetPath) / 1048576, 1) . " MB)", "color:#10b981;font-weight:bold"];
+    } else {
+        $results[] = ["⚠️ Web APK note: HTTP $apkHttpCode (Size: " . @filesize($apkTargetPath) . " bytes)", "color:#f59e0b"];
+    }
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Web APK download note: " . $e->getMessage(), "color:#f59e0b"];
+}
+
 // 2. Run Database Migrations
 $pdo = db();
 

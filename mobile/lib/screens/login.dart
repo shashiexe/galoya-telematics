@@ -55,7 +55,20 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
     } catch (e) {
-      setState(() => _err = e is ApiException ? e.message : 'No internet connection');
+      String msg;
+      if (e is ApiException) {
+        msg = e.message;
+      } else {
+        final err = e.toString();
+        if (err.contains('SocketException') || err.contains('Failed host lookup')) {
+          msg = 'Unable to reach server. Please check internet connection.';
+        } else if (err.contains('TimeoutException')) {
+          msg = 'Server request timed out. Please try again.';
+        } else {
+          msg = 'Connection error: ${err.replaceAll("Exception:", "").trim()}';
+        }
+      }
+      setState(() => _err = msg);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

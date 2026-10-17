@@ -76,7 +76,8 @@ function layout_start(string $title, string $active, bool $map = false): void {
 
     $nav = [
         'index.php'         => ['Monitoring', '🛰️'],
-        'units.php'         => ['Units', '🚜'],
+        'units.php'         => ['Fleet', '🚜'],
+        'staff.php'         => ['Staff & Depts', '👥'],
         'history.php'       => ['Tracks', '↝'],
         'messages.php'      => ['Messages', '💬'],
         'reports.php'       => ['Reports', '📋'],
@@ -113,7 +114,7 @@ function layout_start(string $title, string $active, bool $map = false): void {
         $label = $item[0];
         $icon  = $item[1];
         $badge = $item[2] ?? null;
-        $isActive = ($active === $file) || ($file === 'units.php' && $active === 'staff.php');
+        $isActive = ($active === $file);
       ?>
         <a href="<?= $file ?>" class="w-tab <?= $isActive ? 'active' : '' ?>">
           <span><?= $icon ?></span>

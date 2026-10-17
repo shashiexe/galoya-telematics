@@ -1,0 +1,36 @@
+# Flutter base rules
+-keep class io.flutter.app.** { *; }
+-keep class io.flutter.plugin.** { *; }
+-keep class io.flutter.util.** { *; }
+-keep class io.flutter.view.** { *; }
+-keep class io.flutter.** { *; }
+-keep class io.flutter.plugins.** { *; }
+-dontwarn io.flutter.**
+
+# SharedPreferences and Pigeon
+-keep class io.flutter.plugins.sharedpreferences.** { *; }
+-keep class dev.flutter.pigeon.** { *; }
+-dontwarn io.flutter.plugins.sharedpreferences.**
+-dontwarn dev.flutter.pigeon.**
+
+# Kotlin Coroutines & Continuation preservation
+-keep class kotlin.coroutines.** { *; }
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlin.coroutines.**
+-dontwarn kotlinx.coroutines.**
+
+# Keep plugin registrars and embedding v2 plugins
+-keep class * extends io.flutter.plugin.common.PluginRegistry { *; }
+-keep class * implements io.flutter.embedding.engine.plugins.FlutterPlugin { *; }
+-keep class * implements io.flutter.plugin.common.MethodChannel$MethodCallHandler { *; }
+
+-keepattributes *Annotation*
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+-keepattributes Exceptions
+
+# Disable R8 aggressive modifications on release build
+-dontobfuscate
+-dontshrink
+-dontoptimize

@@ -22,6 +22,11 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
 
+        <!-- Disable Impeller rendering engine to ensure 100% stability on budget GPUs like Samsung Galaxy A12 (Helio P35 / PowerVR GE8320) -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -45,9 +50,8 @@
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="location"
             android:enabled="true"
-            android:exported="true"
-            android:stopWithTask="false"
-            tools:replace="android:exported" />
+            android:exported="false"
+            android:stopWithTask="false" />
 
         <meta-data
             android:name="flutterEmbedding"

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
@@ -99,7 +100,28 @@ class Tracker {
   /// Call on app launch: resume tracking if staff was on duty.
   static Future<void> resumeIfNeeded() async {
     final sp = await SharedPreferences.getInstance();
-    if (sp.getBool('tracking') == true) await start();
+    if (sp.getBool('tracking') == true) {
+      await start();
+      try {
+        int? battery;
+        try { battery = await Battery().batteryLevel; } catch (_) {}
+        final pos = await Geolocator.getLastKnownPosition();
+        await LocalDb.enqueue(
+          'duty',
+          jsonEncode({
+            'client_id': 'resume_${DateTime.now().millisecondsSinceEpoch}',
+            'status': 'on',
+            'event_type': 'boot_resume',
+            'note': 'Device Boot / Tracking Auto-Resumed',
+            'lat': pos?.latitude,
+            'lng': pos?.longitude,
+            'battery': battery,
+            't': DateTime.now().millisecondsSinceEpoch,
+          }),
+        );
+        Sync.run();
+      } catch (_) {}
+    }
   }
 
   static Future<void> _startIos() async {

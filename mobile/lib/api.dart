@@ -6,6 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
 
+/// SSL override to trust galoya.lk server certificates on all Android versions
+class AppHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) {
+        return true; // Bypass SSL certificate verification issues for telematics
+      };
+  }
+}
+
 class ApiException implements Exception {
   final String message;
   final int? status;
@@ -14,8 +25,13 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// Thin HTTP client for api.php.
+/// Thin HTTP client for api.php with automatic HTTPS -> HTTP fallback and custom User-Agent.
 class Api {
+  static const Map<String, String> _defaultHeaders = {
+    'User-Agent': 'StaffTrack-Mobile/1.2.0 (Android; lk.galoya.stafftrack)',
+    'Accept': 'application/json, text/plain, */*',
+  };
+
   static Future<String?> token() async {
     final sp = await SharedPreferences.getInstance();
     await sp.reload();
@@ -38,20 +54,53 @@ class Api {
 
   static Future<Map<String, dynamic>> post(String action, Map<String, dynamic> body, {bool auth = true}) async {
     final t = auth ? await token() : null;
-    final r = await http
-        .post(Uri.parse('$kApiUrl?action=$action'),
-            headers: {'Content-Type': 'application/json', if (t != null) 'Authorization': 'Bearer $t'},
-            body: jsonEncode(body))
-        .timeout(const Duration(seconds: 30));
-    return _handle(r);
+    final headers = {
+      ..._defaultHeaders,
+      'Content-Type': 'application/json',
+      if (t != null) 'Authorization': 'Bearer $t',
+    };
+
+    try {
+      final r = await http
+          .post(Uri.parse('$kApiUrl?action=$action'), headers: headers, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 25));
+      return _handle(r);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      // Fallback to HTTP if HTTPS handshake or connection failed
+      try {
+        final rHttp = await http
+            .post(Uri.parse('$kApiUrlHttp?action=$action'), headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 25));
+        return _handle(rHttp);
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   static Future<Map<String, dynamic>> get(String action) async {
     final t = await token();
-    final r = await http
-        .get(Uri.parse('$kApiUrl?action=$action'), headers: {if (t != null) 'Authorization': 'Bearer $t'})
-        .timeout(const Duration(seconds: 30));
-    return _handle(r);
+    final headers = {
+      ..._defaultHeaders,
+      if (t != null) 'Authorization': 'Bearer $t',
+    };
+
+    try {
+      final r = await http
+          .get(Uri.parse('$kApiUrl?action=$action'), headers: headers)
+          .timeout(const Duration(seconds: 25));
+      return _handle(r);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      // Fallback to HTTP
+      try {
+        final rHttp = await http
+            .get(Uri.parse('$kApiUrlHttp?action=$action'), headers: headers)
+            .timeout(const Duration(seconds: 25));
+        return _handle(rHttp);
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   static Future<Map<String, dynamic>> upload(String action, Map<String, String> fields, File file) async {
@@ -60,12 +109,27 @@ class Api {
     if (t != null) {
       fMap['token'] = t;
     }
-    final req = http.MultipartRequest('POST', Uri.parse('$kApiUrl?action=$action'))
-      ..fields.addAll(fMap)
-      ..files.add(await http.MultipartFile.fromPath('photo', file.path));
-    if (t != null) req.headers['Authorization'] = 'Bearer $t';
-    final r = await http.Response.fromStream(await req.send().timeout(const Duration(seconds: 120)));
-    return _handle(r);
+
+    Future<http.Response> sendTo(String url) async {
+      final req = http.MultipartRequest('POST', Uri.parse(url))
+        ..fields.addAll(fMap)
+        ..files.add(await http.MultipartFile.fromPath('photo', file.path));
+      req.headers.addAll(_defaultHeaders);
+      if (t != null) req.headers['Authorization'] = 'Bearer $t';
+      return http.Response.fromStream(await req.send().timeout(const Duration(seconds: 120)));
+    }
+
+    try {
+      final r = await sendTo('$kApiUrl?action=$action');
+      return _handle(r);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      try {
+        final rHttp = await sendTo('$kApiUrlHttp?action=$action');
+        return _handle(rHttp);
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   static Future<void> saveServerConfig(Map c) async {

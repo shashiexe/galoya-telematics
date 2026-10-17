@@ -125,16 +125,37 @@ class LocalDb {
     return list.take(limit).toList();
   }
 
-  /// Search any plot by name or code
-  static Future<List<Map<String, dynamic>>> searchGeofences(String query, {int limit = 10}) async {
+  /// Search any plot by name or code with optional distance calculation from user's location
+  static Future<List<Map<String, dynamic>>> searchGeofences(String query, {double? userLat, double? userLng, int limit = 20}) async {
     final d = await db;
     final q = '%${query.trim()}%';
     final rows = await d.query(
       'geofences_cache',
       where: 'name LIKE ? OR code LIKE ?',
       whereArgs: [q, q],
-      limit: limit,
+      limit: limit * 2,
     );
-    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+    final list = <Map<String, dynamic>>[];
+    for (final r in rows) {
+      final gLat = (r['lat'] as num?)?.toDouble() ?? 0.0;
+      final gLng = (r['lng'] as num?)?.toDouble() ?? 0.0;
+      double dist = 0.0;
+      if (userLat != null && userLng != null && gLat != 0.0 && gLng != 0.0) {
+        dist = _distanceMeters(userLat, userLng, gLat, gLng);
+      }
+      list.add({
+        'id': r['id'],
+        'name': r['name'],
+        'code': r['code'],
+        'lat': gLat,
+        'lng': gLng,
+        'distance': dist,
+      });
+    }
+    if (userLat != null && userLng != null) {
+      list.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+    }
+    return list.take(limit).toList();
   }
 }
+

@@ -78,7 +78,7 @@ if os.path.exists(gradle_path):
     if "buildTypes {" in content:
         content = content.replace(
             "release {",
-            "release {\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'"
+            "release {\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
         )
 
     with open(gradle_path, "w", encoding="utf-8") as f:
@@ -120,7 +120,7 @@ if os.path.exists(kts_path):
     if "release {" in content and "isMinifyEnabled" not in content:
         content = content.replace(
             'signingConfig = signingConfigs.getByName("debug")',
-            'signingConfig = signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'
+            'signingConfig = signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'
         )
         print("[Patch] Disabled isMinifyEnabled and isShrinkResources in kts release build")
 

@@ -50,8 +50,9 @@
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="location"
             android:enabled="true"
-            android:exported="false"
-            android:stopWithTask="false" />
+            android:exported="true"
+            android:stopWithTask="false"
+            tools:replace="android:exported" />
 
         <meta-data
             android:name="flutterEmbedding"

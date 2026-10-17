@@ -7,12 +7,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['act'] ?? '';
     if ($act === 'create') {
         $n = 0;
+        $deptId = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
+        $secId = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
+
         foreach ((array)($_POST['assigned_to'] ?? ['']) as $uid) {
-            q('INSERT INTO tasks (title,description,assigned_to,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?)', [
-                trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $uid ?: null,
-                trim($_POST['address'] ?? '') ?: null,
-                $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
-                $_POST['due_date'] ?: null, $me['id']]);
+            // If user selected, also infer user's department/section if not explicitly chosen
+            $assignedUid = $uid ?: null;
+            if ($assignedUid && (!$deptId || !$secId)) {
+                $uInfo = q("SELECT department_id, section_id FROM users WHERE id=?", [$assignedUid])->fetch();
+                if ($uInfo) {
+                    if (!$deptId) $deptId = $uInfo['department_id'];
+                    if (!$secId) $secId = $uInfo['section_id'];
+                }
+            }
+
+            try {
+                q('INSERT INTO tasks (title,description,assigned_to,department_id,section_id,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)', [
+                    trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $assignedUid,
+                    $deptId, $secId,
+                    trim($_POST['address'] ?? '') ?: null,
+                    $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
+                    $_POST['due_date'] ?: null, $me['id']]);
+            } catch (Throwable $e) {
+                // Fallback if department_id or section_id column is pending
+                q('INSERT INTO tasks (title,description,assigned_to,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?)', [
+                    trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $assignedUid,
+                    trim($_POST['address'] ?? '') ?: null,
+                    $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
+                    $_POST['due_date'] ?: null, $me['id']]);
+            }
             $n++;
         }
         flash("$n task(s) created successfully.");
@@ -20,51 +43,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("UPDATE tasks SET status='cancelled' WHERE id=? AND status<>'done'", [(int)$_POST['id']]);
         flash('Task cancelled.');
     }
-    header('Location: tasks.php?' . http_build_query(array_intersect_key($_GET, array_flip(['status', 'user', 'date'])))); 
+    header('Location: tasks.php?' . http_build_query(array_intersect_key($_GET, array_flip(['status', 'user', 'date', 'dept', 'sec'])))); 
     exit;
 }
+
+// Master Lookups
+$departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
+$sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY name ASC")->fetchAll();
 
 // CSV export / filters
 $where = ['1=1']; 
 $p = [];
 if (!empty($_GET['status'])) { $where[] = 't.status=?'; $p[] = $_GET['status']; }
 if (!empty($_GET['user'])) { $where[] = 't.assigned_to=?'; $p[] = (int)$_GET['user']; }
+if (!empty($_GET['dept'])) { $where[] = '(t.department_id=? OR u.department_id=?)'; array_push($p, (int)$_GET['dept'], (int)$_GET['dept']); }
+if (!empty($_GET['sec'])) { $where[] = '(t.section_id=? OR u.section_id=?)'; array_push($p, (int)$_GET['sec'], (int)$_GET['sec']); }
 if (!empty($_GET['date'])) { 
     $where[] = '(DATE(t.created_at)=? OR DATE(t.completed_at)=? OR t.due_date=?)'; 
     array_push($p, $_GET['date'], $_GET['date'], $_GET['date']); 
 }
 
-$sql = "SELECT t.*, u.name staff, u.code staff_code,
+$sql = "SELECT t.*, u.name staff, u.code staff_code, u.designation staff_desig,
+   s.name section_name, d.name department_name,
    (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) bp,
    (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) ap
-   FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE " . implode(' AND ', $where) . " ORDER BY t.id DESC LIMIT 500";
+   FROM tasks t 
+   LEFT JOIN users u ON u.id=t.assigned_to 
+   LEFT JOIN sections s ON s.id=t.section_id
+   LEFT JOIN departments d ON d.id=t.department_id
+   WHERE " . implode(' AND ', $where) . " ORDER BY t.id DESC LIMIT 500";
 $tasks = q($sql, $p)->fetchAll();
 
 if (isset($_GET['csv'])) {
     header('Content-Type: text/csv'); 
     header('Content-Disposition: attachment; filename="tasks_' . date('Ymd') . '.csv"');
     $o = fopen('php://output', 'w');
-    fputcsv($o, ['ID', 'Title', 'Staff', 'Status', 'Due', 'Started', 'Completed', 'Minutes', 'Note']);
+    fputcsv($o, ['ID', 'Title', 'Staff', 'Department', 'Section', 'Status', 'Due', 'Started', 'Completed', 'Minutes', 'Note']);
     foreach ($tasks as $t) {
         $mins = $t['started_at'] && $t['completed_at'] ? round((strtotime($t['completed_at']) - strtotime($t['started_at'])) / 60) : '';
-        fputcsv($o, [$t['id'], $t['title'], $t['staff'], $t['status'], $t['due_date'], $t['started_at'], $t['completed_at'], $mins, $t['staff_note']]);
+        fputcsv($o, [$t['id'], $t['title'], $t['staff'], $t['department_name'], $t['section_name'], $t['status'], $t['due_date'], $t['started_at'], $t['completed_at'], $mins, $t['staff_note']]);
     }
     exit;
 }
 
-$staff = q("SELECT id,name,code FROM users WHERE role='staff' AND active=1 ORDER BY name")->fetchAll();
-layout_start('Tasks', 'tasks.php', true);
+$staff = q("SELECT u.id, u.name, u.code, u.department_id, u.section_id, u.designation,
+                   d.name dept_name, s.name sec_name 
+            FROM users u 
+            LEFT JOIN departments d ON d.id=u.department_id 
+            LEFT JOIN sections s ON s.id=u.section_id 
+            WHERE u.role='staff' AND u.active=1 
+            ORDER BY u.name")->fetchAll();
+
+layout_start('Tasks & Assignments', 'tasks.php', true);
 ?>
 <!-- Tasks Filter Toolbar -->
 <div class="w-subbar">
   <form method="get" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <span style="font-weight:600;color:#334155">Filter:</span>
+    <span style="font-weight:600;color:#334155;font-size:12px">Filter:</span>
     <select name="status" style="width:auto;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
       <option value="">All Statuses</option>
       <option value="pending" <?= ($_GET['status'] ?? '') === 'pending' ? 'selected' : '' ?>>Pending</option>
       <option value="in_progress" <?= ($_GET['status'] ?? '') === 'in_progress' ? 'selected' : '' ?>>In Progress</option>
       <option value="done" <?= ($_GET['status'] ?? '') === 'done' ? 'selected' : '' ?>>Completed</option>
       <option value="cancelled" <?= ($_GET['status'] ?? '') === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+    </select>
+
+    <select name="dept" style="width:auto;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
+      <option value="">All Departments</option>
+      <?php foreach ($departments as $d): ?>
+        <option value="<?= $d['id'] ?>" <?= ($_GET['dept'] ?? '') == $d['id'] ? 'selected' : '' ?>><?= h($d['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+
+    <select name="sec" style="width:auto;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
+      <option value="">All Sections</option>
+      <?php foreach ($sections as $s): ?>
+        <option value="<?= $s['id'] ?>" <?= ($_GET['sec'] ?? '') == $s['id'] ? 'selected' : '' ?>><?= h($s['name']) ?></option>
+      <?php endforeach; ?>
     </select>
 
     <select name="user" style="width:auto;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
@@ -82,7 +137,7 @@ layout_start('Tasks', 'tasks.php', true);
     <a href="?<?= h(http_build_query($_GET + ['csv' => 1])) ?>" class="w-icon-btn" style="padding:4px 10px">📥 Export CSV</a>
   </form>
 
-  <button class="w-icon-btn primary" onclick="document.getElementById('task-modal').style.display='flex'">
+  <button class="w-icon-btn primary" onclick="openCreateTaskModal()">
     + Create New Task
   </button>
 </div>
@@ -95,6 +150,7 @@ layout_start('Tasks', 'tasks.php', true);
         <tr>
           <th style="width:40px">#</th>
           <th>Task Title & Address</th>
+          <th>Section / Department</th>
           <th>Assigned Staff / Unit</th>
           <th>Status</th>
           <th>Before / After Photos</th>
@@ -114,26 +170,47 @@ layout_start('Tasks', 'tasks.php', true);
               <?php endif; ?>
             </td>
             <td>
-              <strong><?= h($t['staff'] ?? 'Unassigned') ?></strong>
-              <?php if (!empty($t['staff_code'])): ?>
-                <span style="font-size:11px;color:#64748b">(<?= h($t['staff_code']) ?>)</span>
+              <?php if (!empty($t['section_name'])): ?>
+                <span style="display:inline-block;padding:2px 7px;background:#ecfdf5;color:#047857;border-radius:4px;font-size:11px;font-weight:600">
+                  📍 <?= h($t['section_name']) ?>
+                </span>
+              <?php endif; ?>
+              <?php if (!empty($t['department_name'])): ?>
+                <div style="font-size:10px;color:#64748b;margin-top:2px"><?= h($t['department_name']) ?></div>
+              <?php endif; ?>
+              <?php if (empty($t['section_name']) && empty($t['department_name'])): ?>
+                <span style="color:#94a3b8;font-size:11px">—</span>
               <?php endif; ?>
             </td>
-            <td><?= status_badge($t['status']) ?></td>
             <td>
-              <div style="display:flex;gap:6px">
-                <?php if ($t['bp']): ?>
-                  <a href="<?= h(photo_url($t['bp'])) ?>" target="_blank" title="Before photo">
-                    <img src="<?= h(photo_url($t['bp'])) ?>" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1">
+              <strong><?= h($t['staff'] ?? 'Unassigned') ?></strong>
+              <?php if (!empty($t['staff_desig'])): ?>
+                <div style="font-size:11px;color:#0284c7"><?= h($t['staff_desig']) ?></div>
+              <?php endif; ?>
+            </td>
+            <td>
+              <?php 
+                $sc = ['pending' => '#f59e0b', 'in_progress' => '#3b82f6', 'done' => '#10b981', 'cancelled' => '#ef4444'][$t['status']] ?? '#94a3b8';
+              ?>
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#fff;background:<?= $sc ?>">
+                <?= ucfirst(str_replace('_', ' ', $t['status'])) ?>
+              </span>
+            </td>
+            <td>
+              <div style="display:flex;gap:6px;align-items:center">
+                <?php if (!empty($t['bp'])): ?>
+                  <a href="../<?= h($CONFIG['upload_url'] . '/' . $t['bp']) ?>" target="_blank" title="Before Photo">
+                    <img src="../<?= h($CONFIG['upload_url'] . '/' . $t['bp']) ?>" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #10b981">
                   </a>
+                <?php else: ?>
+                  <span style="color:#cbd5e1;font-size:11px">Before: –</span>
                 <?php endif; ?>
-                <?php if ($t['ap']): ?>
-                  <a href="<?= h(photo_url($t['ap'])) ?>" target="_blank" title="After photo">
-                    <img src="<?= h(photo_url($t['ap'])) ?>" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1">
+                <?php if (!empty($t['ap'])): ?>
+                  <a href="../<?= h($CONFIG['upload_url'] . '/' . $t['ap']) ?>" target="_blank" title="After Photo">
+                    <img src="../<?= h($CONFIG['upload_url'] . '/' . $t['ap']) ?>" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #3b82f6">
                   </a>
-                <?php endif; ?>
-                <?php if (!$t['bp'] && !$t['ap']): ?>
-                  <span style="color:#94a3b8;font-size:11px">No photos</span>
+                <?php else: ?>
+                  <span style="color:#cbd5e1;font-size:11px">| After: –</span>
                 <?php endif; ?>
               </div>
             </td>
@@ -145,18 +222,18 @@ layout_start('Tasks', 'tasks.php', true);
           </tr>
         <?php endforeach; ?>
         <?php if (!$tasks): ?>
-          <tr><td colspan="8" style="text-align:center;padding:24px;color:#94a3b8">No tasks found matching filter criteria.</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:24px;color:#94a3b8">No tasks found matching filter criteria.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
   </div>
 </div>
 
-<!-- Modal Dialog to Create New Task -->
-<div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:8px;width:520px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.3)">
+<!-- Modal Dialog to Create New Task with Section Search & Dynamic Staff Filtering -->
+<div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:8px;width:580px;max-width:92vw;max-height:92vh;overflow-y:auto;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.3)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid #e2e8f0;padding-bottom:10px">
-      <h3 style="margin:0;font-size:15px;color:#1e293b">Create New Task</h3>
+      <h3 style="margin:0;font-size:16px;color:#1e293b">Create New Task</h3>
       <button onclick="document.getElementById('task-modal').style.display='none'" style="background:none;border:none;font-size:16px;cursor:pointer">✕</button>
     </div>
 
@@ -166,33 +243,70 @@ layout_start('Tasks', 'tasks.php', true);
 
       <div style="margin-bottom:12px">
         <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Task Title *</label>
-        <input name="title" required placeholder="e.g. Harvesting Sector 4, Tractor Maintenance" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        <input name="title" required placeholder="e.g. Fertilizer Application Block 4, Harvesting Sector D" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+      </div>
+
+      <!-- Section & Department Filter Bar inside Modal -->
+      <div style="background:#f8fafc;padding:12px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:12px">
+        <label style="display:block;font-size:11px;color:#0284c7;margin-bottom:6px;font-weight:700;text-transform:uppercase">
+          🏢 Filter Staff by Section / Department:
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <select name="department_id" id="task-create-dept" onchange="filterModalStaff()" style="width:100%;padding:6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
+              <option value="">All Departments</option>
+              <?php foreach ($departments as $d): ?>
+                <option value="<?= $d['id'] ?>"><?= h($d['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div>
+            <select name="section_id" id="task-create-sec" onchange="filterModalStaff()" style="width:100%;padding:6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
+              <option value="">All Sections / Divisions</option>
+              <?php foreach ($sections as $s): ?>
+                <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>"><?= h($s['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label style="font-size:12px;color:#475569;font-weight:600">Assign to Field Staff / Unit</label>
+          <span id="staff-match-count" style="font-size:11px;color:#64748b"><?= count($staff) ?> staff available</span>
+        </div>
+        
+        <!-- Live Instant Search Bar for Staff -->
+        <input type="text" id="staff-search-input" onkeyup="filterModalStaff()" placeholder="🔍 Quick Search Staff (Name / Code / Designation)..." style="width:100%;padding:6px 10px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px 4px 0 0;box-sizing:border-box;background:#fefefe">
+        
+        <select name="assigned_to[]" id="task-staff-select" size="5" style="width:100%;padding:4px;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 4px 4px;font-size:12px">
+          <option value="" selected>— Unassigned (Field staff can self-assign) —</option>
+          <?php foreach ($staff as $s): ?>
+            <option value="<?= $s['id'] ?>" 
+                    data-dept="<?= (int)$s['department_id'] ?>" 
+                    data-sec="<?= (int)$s['section_id'] ?>" 
+                    data-text="<?= strtolower(h($s['name'] . ' ' . $s['code'] . ' ' . $s['designation'] . ' ' . $s['sec_name'])) ?>">
+              <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?> <?= !empty($s['designation']) ? '— ' . h($s['designation']) : '' ?> <?= !empty($s['sec_name']) ? '📍 ' . h($s['sec_name']) : '' ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div>
-          <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Assign to Staff / Unit</label>
-          <select name="assigned_to[]" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:4px">
-            <option value="">Unassigned</option>
-            <?php foreach ($staff as $s): ?>
-              <option value="<?= $s['id'] ?>"><?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div>
           <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Due Date</label>
           <input type="date" name="due_date" value="<?= date('Y-m-d') ?>" style="width:100%;padding:7px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
         </div>
-      </div>
-
-      <div style="margin-bottom:12px">
-        <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Address / Field Location</label>
-        <input name="address" placeholder="e.g. Block D/207/01, Hingurana" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        <div>
+          <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Address / Field Location</label>
+          <input name="address" placeholder="e.g. Block D/207/01, Hingurana" style="width:100%;padding:7px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        </div>
       </div>
 
       <div style="margin-bottom:12px">
         <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Description / Work Instructions</label>
-        <textarea name="description" rows="3" placeholder="Provide instructions for field staff..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box"></textarea>
+        <textarea name="description" rows="3" placeholder="Provide instructions for field staff (e.g. Apply 50kg urea per acre)..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box"></textarea>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px">
@@ -202,5 +316,58 @@ layout_start('Tasks', 'tasks.php', true);
     </form>
   </div>
 </div>
+
+<script>
+function openCreateTaskModal() {
+  document.getElementById('task-modal').style.display = 'flex';
+  filterModalStaff();
+}
+
+function filterModalStaff() {
+  var deptId = document.getElementById('task-create-dept').value;
+  var secId = document.getElementById('task-create-sec').value;
+  var search = document.getElementById('staff-search-input').value.toLowerCase().trim();
+  
+  // Also filter the section dropdown options by selected department
+  var secSelect = document.getElementById('task-create-sec');
+  var secOptions = secSelect.getElementsByTagName('option');
+  for (var i = 1; i < secOptions.length; i++) {
+    var sOpt = secOptions[i];
+    var sDept = sOpt.getAttribute('data-dept');
+    if (!deptId || !sDept || sDept === deptId) {
+      sOpt.style.display = '';
+    } else {
+      sOpt.style.display = 'none';
+      if (sOpt.selected) secSelect.value = '';
+    }
+  }
+
+  // Filter staff select list
+  var select = document.getElementById('task-staff-select');
+  var options = select.getElementsByTagName('option');
+  var visibleCount = 0;
+
+  for (var j = 1; j < options.length; j++) {
+    var opt = options[j];
+    var optDept = opt.getAttribute('data-dept');
+    var optSec = opt.getAttribute('data-sec');
+    var optText = opt.getAttribute('data-text') || '';
+
+    var matchDept = !deptId || optDept === deptId;
+    var matchSec = !secId || optSec === secId;
+    var matchSearch = !search || optText.indexOf(search) !== -1;
+
+    if (matchDept && matchSec && matchSearch) {
+      opt.style.display = '';
+      visibleCount++;
+    } else {
+      opt.style.display = 'none';
+      if (opt.selected) opt.selected = false;
+    }
+  }
+
+  document.getElementById('staff-match-count').innerText = visibleCount + ' staff matching';
+}
+</script>
 
 <?php layout_end(); ?>

@@ -28,11 +28,32 @@ class Sync {
     try {
       await _points();
       await _queue();
+      await refreshGeofences();
     } catch (_) {
       // offline – will retry on the next tick / connectivity change
     } finally {
       _running = false;
     }
+  }
+
+  /// Sync lightweight geofences for offline proximity calculation (< 50KB)
+  static Future<void> refreshGeofences({bool force = false}) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final lastSync = sp.getInt('last_gf_sync') ?? 0;
+      final count = await LocalDb.countGeofences();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      if (!force && count > 0 && (now - lastSync < 6 * 3600 * 1000)) {
+        return; // fresh enough
+      }
+
+      final res = await Api.get('geofences_light');
+      if (res['ok'] == true && res['geofences'] is List) {
+        await LocalDb.saveGeofences(res['geofences'] as List);
+        await sp.setInt('last_gf_sync', now);
+      }
+    } catch (_) {}
   }
 
   static Future<void> _points() async {

@@ -12,19 +12,43 @@ import 'vault.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Auto-restore session from persistent vault if phone cache/storage was cleared
-  await AuthVault.restoreIfMissing();
-  await Tracker.init();
-  final sp = await SharedPreferences.getInstance();
-  final loggedIn = sp.getString('token') != null;
-  if (loggedIn) await Tracker.resumeIfNeeded();
+
+  bool loggedIn = false;
+  try {
+    // Auto-restore session from persistent vault if phone cache/storage was cleared
+    await AuthVault.restoreIfMissing().catchError((_) => false);
+    final sp = await SharedPreferences.getInstance();
+    loggedIn = sp.getString('token') != null;
+  } catch (e) {
+    debugPrint('AuthVault/Prefs init error: $e');
+  }
+
+  // Safely initialize background tracker plugin without crashing app launch
+  try {
+    await Tracker.init();
+  } catch (e) {
+    debugPrint('Tracker init error: $e');
+  }
 
   // Upload offline data the moment internet comes back.
-  Connectivity().onConnectivityChanged.listen((r) {
-    if (!r.contains(ConnectivityResult.none)) Sync.run();
-  });
+  try {
+    Connectivity().onConnectivityChanged.listen((r) {
+      if (!r.contains(ConnectivityResult.none)) Sync.run();
+    });
+  } catch (e) {
+    debugPrint('Connectivity listen error: $e');
+  }
 
   runApp(StaffTrackApp(loggedIn: loggedIn));
+
+  // Resume tracking safely AFTER UI is mounted and activity is in foreground
+  if (loggedIn) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Tracker.resumeIfNeeded().catchError((e) {
+        debugPrint('Safe resume error: $e');
+      });
+    });
+  }
 }
 
 class StaffTrackApp extends StatelessWidget {

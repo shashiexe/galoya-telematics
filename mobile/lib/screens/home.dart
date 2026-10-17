@@ -255,13 +255,56 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       await Tracker.start();
       setState(() => _tracking = true);
+
+      // Record offline-durable Tracking ON event with timestamp & battery
+      try {
+        final pos = _currentPosition ?? await Geolocator.getLastKnownPosition();
+        int? bat;
+        try { bat = await Battery().batteryLevel; } catch (_) {}
+        await LocalDb.enqueue(
+          'duty',
+          jsonEncode({
+            'client_id': 'on_${DateTime.now().millisecondsSinceEpoch}',
+            'status': 'on',
+            'event_type': 'tracking_on',
+            'note': 'Tracking Turned ON',
+            'lat': pos?.latitude,
+            'lng': pos?.longitude,
+            'battery': bat,
+            't': DateTime.now().millisecondsSinceEpoch,
+          }),
+        );
+        Sync.run();
+      } catch (_) {}
     } else {
       // User can freely pause/stop tracking without a password
       await Tracker.stop();
+      setState(() => _tracking = false);
+
+      // Record offline-durable Tracking OFF event with timestamp & battery
+      try {
+        final pos = _currentPosition ?? await Geolocator.getLastKnownPosition();
+        int? bat;
+        try { bat = await Battery().batteryLevel; } catch (_) {}
+        await LocalDb.enqueue(
+          'duty',
+          jsonEncode({
+            'client_id': 'off_${DateTime.now().millisecondsSinceEpoch}',
+            'status': 'off',
+            'event_type': 'tracking_off',
+            'note': 'Tracking Turned OFF',
+            'lat': pos?.latitude,
+            'lng': pos?.longitude,
+            'battery': bat,
+            't': DateTime.now().millisecondsSinceEpoch,
+          }),
+        );
+        Sync.run();
+      } catch (_) {}
+
       try {
         await Api.post('set_offline', {});
       } catch (_) {}
-      setState(() => _tracking = false);
     }
   }
 
@@ -412,61 +455,206 @@ class _HomeScreenState extends State<HomeScreen> {
         } catch (_) {}
       }
 
-      String note = 'Field Snap';
+      final lat = pos?.latitude ?? 7.2050;
+      final lng = pos?.longitude ?? 81.6580;
+
+      // 1. Proximity query for nearest plots (top 8, zero lag)
+      List<Map<String, dynamic>> nearbyPlots = [];
+      try {
+        nearbyPlots = await LocalDb.getNearbyGeofences(lat, lng, limit: 8);
+      } catch (_) {}
+
+      String autoGeofence = 'Field Area';
+      String selectedGeofence = '';
+      if (nearbyPlots.isNotEmpty) {
+        final closest = nearbyPlots.first;
+        final dMeters = (closest['distance'] as num?)?.round() ?? 0;
+        if (dMeters <= 250) {
+          autoGeofence = 'Inside ${closest['name']}';
+        } else {
+          autoGeofence = 'Near ${closest['name']} (${dMeters}m)';
+        }
+        selectedGeofence = closest['name']?.toString() ?? '';
+      }
+
+      String selectedActivity = 'Field Visit';
+      String note = '';
+
       if (mounted) {
-        final ctl = TextEditingController();
-        final res = await showDialog<String>(
+        final res = await showDialog<Map<String, String>>(
           context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: const Color(0xff1e293b),
-            title: const Row(
-              children: [
-                Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 22),
-                SizedBox(width: 8),
-                Text('Add Photo Note', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (pos != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Text('📍 ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}',
-                        style: const TextStyle(color: Colors.white60, fontSize: 11)),
+          builder: (ctx) {
+            final ctl = TextEditingController();
+            String act = selectedActivity;
+            String secGf = selectedGeofence;
+
+            return StatefulBuilder(
+              builder: (context, setDlgState) {
+                return AlertDialog(
+                  backgroundColor: const Color(0xff1e293b),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 22),
+                      SizedBox(width: 8),
+                      Text('Field Photo & Task Details',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    ],
                   ),
-                TextField(
-                  controller: ctl,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: 'Note (e.g. Field inspection, Cane plot)...',
-                    hintStyle: TextStyle(color: Colors.white38),
-                    border: OutlineInputBorder(),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1. Activity / Task Category Selector
+                          const Text('1. Activity / Task Type:',
+                              style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              'Field Visit',
+                              'Fertilizer Application',
+                              'Land Preparation',
+                              'Harvesting',
+                              'Irrigation Check',
+                              'Weed Control',
+                              'General Inspection',
+                              'Other'
+                            ].map((item) {
+                              final isSel = act == item;
+                              return ChoiceChip(
+                                label: Text(item,
+                                    style: TextStyle(
+                                      color: isSel ? Colors.white : Colors.white70,
+                                      fontSize: 11,
+                                      fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                    )),
+                                selected: isSel,
+                                selectedColor: const Color(0xff0284c7),
+                                backgroundColor: const Color(0xff0f172a),
+                                onSelected: (_) => setDlgState(() => act = item),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // 2. Geofence Location (Plot)
+                          const Text('2. Location & Plot:',
+                              style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff0f172a),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xff334155)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on, color: Color(0xff10b981), size: 16),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text('📍 Auto: $autoGeofence',
+                                      style: const TextStyle(
+                                          color: Color(0xff34d399), fontSize: 11, fontWeight: FontWeight.w600)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          if (nearbyPlots.isNotEmpty) ...[
+                            const Text('Select / Confirm Plot (Nearby Only):',
+                                style: TextStyle(color: Colors.white60, fontSize: 11)),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xff0f172a),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xff334155)),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: nearbyPlots.any((p) => p['name'] == secGf)
+                                      ? secGf
+                                      : nearbyPlots.first['name'].toString(),
+                                  dropdownColor: const Color(0xff0f172a),
+                                  isExpanded: true,
+                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                  items: nearbyPlots.map((p) {
+                                    final d = (p['distance'] as num?)?.round() ?? 0;
+                                    final tag = d <= 25 ? '(Inside / 0m)' : '(${d}m away)';
+                                    return DropdownMenuItem<String>(
+                                      value: p['name'].toString(),
+                                      child: Text('${p['name']} $tag',
+                                          style: const TextStyle(color: Colors.white)),
+                                    );
+                                  }).toList(),
+                                  onChanged: (v) {
+                                    if (v != null) setDlgState(() => secGf = v);
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
+                          // 3. Optional Remarks
+                          const Text('3. Optional Remarks / Note:',
+                              style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: ctl,
+                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                            decoration: const InputDecoration(
+                              hintText: 'Additional details (e.g. 50kg urea applied)...',
+                              hintStyle: TextStyle(color: Colors.white38, fontSize: 12),
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, ''),
-                child: const Text('Skip Note', style: TextStyle(color: Colors.white54)),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff0284c7)),
-                onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
-                child: const Text('Upload Photo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, null),
+                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff0284c7)),
+                      onPressed: () {
+                        Navigator.pop(ctx, {
+                          'activity': act,
+                          'auto_geofence': autoGeofence,
+                          'selected_geofence': secGf.isNotEmpty ? secGf : autoGeofence,
+                          'note': ctl.text.trim(),
+                        });
+                      },
+                      child: const Text('Upload Photo',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         );
-        if (res != null && res.isNotEmpty) note = res;
+
+        if (res == null) return; // User cancelled
+        selectedActivity = res['activity'] ?? 'Field Visit';
+        autoGeofence = res['auto_geofence'] ?? '';
+        selectedGeofence = res['selected_geofence'] ?? '';
+        note = res['note'] ?? '';
       }
 
       final cid = 'fp_${DateTime.now().millisecondsSinceEpoch}';
-      final lat = pos?.latitude ?? 7.2050;
-      final lng = pos?.longitude ?? 81.6580;
 
       await LocalDb.enqueue(
         'field_photo',
@@ -474,6 +662,9 @@ class _HomeScreenState extends State<HomeScreen> {
           'client_id': cid,
           'lat': lat,
           'lng': lng,
+          'activity_type': selectedActivity,
+          'auto_geofence': autoGeofence,
+          'selected_geofence': selectedGeofence,
           'note': note,
           't': DateTime.now().millisecondsSinceEpoch,
         }),
@@ -485,6 +676,9 @@ class _HomeScreenState extends State<HomeScreen> {
         'client_id': cid,
         'lat': lat,
         'lng': lng,
+        'activity_type': selectedActivity,
+        'auto_geofence': autoGeofence,
+        'selected_geofence': selectedGeofence,
         'note': note,
         'file': photo.path,
         'time': DateTime.now(),
@@ -691,11 +885,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : const Icon(Icons.image, color: Colors.white54),
                           ),
                           title: Text(
-                            item['note']?.toString().isNotEmpty == true ? item['note'] : 'Field Photo',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                            item['activity_type']?.toString().isNotEmpty == true
+                                ? item['activity_type'].toString()
+                                : (item['note']?.toString().isNotEmpty == true ? item['note'].toString() : 'Field Photo'),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                           subtitle: Text(
-                            '📍 ${(item['lat'] as double).toStringAsFixed(4)}, ${(item['lng'] as double).toStringAsFixed(4)}\n🕒 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+                            '📍 ${item['selected_geofence'] ?? item['auto_geofence'] ?? 'Field Plot'}${item['note']?.toString().isNotEmpty == true && item['note'] != item['activity_type'] ? ' • ${item['note']}' : ''}\n🕒 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
                             style: const TextStyle(color: Colors.white60, fontSize: 11),
                           ),
                           trailing: const Icon(Icons.check_circle, color: Color(0xff22c55e), size: 20),

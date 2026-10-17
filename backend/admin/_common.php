@@ -126,6 +126,7 @@ function layout_start(string $title, string $active, bool $map = false): void {
     </nav>
 
     <div class="w-user">
+      <a href="../Galoya-Telematics.apk" download class="w-tab" style="background:#059669;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11.5px;text-decoration:none;display:inline-flex;align-items:center;gap:4px" title="Download Official Galoya Telematics Android APK">📥 Download APK</a>
       <a href="../app/" target="_blank" class="w-tab" style="background:#0284c7;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11.5px" title="Test Mobile Phone App on Laptop">📱 App</a>
       <div class="user-badge" style="padding:2px 8px;font-size:11.5px">
         <span>👤</span>

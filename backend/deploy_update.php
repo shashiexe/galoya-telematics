@@ -62,7 +62,15 @@ foreach ($filesToUpdate as $localRel => $repoRel) {
     }
 }
 
-// 1.5 Update Official Release APK on Live Web Root
+// 1.2 Flush OPcache to guarantee immediate PHP bytecode invalidation
+if (function_exists('opcache_reset')) {
+    if (@opcache_reset()) {
+        $results[] = ["⚡ PHP OPcache successfully cleared!", "color:#10b981;font-weight:bold"];
+    } else {
+        $results[] = ["ℹ️ OPcache reset skipped or not restricted", "color:#94a3b8"];
+    }
+}
+
 $apkReleaseUrl = 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.2.0/Galoya-Telematics.apk';
 $apkTargetPath = __DIR__ . '/Galoya-Telematics.apk';
 try {

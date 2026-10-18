@@ -78,6 +78,7 @@ function layout_start(string $title, string $active, bool $map = false): void {
         'index.php'         => ['Monitoring', '🛰️'],
         'units.php'         => ['Fleet', '🚜'],
         'staff.php'         => ['Staff & Depts', '👥'],
+        'photos.php'        => ['Photos', '📷'],
         'history.php'       => ['Tracks', '↝'],
         'messages.php'      => ['Messages', '💬'],
         'reports.php'       => ['Reports', '📋'],
@@ -85,7 +86,6 @@ function layout_start(string $title, string $active, bool $map = false): void {
         'drivers.php'       => ['Drivers', '👨‍✈️'],
         'notifications.php' => ['Notifications', '🔔', $unread_notifs > 0 ? $unread_notifs : null],
         'dashboard.php'     => ['Dashboard', '📊'],
-        'photos.php'        => ['Photos', '📷'],
         'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null],
         'settings.php'      => ['Settings', '⚙️'],
     ];

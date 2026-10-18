@@ -28,6 +28,7 @@ $filesToUpdate = [
     'admin/units.php' => 'backend/admin/units.php',
     'admin/staff.php' => 'backend/admin/staff.php',
     'admin/tasks.php' => 'backend/admin/tasks.php',
+    'admin/dashboard.php' => 'backend/admin/dashboard.php',
     'admin/assets/app.js' => 'backend/admin/assets/app.js',
     'admin/assets/style.css' => 'backend/admin/assets/style.css',
     'app/index.html' => 'backend/app/index.html',

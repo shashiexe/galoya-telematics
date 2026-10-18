@@ -1647,6 +1647,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // In-memory address cache to prevent repeated server/network requests
+  window.addressCache = window.addressCache || {};
+  window.resolveAddress = function(lat, lng, callback) {
+    const key = lat.toFixed(4) + ',' + lng.toFixed(4);
+    if (window.addressCache[key]) {
+      callback(window.addressCache[key]);
+      return;
+    }
+    fetch('index.php?geocode=1&lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng))
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        const addr = (data && data.ok && data.address) ? data.address : (lat.toFixed(5) + ', ' + lng.toFixed(5));
+        window.addressCache[key] = addr;
+        callback(addr);
+      })
+      .catch(function() {
+        const fallback = 'Coordinates: ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+        window.addressCache[key] = fallback;
+        callback(fallback);
+      });
+  };
+
   // ==================== WIALON HOVER / INFO CARD LOGIC (SCREENSHOT 1) ====================
   window.showUnitHoverCardById = function(unitId, event) {
     const u = unitsData.find(x => parseInt(x.id) === parseInt(unitId));
@@ -1679,6 +1701,7 @@ document.addEventListener('DOMContentLoaded', () => {
       card.style.position = 'fixed';
     }
 
+    // 1. Name & Status Header
     document.getElementById('hc-name').textContent = u.name + (u.code ? ` (${u.code})` : '');
     const isOnline = !!u.is_online;
     const minsAgo = parseInt(u.mins_ago || 0);
@@ -1686,44 +1709,28 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-time-ago').innerHTML = timeText;
     document.getElementById('hc-datetime').textContent = u.last_seen || 'No connection yet';
 
-    // Location Address - Dynamically resolved from coordinates
-    const addrEl = document.getElementById('hc-address');
-    if (addrEl) {
-      if (u.lat && u.lng) {
-        const uLat = parseFloat(u.lat);
-        const uLng = parseFloat(u.lng);
-        addrEl.textContent = `Resolving address for ${uLat.toFixed(5)}, ${uLng.toFixed(5)}...`;
-        resolveAddress(uLat, uLng, function(realAddr) {
-          if (currentHoverUnit && parseInt(currentHoverUnit.id) === parseInt(u.id)) {
-            addrEl.textContent = realAddr;
-          }
-        });
-      } else {
-        addrEl.textContent = 'No GPS position received yet';
-      }
-    }
-
-    // Speed & Satellites
+    // 2. Speed & Satellites
     const spd = Math.round(u.speed || 0);
     document.getElementById('hc-speed').textContent = `${spd} km/h`;
     const satsEl = document.getElementById('hc-sats');
     if (satsEl) satsEl.textContent = isOnline ? String(12 + (parseInt(u.id) % 5)) : '0';
 
-    // Sensor values: ENGINE / DUTY & FLS / BATTERY
+    // 3. Sensor values: ENGINE / DUTY & FLS / BATTERY
     const isStaffCategory = ['field_staff', 'supervisor', 'manager', 'security', 'staff', 'phone'].includes(u.unit_type) ||
                             (u.device_type && u.device_type.toLowerCase().includes('phone')) ||
                             (u.device_type && u.device_type.toLowerCase().includes('android')) ||
                             (u.role === 'staff');
 
-    const batt = (u.battery !== null && u.battery !== undefined) ? parseInt(u.battery) : 85;
+    // Real dynamic battery from user object
+    const batt = (u.battery !== null && u.battery !== undefined) ? parseInt(u.battery) : 0;
     const isEngineOn = isOnline && (u.ignition || spd > 0);
 
     const engLabelEl = document.getElementById('hc-sensor-engine-label');
     const engEl = document.getElementById('hc-sensor-engine');
     if (engLabelEl) engLabelEl.textContent = isStaffCategory ? 'DUTY:' : 'ENGINE:';
     if (engEl) {
-      engEl.textContent = isEngineOn ? 'On' : (isStaffCategory ? 'Off Duty' : 'Off');
-      engEl.style.color = isEngineOn ? '#16a34a' : '#94a3b8';
+      engEl.textContent = isEngineOn ? 'On' : (isStaffCategory ? (isOnline ? 'On Duty' : 'Off Duty') : 'Off');
+      engEl.style.color = isEngineOn ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8');
     }
 
     const flsLabelEl = document.getElementById('hc-sensor-fls-label');
@@ -1731,7 +1738,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (flsLabelEl) flsLabelEl.textContent = isStaffCategory ? 'BATTERY:' : 'FLS:';
     if (flsEl) {
       if (isStaffCategory) {
-        const battColor = batt <= 20 ? '#ef4444' : (batt <= 40 ? '#f59e0b' : '#0284c7');
+        const battColor = batt <= 20 ? '#ef4444' : (batt <= 40 ? '#f59e0b' : '#16a34a');
         const battIcon = batt <= 20 ? '🪫 ' : '🔋 ';
         flsEl.innerHTML = `<span style="color:${battColor};font-weight:700">${battIcon}${batt}%</span>`;
       } else {
@@ -1740,14 +1747,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Connectivity settings
-    const devModel = u.device_type || (u.unit_type === 'staff' ? 'Android Smartphone' : 'Teltonika FMB125');
-    const devImei = u.unique_id || ((u.unit_type === 'staff' ? '8661920' : '3505445') + String(u.id).padStart(8, '0'));
+    // 4. Connectivity settings (Each officer's actual phone, device type, unique id)
+    const devModel = u.device_type || (isStaffCategory ? 'Android Phone' : 'Teltonika GPS');
+    const devPhone = u.phone && u.phone.trim() ? u.phone.trim() : 'Not Registered';
+    const devImei = u.unique_id || ((isStaffCategory ? '8661920' : '3505445') + String(u.id).padStart(8, '0'));
     document.getElementById('hc-device-type').textContent = devModel;
-    document.getElementById('hc-phone').textContent = u.phone || '+94768746361';
+    document.getElementById('hc-phone').textContent = devPhone;
     document.getElementById('hc-unique-id').textContent = devImei;
 
-    // Telemetry Parameters
+    // 5. Telemetry Parameters
     const mileage = 22279000 + (parseInt(u.id) * 350);
     const pwrExt = isOnline ? '12.4V' : '0.0V';
 
@@ -1761,6 +1769,28 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-mileage').textContent = mileage;
     document.getElementById('hc-pwr-ext').textContent = pwrExt;
     document.getElementById('hc-pwr-int').textContent = batt + '%';
+
+    // 6. Location Address - Show immediate coordinates first, then resolve address asynchronously via cache
+    const addrEl = document.getElementById('hc-address');
+    if (addrEl) {
+      if (u.lat && u.lng) {
+        const uLat = parseFloat(u.lat);
+        const uLng = parseFloat(u.lng);
+        const key = uLat.toFixed(4) + ',' + uLng.toFixed(4);
+        if (window.addressCache[key]) {
+          addrEl.textContent = window.addressCache[key];
+        } else {
+          addrEl.textContent = `📍 ${uLat.toFixed(5)}, ${uLng.toFixed(5)}`;
+          window.resolveAddress(uLat, uLng, function(realAddr) {
+            if (currentHoverUnit && parseInt(currentHoverUnit.id) === parseInt(u.id)) {
+              addrEl.textContent = realAddr;
+            }
+          });
+        }
+      } else {
+        addrEl.textContent = 'No GPS position received yet';
+      }
+    }
 
     card.style.display = 'block';
   };

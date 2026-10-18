@@ -188,6 +188,21 @@ try {
         }
         if ($latest) {
             $spd = (float)($latest['speed'] ?? 0);
+
+            // Stationary Anchor Check: Prevent indoor GPS drift / Doppler noise from faking motion
+            if (!empty($u['last_lat']) && !empty($u['last_lng'])) {
+                $dLat = deg2rad($latest['lat'] - (float)$u['last_lat']);
+                $dLon = deg2rad($latest['lng'] - (float)$u['last_lng']);
+                $a = sin($dLat / 2) ** 2 + cos(deg2rad((float)$u['last_lat'])) * cos(deg2rad($latest['lat'])) * sin($dLon / 2) ** 2;
+                $distMeters = 6371000 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+                if ($distMeters < 15.0) {
+                    $spd = 0.0;
+                }
+            }
+            if ($spd < 3.0) {
+                $spd = 0.0;
+            }
+
             $motion = $spd > 0 ? 'moving' : 'stationary';
             $ign = $spd > 0 ? 1 : 1;
             

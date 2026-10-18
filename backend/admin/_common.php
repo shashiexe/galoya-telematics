@@ -74,8 +74,8 @@ function layout_start(string $title, string $active, bool $map = false): void {
         $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND on_duty=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)", [$off_min])->fetchColumn();
     } catch (Throwable $e) {}
 
-    // Primary Telematics Nav (Standard Operational Order)
-    $primary_nav = [
+    // Full Telematics Nav (Direct 1-Click Access — No hidden dropdowns)
+    $nav_items = [
         'index.php'         => ['Monitoring', '🛰️'],
         'dashboard.php'     => ['Dashboard', '📊'],
         'history.php'       => ['Tracks', '↝'],
@@ -83,22 +83,13 @@ function layout_start(string $title, string $active, bool $map = false): void {
         'units.php'         => ['Fleet', '🚜'],
         'geofences.php'     => ['Geofences', '⬡'],
         'reports.php'       => ['Reports', '📋'],
-    ];
-
-    // Secondary Nav inside 'More ▾' Dropdown
-    $more_nav = [
-        'staff.php'         => ['Staff & Depts', '👥'],
+        'staff.php'         => ['Staff', '👥'],
         'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null],
         'messages.php'      => ['Messages', '💬'],
         'drivers.php'       => ['Drivers', '👨‍✈️'],
-        'notifications.php' => ['Notifications', '🔔', $unread_notifs > 0 ? $unread_notifs : null],
+        'notifications.php' => ['Alarms', '🔔', $unread_notifs > 0 ? $unread_notifs : null],
         'settings.php'      => ['Settings', '⚙️'],
     ];
-
-    $is_more_active = array_key_exists($active, $more_nav);
-    $more_total_badge = 0;
-    if ($task_count > 0) $more_total_badge += $task_count;
-    if ($unread_notifs > 0) $more_total_badge += $unread_notifs;
     ?><!doctype html>
 <html lang="en">
 <head>
@@ -120,46 +111,20 @@ function layout_start(string $title, string $active, bool $map = false): void {
     </div>
 
     <nav class="w-nav">
-      <?php foreach ($primary_nav as $file => $item): 
+      <?php foreach ($nav_items as $file => $item): 
         $label = $item[0];
         $icon  = $item[1];
+        $badge = $item[2] ?? null;
         $isActive = ($active === $file);
       ?>
         <a href="<?= $file ?>" class="w-tab <?= $isActive ? 'active' : '' ?>">
           <span><?= $icon ?></span>
           <span><?= h($label) ?></span>
+          <?php if ($badge !== null): ?>
+            <span class="badge" style="<?= $file === 'notifications.php' ? 'background:#ef4444;color:#fff' : 'background:#2563eb;color:#fff' ?>"><?= $badge ?></span>
+          <?php endif; ?>
         </a>
       <?php endforeach; ?>
-
-      <!-- More Dropdown Menu -->
-      <div class="w-nav-dropdown <?= $is_more_active ? 'active' : '' ?>" id="w-nav-dropdown">
-        <div class="w-nav-dropdown-toggle" onclick="toggleNavDropdown(event)">
-          <span>⋯</span>
-          <span>More</span>
-          <span style="font-size:9px;margin-left:2px">▼</span>
-          <?php if ($more_total_badge > 0): ?>
-            <span class="badge" style="background:#ef4444;color:#fff;margin-left:4px"><?= $more_total_badge ?></span>
-          <?php endif; ?>
-        </div>
-        <div class="w-nav-dropdown-menu" id="w-nav-dropdown-menu">
-          <?php foreach ($more_nav as $file => $item): 
-            $label = $item[0];
-            $icon  = $item[1];
-            $badge = $item[2] ?? null;
-            $isActive = ($active === $file);
-          ?>
-            <a href="<?= $file ?>" class="w-nav-dropdown-item <?= $isActive ? 'active' : '' ?>">
-              <span style="display:inline-flex;align-items:center;gap:8px">
-                <span><?= $icon ?></span>
-                <span><?= h($label) ?></span>
-              </span>
-              <?php if ($badge !== null): ?>
-                <span class="badge" style="<?= $file === 'notifications.php' ? 'background:#ef4444;color:#fff' : 'background:#2563eb;color:#fff' ?>"><?= $badge ?></span>
-              <?php endif; ?>
-            </a>
-          <?php endforeach; ?>
-        </div>
-      </div>
     </nav>
 
     <div class="w-user">
@@ -172,17 +137,6 @@ function layout_start(string $title, string $active, bool $map = false): void {
       <a href="logout.php" class="logout-link" style="padding:2px 8px;font-size:11px">Logout</a>
     </div>
   </header>
-  <script>
-    function toggleNavDropdown(e) {
-      e.stopPropagation();
-      const dd = document.getElementById('w-nav-dropdown');
-      if (dd) dd.classList.toggle('open');
-    }
-    document.addEventListener('click', function(e) {
-      const dd = document.getElementById('w-nav-dropdown');
-      if (dd && !dd.contains(e.target)) dd.classList.remove('open');
-    });
-  </script>
 
   <!-- Flash Message -->
   <?php if ($m = flash()): ?>

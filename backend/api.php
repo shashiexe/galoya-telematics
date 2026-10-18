@@ -278,6 +278,42 @@ try {
         out(['ok' => true, 'geofences' => $light, 'total' => count($light)]);
     }
 
+    case 'my_field_photos': {
+        // Fetch field photos for logged-in user on a selected date (or today)
+        $u = auth_user();
+        $date = trim($_GET['date'] ?? ($_POST['date'] ?? date('Y-m-d')));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) $date = date('Y-m-d');
+        
+        $photos = q("SELECT id, file_path, lat, lng, note, geofence_name, activity_type, taken_at,
+                     CONCAT('https://track.galoya.lk/uploads/', file_path) AS full_url
+                     FROM field_photos 
+                     WHERE user_id=? AND DATE(taken_at)=?
+                     ORDER BY id DESC", [$u['id'], $date])->fetchAll();
+        out(['ok' => true, 'date' => $date, 'photos' => $photos, 'count' => count($photos)]);
+    }
+
+    case 'plot_polygon': {
+        // Query full polygon boundary coordinates on-demand for a searched plot (keeps mobile app tiny)
+        $name = trim($_GET['name'] ?? ($_POST['name'] ?? ''));
+        if (!$name) fail('Plot name required', 400);
+
+        $row = q("SELECT id, name, code, type, coordinates, color FROM geofences WHERE name = ? OR code = ? OR name LIKE ? LIMIT 1",
+                 [$name, $name, "%$name%"])->fetch();
+        if (!$row) {
+            fail('Plot polygon not found', 404);
+        }
+        $coords = json_decode($row['coordinates'] ?? '[]', true);
+        out([
+            'ok' => true,
+            'id' => (int)$row['id'],
+            'name' => $row['name'],
+            'code' => $row['code'],
+            'type' => $row['type'],
+            'color' => $row['color'] ?: '#2563eb',
+            'coordinates' => $coords
+        ]);
+    }
+
     case 'sos': {
         // body: {lat, lng, battery}
         $u = null;

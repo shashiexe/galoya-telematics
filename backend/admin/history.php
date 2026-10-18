@@ -64,23 +64,42 @@ function haversine_km($lat1, $lon1, $lat2, $lon2) {
     return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
 }
 
-// 1. Filter stationary jitter & clamp speeds < 4.0 km/h to 0 km/h
+// 1. Filter stationary jitter & calculate realistic displacement speed
 $clean_pts = [];
-foreach ($pts as $p) {
+for ($i = 0; $i < count($pts); $i++) {
+    $p = $pts[$i];
     $spd = (float)$p['speed'];
-    if ($spd < 4.0) $spd = 0.0;
+
+    if ($i > 0) {
+        $prev_p = $pts[$i - 1];
+        $t_gap = max(1, strtotime($p['recorded_at']) - strtotime($prev_p['recorded_at']));
+        $dist_km = haversine_km((float)$prev_p['lat'], (float)$prev_p['lng'], (float)$p['lat'], (float)$p['lng']);
+        $dist_m = $dist_km * 1000.0;
+
+        // If moved less than 15 meters and time gap is >= 10s:
+        // Reported speed is Doppler GPS noise from being indoors / stationary!
+        if ($dist_m < 15.0 && $t_gap >= 10) {
+            $spd = 0.0;
+        } elseif ($spd < 4.0) {
+            $spd = 0.0;
+        }
+    } else {
+        if ($spd < 4.0) $spd = 0.0;
+    }
+
     $p['speed'] = $spd;
     $clean_pts[] = $p;
 }
 
-// 2. Segment into Trips (moving) and Stops (stationary >= 10 mins / 600s - Wialon / Telematics Standard)
+// 2. Segment into Trips (moving) and Stops/Gaps (Wialon / Telematics Industry Standard)
 $min_stop_sec = 600; // 10 minutes parking threshold
+$max_gap_sec = 600;  // 10 minutes offline gap threshold -> Automatically split trips!
 $trips = [];
 $stops = [];
 $timeline = []; // Chronological list of trips and parking periods
 
 function build_history_trip($pts, $idx, $trip_colors) {
-    if (empty($pts)) return null;
+    if (empty($pts) || count($pts) < 2) return null;
     $trip_dist = 0;
     $trip_spd_sum = 0;
     $trip_max_spd = 0;
@@ -91,8 +110,8 @@ function build_history_trip($pts, $idx, $trip_colors) {
         if ($s > $trip_max_spd) $trip_max_spd = $s;
     }
 
-    // Ignore tiny GPS jitter (< 0.25 km / 250m) to prevent breaking parking sessions
-    if ($trip_dist < 0.25) {
+    // Ignore tiny GPS jitter (< 0.15 km / 150m) to prevent breaking parking sessions
+    if ($trip_dist < 0.15) {
         return null;
     }
 
@@ -121,6 +140,61 @@ for ($i = 0; $i < count($clean_pts); $i++) {
     $spd = (float)$p['speed'];
     if ($spd > $max_speed) $max_speed = $spd;
 
+    // Check for offline gap or sudden teleportation jump between points
+    if ($i > 0) {
+        $prev_p = $clean_pts[$i - 1];
+        $gap_sec = strtotime($p['recorded_at']) - strtotime($prev_p['recorded_at']);
+        $dist_jump_km = haversine_km((float)$prev_p['lat'], (float)$prev_p['lng'], (float)$p['lat'], (float)$p['lng']);
+        $implied_spd = $gap_sec > 0 ? ($dist_jump_km / ($gap_sec / 3600.0)) : 0;
+
+        if ($gap_sec >= $max_gap_sec || ($gap_sec > 0 && $implied_spd > 140.0)) {
+            // Gap detected! Close previous trip cleanly
+            if (!empty($cur_trip_pts)) {
+                $tr = build_history_trip($cur_trip_pts, count($trips), $trip_colors);
+                if ($tr) {
+                    $trip_idx = count($trips);
+                    $trips[] = $tr;
+                    $timeline[] = ['type' => 'trip', 'index' => $trip_idx, 'data' => $tr];
+                    $km += $tr['distance_km'];
+                }
+                $cur_trip_pts = [];
+            }
+            if (!empty($cur_stop_pts)) {
+                $s_first = strtotime($cur_stop_pts[0]['recorded_at']);
+                $s_last = strtotime($cur_stop_pts[count($cur_stop_pts) - 1]['recorded_at']);
+                $stop_dur = max(0, $s_last - $s_first);
+                if ($stop_dur >= $min_stop_sec) {
+                    $stop_obj = [
+                        'stop_num' => count($stops) + 1,
+                        'lat' => (float)$cur_stop_pts[0]['lat'],
+                        'lng' => (float)$cur_stop_pts[0]['lng'],
+                        'start_time' => date('H:i:s', $s_first),
+                        'end_time' => date('H:i:s', $s_last),
+                        'duration_sec' => $stop_dur,
+                        'duration_str' => floor($stop_dur / 3600) > 0 ? (floor($stop_dur / 3600).'h '.floor(($stop_dur % 3600) / 60).'m') : (round($stop_dur / 60).' min')
+                    ];
+                    $stops[] = $stop_obj;
+                    $timeline[] = ['type' => 'stop', 'data' => $stop_obj];
+                }
+                $cur_stop_pts = [];
+            }
+
+            // Register the gap as an offline / inactive parking session
+            $gap_stop = [
+                'stop_num' => count($stops) + 1,
+                'lat' => (float)$prev_p['lat'],
+                'lng' => (float)$prev_p['lng'],
+                'start_time' => substr($prev_p['recorded_at'], 11, 8),
+                'end_time' => substr($p['recorded_at'], 11, 8),
+                'duration_sec' => $gap_sec,
+                'duration_str' => floor($gap_sec / 3600) > 0 ? (floor($gap_sec / 3600).'h '.floor(($gap_sec % 3600) / 60).'m') : (round($gap_sec / 60).' min'),
+                'note' => 'Offline / Inactivity Gap'
+            ];
+            $stops[] = $gap_stop;
+            $timeline[] = ['type' => 'stop', 'data' => $gap_stop];
+        }
+    }
+
     if ($spd > 0) {
         // Moving point
         if (!empty($cur_stop_pts)) {
@@ -139,7 +213,7 @@ for ($i = 0; $i < count($clean_pts); $i++) {
                         $km += $tr['distance_km'];
                         $cur_trip_pts = [];
                     } else {
-                        // Drift < 250m: discard trip points so it merges into parking
+                        // Drift < 150m: discard trip points so it merges into parking
                         $cur_trip_pts = [];
                     }
                 }

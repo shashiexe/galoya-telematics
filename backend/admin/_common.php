@@ -74,21 +74,31 @@ function layout_start(string $title, string $active, bool $map = false): void {
         $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND on_duty=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)", [$off_min])->fetchColumn();
     } catch (Throwable $e) {}
 
-    $nav = [
+    // Primary Telematics Nav (Standard Operational Order)
+    $primary_nav = [
         'index.php'         => ['Monitoring', '🛰️'],
-        'units.php'         => ['Fleet', '🚜'],
-        'staff.php'         => ['Staff & Depts', '👥'],
-        'photos.php'        => ['Photos', '📷'],
+        'dashboard.php'     => ['Dashboard', '📊'],
         'history.php'       => ['Tracks', '↝'],
-        'messages.php'      => ['Messages', '💬'],
-        'reports.php'       => ['Reports', '📋'],
+        'photos.php'        => ['Photos', '📷'],
+        'units.php'         => ['Fleet', '🚜'],
         'geofences.php'     => ['Geofences', '⬡'],
+        'reports.php'       => ['Reports', '📋'],
+    ];
+
+    // Secondary Nav inside 'More ▾' Dropdown
+    $more_nav = [
+        'staff.php'         => ['Staff & Depts', '👥'],
+        'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null],
+        'messages.php'      => ['Messages', '💬'],
         'drivers.php'       => ['Drivers', '👨‍✈️'],
         'notifications.php' => ['Notifications', '🔔', $unread_notifs > 0 ? $unread_notifs : null],
-        'dashboard.php'     => ['Dashboard', '📊'],
-        'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null],
         'settings.php'      => ['Settings', '⚙️'],
     ];
+
+    $is_more_active = array_key_exists($active, $more_nav);
+    $more_total_badge = 0;
+    if ($task_count > 0) $more_total_badge += $task_count;
+    if ($unread_notifs > 0) $more_total_badge += $unread_notifs;
     ?><!doctype html>
 <html lang="en">
 <head>
@@ -110,32 +120,69 @@ function layout_start(string $title, string $active, bool $map = false): void {
     </div>
 
     <nav class="w-nav">
-      <?php foreach ($nav as $file => $item): 
+      <?php foreach ($primary_nav as $file => $item): 
         $label = $item[0];
         $icon  = $item[1];
-        $badge = $item[2] ?? null;
         $isActive = ($active === $file);
       ?>
         <a href="<?= $file ?>" class="w-tab <?= $isActive ? 'active' : '' ?>">
           <span><?= $icon ?></span>
           <span><?= h($label) ?></span>
-          <?php if ($badge !== null): ?>
-            <span class="badge" style="<?= $file === 'notifications.php' ? 'background:#ef4444;color:#fff' : '' ?>"><?= $badge ?></span>
-          <?php endif; ?>
         </a>
       <?php endforeach; ?>
+
+      <!-- More Dropdown Menu -->
+      <div class="w-nav-dropdown <?= $is_more_active ? 'active' : '' ?>" id="w-nav-dropdown">
+        <div class="w-nav-dropdown-toggle" onclick="toggleNavDropdown(event)">
+          <span>⋯</span>
+          <span>More</span>
+          <span style="font-size:9px;margin-left:2px">▼</span>
+          <?php if ($more_total_badge > 0): ?>
+            <span class="badge" style="background:#ef4444;color:#fff;margin-left:4px"><?= $more_total_badge ?></span>
+          <?php endif; ?>
+        </div>
+        <div class="w-nav-dropdown-menu" id="w-nav-dropdown-menu">
+          <?php foreach ($more_nav as $file => $item): 
+            $label = $item[0];
+            $icon  = $item[1];
+            $badge = $item[2] ?? null;
+            $isActive = ($active === $file);
+          ?>
+            <a href="<?= $file ?>" class="w-nav-dropdown-item <?= $isActive ? 'active' : '' ?>">
+              <span style="display:inline-flex;align-items:center;gap:8px">
+                <span><?= $icon ?></span>
+                <span><?= h($label) ?></span>
+              </span>
+              <?php if ($badge !== null): ?>
+                <span class="badge" style="<?= $file === 'notifications.php' ? 'background:#ef4444;color:#fff' : 'background:#2563eb;color:#fff' ?>"><?= $badge ?></span>
+              <?php endif; ?>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      </div>
     </nav>
 
     <div class="w-user">
-      <a href="../Galoya-Telematics.apk" download class="w-tab" style="background:#059669;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11.5px;text-decoration:none;display:inline-flex;align-items:center;gap:4px" title="Download Official Galoya Telematics Android APK">📥 Download APK</a>
-      <a href="../app/" target="_blank" class="w-tab" style="background:#0284c7;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11.5px" title="Test Mobile Phone App on Laptop">📱 App</a>
-      <div class="user-badge" style="padding:2px 8px;font-size:11.5px">
+      <a href="../Galoya-Telematics.apk" download class="w-tab" style="background:#059669;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px" title="Download Official Galoya Telematics Android APK">📥 APK</a>
+      <a href="../app/" target="_blank" class="w-tab" style="background:#0284c7;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11px" title="Test Mobile Phone App on Laptop">📱 App</a>
+      <div class="user-badge" style="padding:2px 8px;font-size:11px">
         <span>👤</span>
         <span><?= h($a['name'] ?? 'galoyap.admin') ?></span>
       </div>
-      <a href="logout.php" class="logout-link" style="padding:2px 8px;font-size:11.5px">Logout</a>
+      <a href="logout.php" class="logout-link" style="padding:2px 8px;font-size:11px">Logout</a>
     </div>
   </header>
+  <script>
+    function toggleNavDropdown(e) {
+      e.stopPropagation();
+      const dd = document.getElementById('w-nav-dropdown');
+      if (dd) dd.classList.toggle('open');
+    }
+    document.addEventListener('click', function(e) {
+      const dd = document.getElementById('w-nav-dropdown');
+      if (dd && !dd.contains(e.target)) dd.classList.remove('open');
+    });
+  </script>
 
   <!-- Flash Message -->
   <?php if ($m = flash()): ?>

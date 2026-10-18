@@ -57,7 +57,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 10px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.25);
   z-index: 1000;
   position: relative;
@@ -66,23 +66,24 @@ a:hover { text-decoration: underline; }
 .w-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13.5px;
   letter-spacing: 0.5px;
   color: #fff;
-  min-width: 175px;
+  min-width: 165px;
+  flex-shrink: 0;
 }
 .w-brand .globe-icon {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #42a5f5, #0d47a1);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 0 10px rgba(66, 165, 245, 0.5);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .w-nav {
@@ -91,17 +92,18 @@ a:hover { text-decoration: underline; }
   height: 100%;
   overflow-x: auto;
   scrollbar-width: none;
+  flex: 1;
 }
 .w-nav::-webkit-scrollbar { display: none; }
 
 .w-tab {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 9px;
+  gap: 3.5px;
+  padding: 0 6px;
   height: 100%;
   color: #cfd8dc;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   text-decoration: none;
   border-bottom: 3px solid transparent;
@@ -126,6 +128,76 @@ a:hover { text-decoration: underline; }
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 10px;
+}
+
+/* More ▾ Dropdown Navigation */
+.w-nav-dropdown {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.w-nav-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 9px;
+  height: 100%;
+  color: #cfd8dc;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+.w-nav-dropdown-toggle:hover,
+.w-nav-dropdown.open .w-nav-dropdown-toggle,
+.w-nav-dropdown.active .w-nav-dropdown-toggle {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+.w-nav-dropdown.active .w-nav-dropdown-toggle {
+  border-bottom-color: #29b6f6;
+  font-weight: 600;
+}
+.w-nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 195px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+  z-index: 2100;
+  padding: 5px 0;
+}
+.w-nav-dropdown:hover .w-nav-dropdown-menu,
+.w-nav-dropdown.open .w-nav-dropdown-menu {
+  display: block;
+}
+.w-nav-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+  color: #cbd5e1;
+  font-size: 11.5px;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.w-nav-dropdown-item:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  text-decoration: none;
+}
+.w-nav-dropdown-item.active {
+  background: #0284c7;
+  color: #fff;
+  font-weight: 600;
 }
 
 .w-user {
@@ -410,7 +482,8 @@ a:hover { text-decoration: underline; }
 
 /* Left Telematics Sidebar */
 .w-units-sidebar {
-  width: 360px;
+  width: 395px;
+  min-width: 395px;
   background: #fff;
   border-right: 1px solid var(--border);
   display: flex;
@@ -466,16 +539,18 @@ a:hover { text-decoration: underline; }
 .w-units-table-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .w-units-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 .w-units-table th {
   background: #f8fafc;
   border-bottom: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: 6px 4px;
   text-align: left;
   font-size: 11px;
   color: var(--txt-muted);
@@ -483,9 +558,12 @@ a:hover { text-decoration: underline; }
   position: sticky;
   top: 0;
   z-index: 10;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .w-units-table td {
-  padding: 6px 8px;
+  padding: 5px 3px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
 }
@@ -498,6 +576,39 @@ a:hover { text-decoration: underline; }
 }
 .w-unit-row.selected {
   background: #e3f2fd;
+}
+
+/* Wialon Direct Action Buttons for Unit Row (Solo, Properties, Delete) */
+.w-unit-act-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  margin: 0 1px;
+  transition: all 0.12s ease;
+  line-height: 1;
+}
+.w-unit-act-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  transform: translateY(-1px);
+}
+.w-unit-act-btn.solo:hover {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0284c7;
+}
+.w-unit-act-btn.del:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #dc2626;
 }
 
 /* Unit status symbols */

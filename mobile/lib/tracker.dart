@@ -173,6 +173,12 @@ void _serviceMain(ServiceInstance service) async {
   try {
     HttpOverrides.global = AppHttpOverrides();
   } catch (_) {}
+
+  // Promote to Android Foreground Service immediately so OS never kills it on app swipe-away
+  if (service is AndroidServiceInstance) {
+    service.setAsForegroundService();
+  }
+
   var running = true;
   StreamSubscription<Position>? streamSub;
 

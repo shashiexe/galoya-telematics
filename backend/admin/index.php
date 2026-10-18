@@ -26,29 +26,8 @@ if (isset($_GET['feed'])) {
         }
     }
 
-    // Fetch recent trail points for live trail rendering (Unit trace)
+    // Live telematics trails: Start clean on page load, accumulate only during active live monitoring session
     $trails = [];
-    $active_ids = array_column(array_filter($units, fn($u) => $u['lat'] && $u['lng']), 'id');
-    if (!empty($active_ids)) {
-        $in = implode(',', array_map('intval', $active_ids));
-        try {
-            $loc_rows = q("SELECT user_id, lat, lng, speed, recorded_at 
-                           FROM locations 
-                           WHERE user_id IN ($in) 
-                           ORDER BY id DESC 
-                           LIMIT 400")->fetchAll();
-            foreach ($loc_rows as $row) {
-                $uid = (int)$row['user_id'];
-                if (!isset($trails[$uid])) $trails[$uid] = [];
-                if (count($trails[$uid]) < 30) {
-                    $trails[$uid][] = [(float)$row['lat'], (float)$row['lng'], (float)$row['speed']];
-                }
-            }
-            foreach ($trails as $uid => &$tpts) {
-                $tpts = array_reverse($tpts);
-            }
-        } catch (Throwable $e) {}
-    }
 
     // Fetch active SOS alerts
     $sos_alerts = q("SELECT s.*, u.name, u.phone FROM sos_alerts s JOIN users u ON u.id=s.user_id WHERE s.status='active' ORDER BY s.id DESC LIMIT 5")->fetchAll();
@@ -1432,17 +1411,11 @@ document.addEventListener('DOMContentLoaded', () => {
         heading = lastHeadings[id];
       }
 
-      // Ensure trailing line connects seamlessly to the exact current vehicle [lat, lng]
-      const trailPts = [...tr];
-      if (trailPts.length > 0) {
-        trailPts[trailPts.length - 1] = [lat, lng];
-      } else {
-        trailPts.push([lat, lng]);
-      }
-
       // Live Trailing Line (Unit trace)
-      // "unit trace ... click karoth witharai map1 wahanaya giya para live line1 adigena yanawa"
-      if (vis.unit_trace && trailPts.length >= 2) {
+      // "api balan welawe idan live viwe 1 mumunt aka line 1 pennamu"
+      // Only draw when unit_trace is enabled, vehicle is currently moving, and has >= 2 live points
+      const trailPts = [...tr];
+      if (vis.unit_trace && isMoving && trailPts.length >= 2) {
         if (!unitTrailsPolylines[id]) {
           unitTrailsPolylines[id] = L.polyline(trailPts, {
             color: '#0040dd',
@@ -1585,10 +1558,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-name').textContent = u.name + (u.code ? ` (${u.code})` : '');
     const isOnline = !!u.is_online;
     const minsAgo = parseInt(u.mins_ago || 0);
-    const secsSim = Math.max(12, (parseInt(u.id) * 7) % 55);
-    const timeText = isOnline ? (minsAgo <= 0 ? `${secsSim} s ago` : `${minsAgo} min ago`) : 'Offline';
-    document.getElementById('hc-time-ago').textContent = timeText;
-    document.getElementById('hc-datetime').textContent = u.last_seen || '16.10.2026 13:24:13';
+    const timeText = isOnline ? (minsAgo <= 0 ? '🟢 Online (Just now)' : `🟢 Online (${minsAgo}m ago)`) : `⚪ Offline (${minsAgo > 0 ? minsAgo + 'm ago' : 'No signal'})`;
+    document.getElementById('hc-time-ago').innerHTML = timeText;
+    document.getElementById('hc-datetime').textContent = u.last_seen || 'No connection yet';
 
     // Location Address
     let addr = 'Hingurana Sugar Plantation, Ampara, Eastern, Sri Lanka';
@@ -1903,22 +1875,39 @@ document.addEventListener('DOMContentLoaded', () => {
       unitsData = data.units || [];
       geofencesData = data.geofences || [];
 
-      // Update unit trailing lines (Unit trace)
-      if (data.trails) {
-        for (const [uid, pts] of Object.entries(data.trails)) {
-          const id = parseInt(uid);
-          unitTrails[id] = pts.map(p => [parseFloat(p[0]), parseFloat(p[1])]);
-        }
-      }
+      // Live Trailing Line (Unit Trace): Accumulate ONLY during active live monitoring while watching
       unitsData.forEach(u => {
         if (!u.lat || !u.lng) return;
         const id = parseInt(u.id);
-        const pt = [parseFloat(u.lat), parseFloat(u.lng)];
-        if (!unitTrails[id]) unitTrails[id] = [];
+        const lat = parseFloat(u.lat);
+        const lng = parseFloat(u.lng);
+        const isOnline = !!u.is_online;
+        const spd = parseFloat(u.speed || 0);
+        const isMoving = isOnline && (u.motion_state === 'moving' || spd > 1.0);
+
+        if (!unitTrails[id]) {
+          // Initialize clean with current live position only (no lines drawn yet)
+          unitTrails[id] = [[lat, lng]];
+          return;
+        }
+
         const last = unitTrails[id][unitTrails[id].length - 1];
-        if (!last || Math.abs(last[0] - pt[0]) > 0.00002 || Math.abs(last[1] - pt[1]) > 0.00002) {
-          unitTrails[id].push(pt);
-          if (unitTrails[id].length > 35) unitTrails[id].shift();
+        if (last) {
+          const dLat = (lat - last[0]) * 111320;
+          const dLng = (lng - last[1]) * 111320 * Math.cos(lat * Math.PI / 180);
+          const distM = Math.sqrt(dLat * dLat + dLng * dLng);
+
+          // Only append if vehicle is moving and moved >= 10 meters (prevents stationary jitter spiderwebs)
+          if (isMoving && distM >= 10.0 && distM < 1500.0) {
+            unitTrails[id].push([lat, lng]);
+            if (unitTrails[id].length > 25) unitTrails[id].shift();
+          } else if (distM >= 1500.0) {
+            // Large jump / teleportation: reset trail to prevent crazy lines across the map
+            unitTrails[id] = [[lat, lng]];
+          } else if (!isMoving && unitTrails[id].length > 1) {
+            // Once stationary for a while, clear trailing line so old trail doesn't linger permanently
+            unitTrails[id] = [[lat, lng]];
+          }
         }
       });
 

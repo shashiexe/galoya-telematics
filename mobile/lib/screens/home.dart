@@ -767,57 +767,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _viewPhotoDetail(Map<String, dynamic> item) {
-    final f = File(item['file'] as String);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xff1e293b),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 22),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                item['note']?.toString().isNotEmpty == true ? item['note'] : 'Field Photo',
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: f.existsSync()
-                  ? Image.file(f, height: 180, width: double.infinity, fit: BoxFit.cover)
-                  : const SizedBox(height: 100, child: Center(child: Icon(Icons.broken_image, color: Colors.white38, size: 40))),
-            ),
-            const SizedBox(height: 12),
-            Text('📍 GPS: ${(item['lat'] as double).toStringAsFixed(5)}, ${(item['lng'] as double).toStringAsFixed(5)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            const SizedBox(height: 4),
-            Text('🕒 Time: ${(item['time'] as DateTime).toString().substring(0, 19)}',
-                style: const TextStyle(color: Colors.white60, fontSize: 11)),
-            const SizedBox(height: 4),
-            const Text('☁️ Status: Saved & Uploaded to Server',
-                style: TextStyle(color: Color(0xff22c55e), fontSize: 11, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: Colors.white70)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showGalleryModal() {
     String dateStr = "${_galleryDate.year}-${_galleryDate.month.toString().padLeft(2, '0')}-${_galleryDate.day.toString().padLeft(2, '0')}";
 

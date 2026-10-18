@@ -67,24 +67,24 @@ a:hover { text-decoration: underline; }
 .w-brand {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   font-weight: 700;
-  font-size: 13.5px;
-  letter-spacing: 0.5px;
+  font-size: 12.5px;
+  letter-spacing: 0.3px;
   color: #fff;
-  min-width: 165px;
+  min-width: 140px;
   flex-shrink: 0;
 }
 .w-brand .globe-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #42a5f5, #0d47a1);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 0 10px rgba(66, 165, 245, 0.5);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .w-nav {
@@ -94,7 +94,7 @@ a:hover { text-decoration: underline; }
   overflow-x: auto;
   overflow-y: hidden;
   flex: 1;
-  gap: 2px;
+  gap: 1px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.2) transparent;
 }
@@ -104,8 +104,8 @@ a:hover { text-decoration: underline; }
 .w-tab {
   display: flex;
   align-items: center;
-  gap: 3.5px;
-  padding: 0 5.5px;
+  gap: 2.5px;
+  padding: 0 4.5px;
   height: 100%;
   color: #cfd8dc;
   font-size: 11px;
@@ -136,9 +136,9 @@ a:hover { text-decoration: underline; }
   border-radius: 10px;
 }
 
-@media (max-width: 1300px) {
+@media (max-width: 1366px) {
   .w-tab {
-    padding: 0 4px;
+    padding: 0 3.5px;
     font-size: 10.5px;
     gap: 2px;
   }
@@ -147,17 +147,18 @@ a:hover { text-decoration: underline; }
 .w-user {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 12px;
+  gap: 5px;
+  font-size: 11px;
   color: #b0bec5;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .w-user .user-badge {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   background: rgba(255,255,255,0.08);
-  padding: 4px 10px;
+  padding: 2px 7px;
   border-radius: 4px;
   color: #eceff1;
   border: 1px solid rgba(255,255,255,0.1);

@@ -20,7 +20,8 @@
         android:label="Galoya Telematics"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <!-- Disable Impeller rendering engine to ensure 100% stability on budget GPUs like Samsung Galaxy A12 (Helio P35 / PowerVR GE8320) -->
         <meta-data

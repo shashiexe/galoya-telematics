@@ -83,16 +83,21 @@ class Api {
     }
   }
 
-  static Future<Map<String, dynamic>> get(String action) async {
+  static Future<Map<String, dynamic>> get(String action, {Map<String, String>? params}) async {
     final t = await token();
     final headers = {
       ..._defaultHeaders,
       if (t != null) 'Authorization': 'Bearer $t',
     };
 
+    String queryString = '';
+    if (params != null && params.isNotEmpty) {
+      queryString = '&' + params.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&');
+    }
+
     try {
       final r = await http
-          .get(Uri.parse('$kApiUrl?action=$action'), headers: headers)
+          .get(Uri.parse('$kApiUrl?action=$action$queryString'), headers: headers)
           .timeout(const Duration(seconds: 25));
       return _handle(r);
     } catch (e) {
@@ -100,7 +105,7 @@ class Api {
       // Fallback to HTTP
       try {
         final rHttp = await http
-            .get(Uri.parse('$kApiUrlHttp?action=$action'), headers: headers)
+            .get(Uri.parse('$kApiUrlHttp?action=$action$queryString'), headers: headers)
             .timeout(const Duration(seconds: 25));
         return _handle(rHttp);
       } catch (_) {}

@@ -1343,6 +1343,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  // Quick Delete Unit from table
+  window.deleteUnitQuick = async function(unitId, unitName, event) {
+    if (event) event.stopPropagation();
+    if (!confirm(`Are you sure you want to remove unit "${unitName || unitId}" from the fleet?`)) return;
+    try {
+      const res = await fetch(`units.php?action=delete&id=${unitId}`, { method: 'POST' });
+      if (typeof fetchFeed === 'function') fetchFeed();
+    } catch (e) {
+      alert('Delete failed: ' + e);
+    }
+  };
+
   const VEHICLE_SVGS = {
     tractor: `<svg width="34" height="40" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">
       <!-- Front Axle & Front Tires -->
@@ -1736,7 +1748,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-unique-id').textContent = devImei;
 
     // Telemetry Parameters
-    const batt = u.battery !== null ? u.battery : 85;
     const mileage = 22279000 + (parseInt(u.id) * 350);
     const pwrExt = isOnline ? '12.4V' : '0.0V';
 

@@ -2,6 +2,110 @@
 require __DIR__ . '/_common.php';
 require_admin();
 
+// Reverse geocoding endpoint with DB cache & Geofence detection
+if (isset($_GET['geocode'])) {
+    header('Content-Type: application/json');
+    $lat = round((float)($_GET['lat'] ?? 0), 4);
+    $lng = round((float)($_GET['lng'] ?? 0), 4);
+    if (!$lat || !$lng) {
+        echo json_encode(['ok' => false, 'address' => 'Unknown coordinates']);
+        exit;
+    }
+
+    // 1. Check local DB cache
+    try {
+        q("CREATE TABLE IF NOT EXISTS geocode_cache (
+            lat_round DECIMAL(8,4),
+            lng_round DECIMAL(8,4),
+            address VARCHAR(255),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (lat_round, lng_round)
+        )");
+        $cached = q("SELECT address FROM geocode_cache WHERE lat_round=? AND lng_round=? LIMIT 1", [$lat, $lng])->fetchColumn();
+        if ($cached) {
+            echo json_encode(['ok' => true, 'address' => $cached, 'cached' => true]);
+            exit;
+        }
+    } catch (Throwable $e) {}
+
+    // 2. Check if inside any local Galoya Geofence
+    $geofenceName = null;
+    try {
+        $gfs = q("SELECT name, coordinates FROM geofences WHERE active=1 LIMIT 100")->fetchAll();
+        foreach ($gfs as $gf) {
+            $coords = json_decode($gf['coordinates'], true);
+            if (is_array($coords) && count($coords) >= 3) {
+                $inside = false;
+                $cnt = count($coords);
+                for ($i = 0, $j = $cnt - 1; $i < $cnt; $j = $i++) {
+                    $xi = (float)$coords[$i][0]; $yi = (float)$coords[$i][1];
+                    $xj = (float)$coords[$j][0]; $yj = (float)$coords[$j][1];
+                    $intersect = (($yi > $lng) !== ($yj > $lng)) && ($lat < ($xj - $xi) * ($lng - $yi) / ($yj - $yi) + $xi);
+                    if ($intersect) $inside = !$inside;
+                }
+                if ($inside) {
+                    $geofenceName = $gf['name'];
+                    break;
+                }
+            }
+        }
+    } catch (Throwable $e) {}
+
+    // 3. Query OpenStreetMap Nominatim
+    $address = '';
+    $raw = false;
+    if (function_exists('curl_init')) {
+        $ch = curl_init("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={$lat}&lon={$lng}&zoom=18&addressdetails=1");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'GaloyaTelematics/1.0 (info@galoya.lk)');
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $raw = curl_exec($ch);
+        curl_close($ch);
+    }
+    if (!$raw) {
+        $ctx = stream_context_create([
+            'http' => ['header' => "User-Agent: GaloyaTelematics/1.0\r\n", 'timeout' => 3],
+            'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
+        ]);
+        $raw = @file_get_contents("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={$lat}&lon={$lng}&zoom=18&addressdetails=1", false, $ctx);
+    }
+
+    if ($raw) {
+        $d = json_decode($raw, true);
+        if (!empty($d['address'])) {
+            $a = $d['address'];
+            $road = $a['road'] ?? ($a['pedestrian'] ?? ($a['suburb'] ?? ($a['neighbourhood'] ?? '')));
+            $village = $a['village'] ?? ($a['town'] ?? ($a['city'] ?? ($a['municipality'] ?? ($a['county'] ?? ''))));
+            $state = $a['state_district'] ?? ($a['state'] ?? 'Ampara');
+            $parts = array_unique(array_filter([$road, $village, $state, 'Sri Lanka']));
+            $address = implode(', ', $parts);
+        } elseif (!empty($d['display_name'])) {
+            $address = $d['display_name'];
+        }
+    }
+
+    if (empty($address)) {
+        if ($lat >= 7.20 && $lat <= 7.35 && $lng >= 81.60 && $lng <= 81.75) {
+            $address = "Hingurana / Ampara Region, Eastern Province, Sri Lanka";
+        } else {
+            $address = sprintf("Coordinates: %.5f, %.5f", $lat, $lng);
+        }
+    }
+
+    if ($geofenceName) {
+        $address = "⬡ " . $geofenceName . " · " . $address;
+    }
+
+    // Save to cache
+    try {
+        q("INSERT INTO geocode_cache (lat_round, lng_round, address) VALUES (?,?,?) ON DUPLICATE KEY UPDATE address=VALUES(address)", [$lat, $lng, $address]);
+    } catch (Throwable $e) {}
+
+    echo json_encode(['ok' => true, 'address' => $address]);
+    exit;
+}
+
 // JSON feed for live telematics refresh
 if (isset($_GET['feed'])) {
     header('Content-Type: application/json');
@@ -329,18 +433,26 @@ layout_start('Monitoring', 'index.php', true);
     <!-- Units Telematics Table -->
     <div class="w-units-table-container">
       <table class="w-units-table">
+        <colgroup>
+          <col style="width:26px">
+          <col style="width:auto">
+          <col style="width:52px">
+          <col style="width:28px">
+          <col style="width:38px">
+          <col style="width:76px">
+        </colgroup>
         <thead>
           <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
-            <th style="width:24px;text-align:center">
+            <th style="text-align:center;padding:6px 2px">
               <input type="checkbox" id="chk-master" checked title="Select All / Deselect All">
             </th>
-            <th style="cursor:pointer" onclick="toggleSortAZ()" title="Click to sort by Name">
+            <th style="cursor:pointer;padding:6px 6px" onclick="toggleSortAZ()" title="Click to sort by Name">
               Unit / Machine <span id="sort-name-indicator"></span>
             </th>
-            <th style="width:24px;text-align:center;cursor:pointer" onclick="sortByMotion()" title="Motion State (Click to sort)">➔</th>
-            <th style="width:24px;text-align:center;cursor:pointer" onclick="sortByOnlineStatus()" title="Connection Status (Click to sort Online units to top)">📡</th>
-            <th style="width:36px;text-align:right;cursor:pointer" onclick="sortBySensors()" title="Battery (Click to sort)">🔋</th>
-            <th style="width:58px;text-align:center" title="Options / Solo View">Opt</th>
+            <th style="text-align:center;cursor:pointer;padding:6px 2px" onclick="sortByMotion()" title="Motion State / Speed (Click to sort)">➔</th>
+            <th style="text-align:center;cursor:pointer;padding:6px 2px" onclick="sortByOnlineStatus()" title="Connection Status (Click to sort Online units to top)"><span style="font-size:12px" title="GPS Signal">📡</span></th>
+            <th style="text-align:right;cursor:pointer;padding:6px 4px" onclick="sortBySensors()" title="Battery Status (Click to sort)">🔋</th>
+            <th style="text-align:center;padding:6px 2px" title="Actions: Solo Focus, Properties, Delete">Actions</th>
           </tr>
         </thead>
         <tbody id="units-tbody">
@@ -393,8 +505,8 @@ layout_start('Monitoring', 'index.php', true);
 
       <div class="w-hc-section-title">Sensor values:</div>
       <div class="w-hc-sensors-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#f8fafc;border:1px solid #e2e8f0;padding:6px 10px;border-radius:4px;margin-bottom:6px;font-size:11.5px">
-        <div><strong>ENGINE:</strong> <span id="hc-sensor-engine" style="font-weight:700;color:#16a34a">On</span></div>
-        <div><strong>FLS:</strong> <span id="hc-sensor-fls" style="font-weight:700;color:#0284c7">---</span></div>
+        <div><strong id="hc-sensor-engine-label">ENGINE:</strong> <span id="hc-sensor-engine" style="font-weight:700;color:#16a34a">On</span></div>
+        <div><strong id="hc-sensor-fls-label">FLS:</strong> <span id="hc-sensor-fls" style="font-weight:700;color:#0284c7">---</span></div>
       </div>
 
       <div class="w-hc-section-title">Connectivity settings:</div>
@@ -1140,25 +1252,25 @@ document.addEventListener('DOMContentLoaded', () => {
         <tr class="w-unit-row ${isMoving ? 'is-moving' : ''}" data-id="${u.id}" 
             onmouseenter="showUnitHoverCardById(${u.id}, event)" onmouseleave="hideUnitHoverCard()"
             ondblclick="openUnitPropertiesModal(${u.id})">
-          <td style="text-align:center" onclick="event.stopPropagation()">
+          <td style="text-align:center;padding:5px 2px" onclick="event.stopPropagation()">
             <input type="checkbox" class="chk-unit" data-id="${u.id}" ${isChecked ? 'checked' : ''} onchange="toggleUnitCheckbox(${u.id}, this.checked)">
           </td>
-          <td>
-            <div style="display:flex;align-items:center;gap:6px">
+          <td style="padding:5px 4px">
+            <div style="display:flex;align-items:center;gap:5px;overflow:hidden">
               <span class="w-unit-vehicle-icon ${isMoving ? 'moving' : ''}">${icon}</span>
-              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">
-                <strong style="color:#0f172a;font-size:12px">${u.name}</strong>
-                ${isMoving ? `<span style="font-size:10px;color:#16a34a;font-weight:700;margin-left:3px">${Math.round(u.speed)} km/h</span>` : (isOnline ? `<span style="font-size:9.5px;color:#0284c7;margin-left:3px">● Online</span>` : `<span style="font-size:9.5px;color:#94a3b8;margin-left:3px">● Off</span>`)}
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
+                <strong style="color:#0f172a;font-size:11.5px">${u.name}</strong>
+                ${isMoving ? `<span style="font-size:10px;color:#16a34a;font-weight:700;margin-left:2px">${Math.round(u.speed)} km/h</span>` : (isOnline ? `<span style="font-size:9.5px;color:#0284c7;margin-left:2px">● Online</span>` : `<span style="font-size:9.5px;color:#94a3b8;margin-left:2px">● Off</span>`)}
               </div>
             </div>
           </td>
-          <td style="text-align:center">${motionHtml}</td>
-          <td style="text-align:center">${gpsHtml}</td>
-          <td style="text-align:right;font-size:11px">${batHtml}</td>
-          <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
-            <button type="button" class="w-icon-btn" onclick="soloUnit(${u.id}, event)" style="padding:1px 4px;font-size:11px;color:#0284c7" title="Show ONLY this vehicle on map (Hide others)">👁️</button>
-            <button type="button" class="w-icon-btn" onclick="openUnitPropertiesModal(${u.id})" style="padding:1px 4px;font-size:11px" title="Unit properties">🔧</button>
-            <button type="button" class="w-icon-btn" onclick="deleteUnitQuick(${u.id}, '${u.name}', event)" style="padding:1px 4px;font-size:11px;color:#dc2626" title="Delete device from fleet">🗑️</button>
+          <td style="text-align:center;padding:5px 2px">${motionHtml}</td>
+          <td style="text-align:center;padding:5px 2px">${gpsHtml}</td>
+          <td style="text-align:right;font-size:11px;padding:5px 4px">${batHtml}</td>
+          <td style="text-align:center;white-space:nowrap;padding:4px 2px" onclick="event.stopPropagation()">
+            <button type="button" class="w-unit-act-btn solo" onclick="soloUnit(${u.id}, event)" title="Solo Focus: Show ONLY this vehicle on map">👁️</button>
+            <button type="button" class="w-unit-act-btn prop" onclick="openUnitPropertiesModal(${u.id})" title="Unit Properties">🔧</button>
+            <button type="button" class="w-unit-act-btn del" onclick="deleteUnitQuick(${u.id}, '${u.name}', event)" title="Delete Device">🗑️</button>
           </td>
         </tr>
       `;
@@ -1562,12 +1674,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-time-ago').innerHTML = timeText;
     document.getElementById('hc-datetime').textContent = u.last_seen || 'No connection yet';
 
-    // Location Address
-    let addr = 'Hingurana Sugar Plantation, Ampara, Eastern, Sri Lanka';
-    if (u.lat && u.lng) {
-      addr = `Siyambalanduwa-Damana-Ampara Road, Varipathanchenai 01, Irakkamam, Ampara, Eastern, Sri Lanka (Plot: D/${Math.round(parseFloat(u.lat)*100)%200 + 100})`;
+    // Location Address - Dynamically resolved from coordinates
+    const addrEl = document.getElementById('hc-address');
+    if (addrEl) {
+      if (u.lat && u.lng) {
+        const uLat = parseFloat(u.lat);
+        const uLng = parseFloat(u.lng);
+        addrEl.textContent = `Resolving address for ${uLat.toFixed(5)}, ${uLng.toFixed(5)}...`;
+        resolveAddress(uLat, uLng, function(realAddr) {
+          if (currentHoverUnit && parseInt(currentHoverUnit.id) === parseInt(u.id)) {
+            addrEl.textContent = realAddr;
+          }
+        });
+      } else {
+        addrEl.textContent = 'No GPS position received yet';
+      }
     }
-    document.getElementById('hc-address').textContent = addr;
 
     // Speed & Satellites
     const spd = Math.round(u.speed || 0);
@@ -1575,16 +1697,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const satsEl = document.getElementById('hc-sats');
     if (satsEl) satsEl.textContent = isOnline ? String(12 + (parseInt(u.id) % 5)) : '0';
 
-    // Sensor values: ENGINE & FLS
+    // Sensor values: ENGINE / DUTY & FLS / BATTERY
+    const isStaffCategory = ['field_staff', 'supervisor', 'manager', 'security', 'staff', 'phone'].includes(u.unit_type) ||
+                            (u.device_type && u.device_type.toLowerCase().includes('phone')) ||
+                            (u.device_type && u.device_type.toLowerCase().includes('android')) ||
+                            (u.role === 'staff');
+
+    const batt = (u.battery !== null && u.battery !== undefined) ? parseInt(u.battery) : 85;
     const isEngineOn = isOnline && (u.ignition || spd > 0);
+
+    const engLabelEl = document.getElementById('hc-sensor-engine-label');
     const engEl = document.getElementById('hc-sensor-engine');
+    if (engLabelEl) engLabelEl.textContent = isStaffCategory ? 'DUTY:' : 'ENGINE:';
     if (engEl) {
-      engEl.textContent = isEngineOn ? 'On' : 'Off';
+      engEl.textContent = isEngineOn ? 'On' : (isStaffCategory ? 'Off Duty' : 'Off');
       engEl.style.color = isEngineOn ? '#16a34a' : '#94a3b8';
     }
+
+    const flsLabelEl = document.getElementById('hc-sensor-fls-label');
     const flsEl = document.getElementById('hc-sensor-fls');
+    if (flsLabelEl) flsLabelEl.textContent = isStaffCategory ? 'BATTERY:' : 'FLS:';
     if (flsEl) {
-      flsEl.textContent = (u.unit_type === 'staff') ? '---' : ((u.battery !== null ? u.battery : 85) + '%');
+      if (isStaffCategory) {
+        const battColor = batt <= 20 ? '#ef4444' : (batt <= 40 ? '#f59e0b' : '#0284c7');
+        const battIcon = batt <= 20 ? '🪫 ' : '🔋 ';
+        flsEl.innerHTML = `<span style="color:${battColor};font-weight:700">${battIcon}${batt}%</span>`;
+      } else {
+        flsEl.textContent = (u.fls_level !== undefined ? u.fls_level + ' L' : '---');
+        flsEl.style.color = '#0284c7';
+      }
     }
 
     // Connectivity settings

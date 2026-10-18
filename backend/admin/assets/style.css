@@ -59,8 +59,9 @@ a:hover { text-decoration: underline; }
   justify-content: space-between;
   padding: 0 10px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.25);
-  z-index: 1000;
+  z-index: 2000;
   position: relative;
+  overflow: visible !important;
 }
 
 .w-brand {
@@ -90,8 +91,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   height: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: visible !important;
   flex: 1;
 }
 .w-nav::-webkit-scrollbar { display: none; }
@@ -172,7 +172,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid #334155;
   border-radius: 0 0 6px 6px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.45);
-  z-index: 2100;
+  z-index: 99999;
   padding: 5px 0;
 }
 .w-nav-dropdown:hover .w-nav-dropdown-menu,

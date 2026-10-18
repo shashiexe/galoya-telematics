@@ -201,11 +201,6 @@ void _serviceMain(ServiceInstance service) async {
     accuracy: LocationAccuracy.bestForNavigation,
     distanceFilter: 3, // wake hardware on 3m change
     intervalDuration: const Duration(seconds: 1), // poll hardware stream every 1s
-    foregroundNotificationConfig: const ForegroundNotificationConfig(
-      notificationTitle: 'Galoya Telematics – Live Tracking',
-      notificationText: 'Tracking location in background (offline enabled)',
-      enableWakeLock: true,
-    ),
   );
 
   // Periodic offline sync flush (every 20s: auto-sync all accumulated SQLite points as soon as signal returns)

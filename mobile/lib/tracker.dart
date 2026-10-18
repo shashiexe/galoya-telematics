@@ -154,10 +154,10 @@ class Tracker {
     });
   }
 
-  static Future<void> recordPosition(Position pos) async {
+  static Future<void> recordPosition(Position pos, [double? speedOverride]) async {
     int? battery;
     try { battery = await Battery().batteryLevel; } catch (_) {}
-    final speedKmh = pos.speed >= 0 ? (pos.speed * 3.6) : 0.0;
+    final speedKmh = speedOverride ?? (pos.speed >= 0 ? (pos.speed * 3.6) : 0.0);
     await LocalDb.addPoint({
       'lat': pos.latitude, 'lng': pos.longitude, 'accuracy': pos.accuracy,
       'speed': speedKmh, 'battery': battery, 't': pos.timestamp.millisecondsSinceEpoch,
@@ -242,7 +242,8 @@ void _serviceMain(ServiceInstance service) async {
       final double headingDelta = (pos.heading - lastHeading).abs();
       final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
       final double elapsedSec = (now - lastTime) / 1000.0;
-      final bool isMoving = pos.speed > 0.8; // > ~3 km/h
+      // Genuine vehicle motion requires both speed and physical displacement (stops indoor jitter)
+      final bool isMoving = pos.speed > 0.8 && dist >= 8.0;
 
       if (isMoving) {
         // MOVING RULES (Follow roads accurately & capture curves):
@@ -260,7 +261,7 @@ void _serviceMain(ServiceInstance service) async {
         }
       } else {
         // STATIONARY RULES (Prevent GPS jitter / drift while stopped):
-        // Filter out small random GPS drifts under 14 meters!
+        // Filter out small random GPS drifts under 16 meters!
         if (dist >= 16.0) {
           shouldRecord = true; // genuine motion resumed
         } else if (elapsedSec >= 120.0) {
@@ -270,22 +271,28 @@ void _serviceMain(ServiceInstance service) async {
     }
 
     if (shouldRecord) {
+      final double distFromLast = (lastLat != null && lastLng != null)
+          ? Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude)
+          : 999.0;
+      final bool isGenuineMotion = pos.speed > 0.8 && distFromLast >= 8.0;
+      final double actualSpeedKmh = isGenuineMotion ? (pos.speed >= 0 ? pos.speed * 3.6 : 0.0) : 0.0;
+
       lastLat = pos.latitude;
       lastLng = pos.longitude;
       lastHeading = pos.heading;
       lastTime = now;
 
       // Always save locally in SQLite first (offline durability)
-      await Tracker.recordPosition(pos);
+      await Tracker.recordPosition(pos, actualSpeedKmh);
 
       // Update foreground notification
       if (service is AndroidServiceInstance) {
         final pending = await LocalDb.countPoints();
-        final speedKmh = (pos.speed >= 0 ? pos.speed * 3.6 : 0.0).toStringAsFixed(1);
+        final speedDisplay = actualSpeedKmh.toStringAsFixed(1);
         service.setForegroundNotificationInfo(
           title: 'Galoya Telematics – Live',
-          content: pos.speed > 0.8
-              ? 'Speed: $speedKmh km/h · $pending offline points'
+          content: isGenuineMotion
+              ? 'Speed: $speedDisplay km/h · $pending offline points'
               : 'Stationary · $pending offline points',
         );
       }

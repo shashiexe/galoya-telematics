@@ -108,7 +108,7 @@ try {
     $repo = 'shashiexe/galoya-telematics';
 
     // 1. Find latest APK artifact from GitHub Actions
-    $ch = curl_init("https://api.github.com/repos/$repo/actions/artifacts?per_page=5");
+    $ch = curl_init("https://api.github.com/repos/$repo/actions/artifacts?per_page=20");
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         "Authorization: Bearer $token",
@@ -121,6 +121,15 @@ try {
     $artData = json_decode($artJson, true);
     $apkArtId = null;
     if (!empty($artData['artifacts'])) {
+        // Sort descending by time so the newest artifact is ALWAYS selected
+        usort($artData['artifacts'], function($a, $b) {
+            $timeA = strtotime($a['created_at'] ?? '2000-01-01');
+            $timeB = strtotime($b['created_at'] ?? '2000-01-01');
+            if ($timeA === $timeB) {
+                return ($b['id'] ?? 0) <=> ($a['id'] ?? 0);
+            }
+            return $timeB <=> $timeA;
+        });
         foreach ($artData['artifacts'] as $art) {
             if ($art['name'] === 'Galoya-Telematics-APK' && empty($art['expired'])) {
                 $apkArtId = $art['id'];

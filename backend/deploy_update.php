@@ -15,19 +15,25 @@ if ($key !== 'galoya2026' && !$isAdmin) {
 set_time_limit(300);
 
 if (isset($_GET['test_report'])) {
-    echo "<h3>Testing admin/reports.php execution:</h3><pre>";
+    if (session_status() === PHP_SESSION_NONE) {
+        session_name('stafftrack_admin');
+        @session_start();
+    }
+    $_SESSION['admin_id'] = 1;
     $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
     $_GET['type'] = $_GET['test_type'] ?? 'staff_audit';
     $_GET['unit_id'] = (int)($_GET['test_unit'] ?? 22);
     $_GET['period'] = 'today';
+
+    echo "<h3>Testing admin/reports.php execution:</h3><pre>";
     try {
         ob_start();
         include __DIR__ . '/admin/reports.php';
         $out = ob_get_clean();
-        echo "SUCCESS! Output length: " . strlen($out) . " bytes\n";
-        echo htmlspecialchars(substr($out, 0, 800));
+        echo "SUCCESS! Output length: " . strlen($out) . " bytes\n\n";
+        echo htmlspecialchars(substr($out, 0, 1500));
     } catch (Throwable $e) {
-        ob_end_clean();
+        if (ob_get_level() > 0) ob_end_clean();
         echo "CAUGHT EXCEPTION: " . $e->getMessage() . "\n";
         echo "File: " . $e->getFile() . " Line: " . $e->getLine() . "\n";
         echo "Trace:\n" . $e->getTraceAsString() . "\n";
@@ -35,6 +41,7 @@ if (isset($_GET['test_report'])) {
     echo "</pre>";
     exit;
 }
+
 
 
 $filesToUpdate = [

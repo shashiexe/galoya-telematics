@@ -229,7 +229,7 @@ void _serviceMain(ServiceInstance service) async {
 
   final locationSettings = AndroidSettings(
     accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 3, // wake hardware on 3m change
+    distanceFilter: 0, // 0 = allow stationary updates without requiring 3m displacement
     intervalDuration: const Duration(seconds: 1), // poll hardware stream every 1s
     foregroundNotificationConfig: const ForegroundNotificationConfig(
       notificationText: "Tracking vehicle & field operations 24/7",
@@ -248,6 +248,39 @@ void _serviceMain(ServiceInstance service) async {
         Sync.run();
       }
     } catch (_) {}
+  });
+
+  // Stationary Heartbeat Timer (Every 60s):
+  // Guarantees that when staff or machinery is stationary (not moving >= 12m),
+  // a stationary heartbeat point (speed: 0 km/h) is sent to the server every 60 seconds.
+  // This prevents the Web Monitor / Radar from marking the unit offline (which happens after 5 minutes of silence)!
+  Timer.periodic(const Duration(seconds: 60), (_) async {
+    if (!running) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // If no point has been recorded in the last 45 seconds (i.e. stopped / stationary):
+    if (now - lastTime >= 45000) {
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 4),
+        );
+      } catch (_) {}
+      pos ??= await Geolocator.getLastKnownPosition();
+      if (pos != null) {
+        lastTime = now;
+        lastLat = pos.latitude;
+        lastLng = pos.longitude;
+        await Tracker.recordPosition(pos, 0.0); // 0.0 km/h stationary
+        if (service is AndroidServiceInstance) {
+          service.setForegroundNotificationInfo(
+            title: 'Galoya Telematics – Live',
+            content: 'Stationary (On Duty) · Live Synced 🟢',
+          );
+        }
+        Sync.run();
+      }
+    }
   });
 
   streamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
@@ -339,8 +372,8 @@ void _serviceMain(ServiceInstance service) async {
         // Filter out small random GPS drifts under 16 meters!
         if (dist >= 16.0) {
           shouldRecord = true; // genuine motion resumed
-        } else if (elapsedSec >= 120.0) {
-          shouldRecord = true; // 2-minute stationary heartbeat
+        } else if (elapsedSec >= 60.0) {
+          shouldRecord = true; // 60-second stationary heartbeat
         }
       }
     }

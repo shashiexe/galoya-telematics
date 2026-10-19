@@ -38,12 +38,12 @@ class Tracker {
       await FlutterBackgroundService().configure(
         androidConfiguration: AndroidConfiguration(
           onStart: _serviceMain,
-          autoStart: false,
+          autoStart: true,
           autoStartOnBoot: true,
           isForegroundMode: true,
           notificationChannelId: _channelId,
-          initialNotificationTitle: 'StaffTrack',
-          initialNotificationContent: 'On duty – location tracking active',
+          initialNotificationTitle: 'Galoya Telematics',
+          initialNotificationContent: '24/7 Field Tracking Active (Daemon)',
           foregroundServiceNotificationId: 888,
           foregroundServiceTypes: [AndroidForegroundType.location],
         ),
@@ -79,6 +79,23 @@ class Tracker {
       return false;
     }
     return p == LocationPermission.always || p == LocationPermission.whileInUse;
+  }
+
+  static Future<bool> isAlwaysLocationGranted() async {
+    try {
+      final p = await Geolocator.checkPermission();
+      return p == LocationPermission.always;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> isBatteryOptimizationIgnored() async {
+    try {
+      return await Permission.ignoreBatteryOptimizations.isGranted;
+    } catch (_) {
+      return true;
+    }
   }
 
   static Future<void> start() async {
@@ -174,9 +191,13 @@ void _serviceMain(ServiceInstance service) async {
     HttpOverrides.global = AppHttpOverrides();
   } catch (_) {}
 
-  // Promote to Android Foreground Service immediately so OS never kills it on app swipe-away
+  // Promote to Android Foreground Service immediately with active notification info
   if (service is AndroidServiceInstance) {
     service.setAsForegroundService();
+    service.setForegroundNotificationInfo(
+      title: 'Galoya Telematics – 24/7 Active',
+      content: 'Background tracking active (daemon mode)',
+    );
   }
 
   var running = true;
@@ -191,7 +212,8 @@ void _serviceMain(ServiceInstance service) async {
   await AuthVault.restoreIfMissing();
   final sp = await SharedPreferences.getInstance();
   await sp.reload();
-  if (sp.getBool('tracking') != true) {
+  final isTracking = sp.getBool('tracking') ?? true;
+  if (!isTracking) {
     service.stopSelf();
     return;
   }
@@ -209,6 +231,11 @@ void _serviceMain(ServiceInstance service) async {
     accuracy: LocationAccuracy.bestForNavigation,
     distanceFilter: 3, // wake hardware on 3m change
     intervalDuration: const Duration(seconds: 1), // poll hardware stream every 1s
+    foregroundNotificationConfig: const ForegroundNotificationConfig(
+      notificationText: "Tracking vehicle & field operations 24/7",
+      notificationTitle: "Galoya Telematics – GPS Active",
+      enableWakeLock: true,
+    ),
   );
 
   // Periodic offline sync flush (every 20s: auto-sync all accumulated SQLite points as soon as signal returns)

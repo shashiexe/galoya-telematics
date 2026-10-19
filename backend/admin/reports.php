@@ -96,16 +96,47 @@ if ($report_type === 'staff_audit') {
     // Chronological Activity Timeline
     $timeline = [];
 
-    // Add Duty Events
+    // Add Duty & App Lifecycle Events
     foreach ($dutyRows as $dl) {
+        $et = $dl['event_type'] ?: ($dl['status'] === 'on' ? 'tracking_on' : 'tracking_off');
+        $evtTitle = '🟢 Tracking Active (Duty ON)';
+        $details = 'Tracking session in progress';
+
+        if ($et === 'app_open') {
+            $evtTitle = '📱 App Launched (Foreground)';
+            $details = 'Field officer opened mobile app';
+        } elseif ($et === 'app_close') {
+            $evtTitle = '🚪 App Closed / Minimized';
+            $details = 'App closed or running in background daemon';
+        } elseif ($et === 'tracking_on') {
+            $evtTitle = '🟢 Tracking Started (Duty ON)';
+            $details = 'Shift / Duty tracking started';
+        } elseif ($et === 'tracking_off') {
+            $evtTitle = '🔴 Tracking Stopped (Duty OFF)';
+            $details = 'Shift / Duty stopped by staff';
+        } elseif ($et === 'boot_resume') {
+            $evtTitle = '⚡ Device Boot / Auto-Resumed';
+            $details = 'Background tracking auto-resumed on phone restart';
+        } elseif ($et === 'parking_start') {
+            $evtTitle = '🅿️ Parking / Stop Commenced';
+            $details = 'Vehicle stopped for >= 3 mins';
+        } elseif ($et === 'parking_end') {
+            $evtTitle = '🚙 Parking Ended / Departed';
+            $details = 'Motion resumed after stationary stop';
+        }
+
+        $loc = (!empty($dl['lat']) && !empty($dl['lng']))
+            ? (find_nearest_geofence((float)$dl['lat'], (float)$dl['lng']) ?: round($dl['lat'], 4) . ', ' . round($dl['lng'], 4))
+            : 'Base / Yard';
+
         $timeline[] = [
             'time' => $dl['at'],
-            'event' => ($dl['status'] === 'on' ? '🟢 Tracking Started (Duty ON)' : '🔴 Tracking Stopped (Duty OFF)'),
-            'type' => 'duty_' . $dl['status'],
-            'location' => !empty($dl['lat']) ? round($dl['lat'], 4) . ', ' . round($dl['lng'], 4) : 'Base / Yard',
-            'details' => ($dl['status'] === 'on' ? 'Shift Commenced' : 'Shift Completed'),
+            'event' => $evtTitle,
+            'type' => $et,
+            'location' => $loc,
+            'details' => $details,
             'battery' => ($dl['battery'] !== null ? $dl['battery'] . '%' : '—'),
-            'remarks' => $dl['note'] ?: 'Mobile App Switch'
+            'remarks' => $dl['note'] ?: 'Automated Telematics Event'
         ];
     }
 
@@ -127,6 +158,7 @@ if ($report_type === 'staff_audit') {
     $totalKm = 0;
     $maxSpd = 0;
     $movingPts = [];
+    $stationaryPts = [];
 
     for ($i = 0; $i < $n; $i++) {
         $p = $pts[$i];
@@ -170,10 +202,32 @@ if ($report_type === 'staff_audit') {
             }
         }
 
-        // Segment Movement
+        // Segment Movement vs Stationary / Parking
         if ($spd > 3.0) {
+            // Flush any accumulated stationary stop
+            if (count($stationaryPts) >= 2) {
+                $tS1 = strtotime($stationaryPts[0]['recorded_at']);
+                $tS2 = strtotime(end($stationaryPts)['recorded_at']);
+                $sDur = $tS2 - $tS1;
+                if ($sDur >= 180) { // >= 3 minutes
+                    $sMins = round($sDur / 60);
+                    $pStop = $stationaryPts[0];
+                    $stopLoc = find_nearest_geofence((float)$pStop['lat'], (float)$pStop['lng']) ?: round((float)$pStop['lat'], 4) . ', ' . round((float)$pStop['lng'], 4);
+                    $timeline[] = [
+                        'time' => $stationaryPts[0]['recorded_at'],
+                        'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
+                        'type' => 'parking',
+                        'location' => $stopLoc,
+                        'details' => 'Parked from ' . date('H:i', $tS1) . ' to ' . date('H:i', $tS2) . " ({$sMins} mins)",
+                        'battery' => ($stationaryPts[0]['battery'] ?? '—') . '%',
+                        'remarks' => 'Vehicle stationary'
+                    ];
+                }
+                $stationaryPts = [];
+            }
             $movingPts[] = $p;
         } else {
+            $stationaryPts[] = $p;
             if (count($movingPts) >= 2) {
                 // End of moving trip
                 $tripDist = 0;
@@ -198,6 +252,27 @@ if ($report_type === 'staff_audit') {
                 }
                 $movingPts = [];
             }
+        }
+    }
+
+    // Flush any trailing stationary stop
+    if (count($stationaryPts) >= 2) {
+        $tS1 = strtotime($stationaryPts[0]['recorded_at']);
+        $tS2 = strtotime(end($stationaryPts)['recorded_at']);
+        $sDur = $tS2 - $tS1;
+        if ($sDur >= 180) {
+            $sMins = round($sDur / 60);
+            $pStop = $stationaryPts[0];
+            $stopLoc = find_nearest_geofence((float)$pStop['lat'], (float)$pStop['lng']) ?: round((float)$pStop['lat'], 4) . ', ' . round((float)$pStop['lng'], 4);
+            $timeline[] = [
+                'time' => $stationaryPts[0]['recorded_at'],
+                'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
+                'type' => 'parking',
+                'location' => $stopLoc,
+                'details' => 'Parked from ' . date('H:i', $tS1) . ' to ' . date('H:i', $tS2) . " ({$sMins} mins)",
+                'battery' => ($stationaryPts[0]['battery'] ?? '—') . '%',
+                'remarks' => 'Vehicle parked at location'
+            ];
         }
     }
 

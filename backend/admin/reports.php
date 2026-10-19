@@ -58,12 +58,20 @@ if ($report_type === 'staff_audit') {
         $unit_id = (int)$units[0]['id'];
     }
 
-    $staffUser = q("SELECT u.*, d.name dept_name, s.name sec_name, ds.name desig_title
-                    FROM users u 
-                    LEFT JOIN departments d ON d.id=u.department_id 
-                    LEFT JOIN sections s ON s.id=u.section_id 
-                    LEFT JOIN designations ds ON ds.id=u.designation_id
-                    WHERE u.id=?", [$unit_id])->fetch();
+    $staffUser = null;
+    try {
+        $staffUser = q("SELECT u.*, d.name dept_name, s.name sec_name, ds.name desig_title
+                        FROM users u 
+                        LEFT JOIN departments d ON d.id=u.department_id 
+                        LEFT JOIN sections s ON s.id=u.section_id 
+                        LEFT JOIN designations ds ON ds.id=u.designation_id
+                        WHERE u.id=?", [$unit_id])->fetch();
+    } catch (Throwable $e) {
+        try {
+            $staffUser = q("SELECT * FROM users WHERE id=?", [$unit_id])->fetch();
+        } catch (Throwable $e2) {}
+    }
+
 
     $dayStart = date('Y-m-d 00:00:00', strtotime($date_from));
     $dayEnd = date('Y-m-d 23:59:59', strtotime($date_to));
@@ -294,7 +302,7 @@ if ($report_type === 'staff_audit') {
 
     // Sort timeline chronologically
     usort($timeline, function($a, $b) {
-        return strcmp($a['time'], $b['time']);
+        return strcmp((string)($a['time'] ?? ''), (string)($b['time'] ?? ''));
     });
 
     foreach ($timeline as $t) {
@@ -585,8 +593,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:0;overflow:hidden">
   <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
     <strong style="font-size:14px;color:#1e293b">
-      <?php if ($report_type === 'staff_audit'): ?>
-        📱 Daily Activity & Tracking Audit Timeline: <?= h($staffUser['name'] ?? 'Staff') ?> <?= !empty($staffUser['sec_name']) ? '(' . h($staffUser['sec_name']) . ')' : '' ?>
+      <?php if ($report_type === 'staff_audit'): 
+        $sName = is_array($staffUser) ? ($staffUser['name'] ?? 'Staff') : 'Staff';
+        $sSec = (is_array($staffUser) && !empty($staffUser['sec_name'])) ? ' (' . $staffUser['sec_name'] . ')' : '';
+      ?>
+        📱 Daily Activity & Tracking Audit Timeline: <?= h($sName . $sSec) ?>
       <?php elseif ($report_type === 'dept_section'): ?>
         📊 Section & Department Telematics Operations Summary
       <?php else: ?>
@@ -654,29 +665,34 @@ layout_start('Reports & Tracking Audit', 'reports.php');
         <?php if (empty($report_rows)): ?>
           <tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8">No telemetry records found for selected period.</td></tr>
         <?php else: ?>
-          <?php foreach ($report_rows as $row): ?>
+          <?php foreach ($report_rows as $row): 
+            $evStr = (string)($row['event'] ?? '');
+          ?>
             <tr style="border-bottom:1px solid #f1f5f9">
               <?php if ($report_type === 'staff_audit'): ?>
                 <td style="padding:10px 14px;color:#475569;font-weight:600"><?= h($row['time']) ?></td>
                 <td style="padding:10px 14px">
-                  <?php if (strpos($row['event'], 'Started') !== false): ?>
+                  <?php if (str_contains($evStr, 'Started')): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#dcfce7;color:#166534;border-radius:12px;font-size:11px;font-weight:700">🟢 TRACKING ON</span>
-                  <?php elseif (strpos($row['event'], 'Stopped') !== false): ?>
+                  <?php elseif (str_contains($evStr, 'Stopped')): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:12px;font-size:11px;font-weight:700">🔴 TRACKING OFF</span>
-                  <?php elseif (strpos($row['event'], 'Trip') !== false): ?>
-                    <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700"><?= h($row['event']) ?></span>
-                  <?php elseif (strpos($row['event'], 'Gap') !== false): ?>
-                    <span style="display:inline-block;padding:2px 8px;background:#fef3c7;color:#b45309;border-radius:12px;font-size:11px;font-weight:700"><?= h($row['event']) ?></span>
-                  <?php elseif (strpos($row['event'], '📷') !== false): ?>
-                    <span style="display:inline-block;padding:2px 8px;background:#f5f3ff;color:#6d28d9;border-radius:12px;font-size:11px;font-weight:700"><?= h($row['event']) ?></span>
+                  <?php elseif (str_contains($evStr, 'Trip')): ?>
+                    <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
+                  <?php elseif (str_contains($evStr, 'Gap')): ?>
+                    <span style="display:inline-block;padding:2px 8px;background:#fef3c7;color:#b45309;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
+                  <?php elseif (str_contains($evStr, '📷')): ?>
+                    <span style="display:inline-block;padding:2px 8px;background:#f5f3ff;color:#6d28d9;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
+                  <?php elseif (str_contains($evStr, 'Parking') || str_contains($evStr, '🅿️')): ?>
+                    <span style="display:inline-block;padding:2px 8px;background:#fef9c3;color:#854d0e;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
                   <?php else: ?>
-                    <strong><?= h($row['event']) ?></strong>
+                    <strong><?= h($evStr) ?></strong>
                   <?php endif; ?>
                 </td>
-                <td style="padding:10px 14px;font-size:12px;color:#334155"><?= h($row['location']) ?></td>
-                <td style="padding:10px 14px;color:#0f172a"><?= h($row['details']) ?></td>
-                <td style="padding:10px 14px;text-align:center;font-weight:700;color:#0284c7"><?= h($row['battery']) ?></td>
-                <td style="padding:10px 14px;font-size:11.5px;color:#64748b"><?= h($row['remarks']) ?></td>
+                <td style="padding:10px 14px;font-size:12px;color:#334155"><?= h($row['location'] ?? '—') ?></td>
+                <td style="padding:10px 14px;color:#0f172a"><?= h($row['details'] ?? '—') ?></td>
+                <td style="padding:10px 14px;text-align:center;font-weight:700;color:#0284c7"><?= h($row['battery'] ?? '—') ?></td>
+                <td style="padding:10px 14px;font-size:11.5px;color:#64748b"><?= h($row['remarks'] ?? '—') ?></td>
+
               <?php elseif ($report_type === 'dept_section'): ?>
                 <td style="padding:10px 14px"><strong><?= h($row['department']) ?></strong></td>
                 <td style="padding:10px 14px"><span style="color:#0284c7;font-weight:600">📍 <?= h($row['section']) ?></span></td>

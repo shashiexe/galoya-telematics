@@ -264,8 +264,10 @@ $totalGf = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fe
 $results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-weight:bold"];
 
 try {
+    $u22Count = (int)$pdo->query("SELECT COUNT(*) FROM locations WHERE user_id=22 AND DATE(recorded_at)=CURDATE()")->fetchColumn();
+    $u22MinMax = $pdo->query("SELECT MIN(recorded_at) as min_t, MAX(recorded_at) as max_t FROM locations WHERE user_id=22 AND DATE(recorded_at)=CURDATE()")->fetch(PDO::FETCH_ASSOC);
     $latestPt = $pdo->query("SELECT user_id, lat, lng, speed, recorded_at, received_at FROM locations ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-    $results[] = ["📍 Latest GPS Point in DB: " . json_encode($latestPt), "color:#a855f7;font-weight:bold"];
+    $results[] = ["📍 User 22 Points Today: $u22Count points (from {$u22MinMax['min_t']} to {$u22MinMax['max_t']})", "color:#a855f7;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {

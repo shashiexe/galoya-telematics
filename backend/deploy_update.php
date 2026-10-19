@@ -317,6 +317,17 @@ try {
     $results[] = ["📷 Latest Field Photos in DB: " . json_encode($latestPhotos), "color:#ec4899;font-weight:bold"];
 } catch (Throwable $e) {}
 
+try {
+    $errFiles = [__DIR__ . '/admin/error_log', __DIR__ . '/error_log'];
+    foreach ($errFiles as $ef) {
+        if (file_exists($ef)) {
+            $errContent = file($ef);
+            $lastErr = array_slice($errContent, -8);
+            $results[] = ["🪵 " . basename(dirname($ef)) . "/" . basename($ef) . ":<br>" . nl2br(htmlspecialchars(implode("", $lastErr))), "color:#f87171"];
+        }
+    }
+} catch (Throwable $e) {}
+
 if ($totalGf < 100) {
     $results[] = ["🌾 Tip: Click 'Fast Agriculture Sync' below to import all 5,034 sectors across the 5 Zones.", "color:#f59e0b;font-weight:bold"];
 }

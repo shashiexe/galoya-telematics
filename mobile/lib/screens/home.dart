@@ -418,11 +418,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: const Color(0xff0f172a), borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0xff0f172a), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xff334155))),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Icon(Icons.lock, color: Color(0xfff59e0b), size: 18),
+                      SizedBox(width: 6),
+                      Text('Redmi (X) බොත්තමෙන් බේරීමට (ප්‍රධාන පියවර):', style: TextStyle(color: Color(0xfff59e0b), fontWeight: FontWeight.bold, fontSize: 12.5)),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  Text('• Recent Apps තිරයේ StaffTrack card එක දිගට ඔබාගෙන සිට Lock Icon (🔒) එක ඔබන්න.', style: TextStyle(color: Colors.white, fontSize: 11.5)),
+                  SizedBox(height: 4),
+                  Text('• එවිට පහළ ඇති (X) බොත්තම එබුවත් StaffTrack වැසෙන්නේ හෝ RAM එකෙන් ඉවත් වන්නේ නැත!', style: TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.bold)),
+                  Divider(color: Color(0xff334155), height: 16),
                   Text('1. Location -> "Allow all the time" (හැමවිටම)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
                   SizedBox(height: 6),
                   Text('2. Battery -> "No restrictions" / Unrestricted', style: TextStyle(color: Color(0xff22c55e), fontWeight: FontWeight.bold, fontSize: 12)),

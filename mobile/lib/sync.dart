@@ -60,6 +60,19 @@ class Sync {
     } catch (_) {}
   }
 
+  /// Sync high-precision polygon coordinates for plots near current GPS location
+  static Future<List<Map<String, dynamic>>?> refreshNearbyGeofences(double lat, double lng) async {
+    try {
+      final res = await Api.get('geofences_nearby&lat=$lat&lng=$lng&limit=25');
+      if (res['ok'] == true && res['geofences'] is List) {
+        final list = res['geofences'] as List;
+        await LocalDb.saveGeofences(list);
+        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<void> _points() async {
     final sp = await SharedPreferences.getInstance();
     final batch = sp.getInt('batch') ?? 500;

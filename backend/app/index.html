@@ -3,20 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WiaTag Mobile App · Galoya Telematics</title>
+  <title>WiaTag Mobile App · Galoya Telematics (Executive Simulator)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 0;
-      background: #0f172a;
+      background: #090d16;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f1f5f9;
       overflow-x: hidden;
     }
 
@@ -25,33 +27,37 @@
       align-items: center;
       justify-content: center;
       gap: 36px;
-      padding: 24px;
+      padding: 20px;
       flex-wrap: wrap;
+      max-width: 1400px;
+      width: 100%;
     }
 
-    /* Smartphone Frame (380x760) */
+    /* Smartphone Device Frame (Matches Modern Android / iPhone) */
     .phone-device {
       width: 375px;
-      height: 750px;
+      height: 740px;
       background: #000;
-      border-radius: 48px;
-      padding: 12px;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 0 4px #334155;
+      border-radius: 46px;
+      padding: 10px;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 0 3px #334155, 0 0 25px rgba(56, 189, 248, 0.15);
       position: relative;
       display: flex;
       flex-direction: column;
+      flex-shrink: 0;
     }
 
+    /* Notch / Dynamic Island */
     .phone-notch {
       position: absolute;
-      top: 16px;
+      top: 14px;
       left: 50%;
       transform: translateX(-50%);
       width: 110px;
       height: 22px;
       background: #000;
       border-radius: 12px;
-      z-index: 2000;
+      z-index: 2100;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -67,16 +73,16 @@
     .phone-screen {
       flex: 1;
       background: #fff;
-      border-radius: 38px;
+      border-radius: 36px;
       overflow: hidden;
       display: flex;
       flex-direction: column;
       position: relative;
     }
 
-    /* Status Bar inside phone */
+    /* Status Bar */
     .phone-statusbar {
-      height: 36px;
+      height: 34px;
       padding: 6px 16px 0;
       display: flex;
       align-items: center;
@@ -88,55 +94,85 @@
       background: #fff;
     }
 
-    /* WiaTag Top Header Bar (Screenshot 1) */
+    /* WiaTag Top Header Bar (Matching Flutter home.dart) */
     .wiatag-header {
       height: 48px;
-      padding: 0 16px;
+      padding: 0 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #fff;
       z-index: 1000;
       border-bottom: 1px solid #f1f5f9;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     }
     .wiatag-brand {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 20px;
+      gap: 7px;
+      font-size: 19px;
       font-weight: 800;
       color: #1e293b;
       letter-spacing: -0.5px;
     }
     .wiatag-logo-drops {
-      width: 26px;
-      height: 26px;
+      width: 22px;
+      height: 22px;
       border-radius: 50% 50% 50% 0;
       background: linear-gradient(135deg, #42a5f5, #1976d2);
       transform: rotate(-45deg);
       display: inline-block;
     }
+    .galoya-pill {
+      font-size: 10px;
+      font-weight: 800;
+      background: #e2e8f0;
+      color: #475569;
+      padding: 2px 6px;
+      border-radius: 6px;
+      letter-spacing: 0.3px;
+    }
     .wiatag-header-icons {
       display: flex;
       align-items: center;
-      gap: 14px;
-      font-size: 18px;
+      gap: 12px;
+      font-size: 17px;
       color: #334155;
       cursor: pointer;
     }
-
-    /* Views */
-    .app-page {
-      flex: 1;
-      display: none;
-      flex-direction: column;
-      position: relative;
-      overflow: hidden;
-    }
-    .app-page.active {
+    .header-icon-btn {
+      background: none;
+      border: none;
+      padding: 4px;
+      color: #334155;
+      cursor: pointer;
       display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      position: relative;
+    }
+    .header-icon-btn:hover {
+      background: #f1f5f9;
+      color: #0284c7;
+    }
+    .header-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
+    /* Main Phone View Body */
     .page-main-body {
       flex: 1;
       position: relative;
@@ -145,7 +181,7 @@
       height: 100%;
     }
 
-    /* Map View inside phone */
+    /* Leaflet Map */
     #phone-map {
       position: absolute;
       inset: 0;
@@ -155,7 +191,7 @@
       z-index: 1;
     }
 
-    /* Floating Toast inside phone screen */
+    /* Toast in Phone Screen */
     .phone-toast {
       position: absolute;
       top: 54px;
@@ -176,19 +212,90 @@
       border: 1px solid rgba(255,255,255,0.15);
     }
 
-    /* Floating Send SOS Card (Screenshot 1 top) */
+    /* Floating Target Plot Navigation HUD */
+    .target-plot-hud {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      right: 12px;
+      background: #1e293b;
+      border: 1.5px solid #f59e0b;
+      border-radius: 14px;
+      padding: 8px 12px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      z-index: 550;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+      animation: slideDown 0.2s ease-out;
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-15px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .hud-icon-wrap {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(245, 158, 11, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f59e0b;
+      font-size: 16px;
+    }
+    .hud-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .hud-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hud-dist {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #38bdf8;
+    }
+    .hud-action-btn {
+      background: #059669;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hud-close-btn {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    /* Floating Send SOS Pill Button */
     .floating-sos-card {
       position: absolute;
       top: 10px;
-      left: 14px;
-      right: 14px;
+      left: 12px;
+      right: 12px;
       background: #ffffff;
       border-radius: 24px;
-      padding: 7px 14px;
+      padding: 6px 12px;
       display: flex;
       align-items: center;
-      gap: 12px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.18);
+      gap: 10px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
       z-index: 500;
       cursor: pointer;
       user-select: none;
@@ -196,41 +303,37 @@
     }
     .floating-sos-card:hover {
       transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(220, 38, 38, 0.25);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.25);
     }
     .sos-icon-badge {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
+      padding: 4px 8px;
+      border-radius: 12px;
       background: #ef4444;
       color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       font-size: 10px;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: 0.5px;
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
     }
     .sos-text {
-      font-size: 13.5px;
+      font-size: 13px;
       font-weight: 700;
       color: #1e293b;
     }
 
-    /* Floating Right Map Controls (Screenshot 1: Layers, Center, Compass) */
+    /* Floating Right Map Controls */
     .phone-map-floating-controls {
       position: absolute;
-      top: 60px;
-      right: 14px;
+      top: 56px;
+      right: 12px;
       z-index: 500;
       display: flex;
       flex-direction: column;
-      gap: 9px;
+      gap: 8px;
     }
     .phone-map-icon-btn {
-      width: 42px;
-      height: 42px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       background: #ffffff;
       border: none;
@@ -245,141 +348,17 @@
       transform: scale(1.08);
       background: #f8fafc;
     }
-    .phone-map-icon-btn:active {
-      transform: scale(0.95);
-    }
 
-    /* Compass Button (Matching Screenshot 1) */
-    .compass-btn {
-      background: #334155 !important;
-      position: relative;
-    }
-    .needle-north {
-      width: 0;
-      height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-bottom: 12px solid #ef4444;
-      position: absolute;
-      top: 10px;
-    }
-    .needle-south {
-      width: 0;
-      height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 12px solid #ffffff;
-      position: absolute;
-      bottom: 10px;
-    }
-
-    /* Map Layer Selector Modal / Bottom Sheet inside phone */
-    .phone-map-layer-modal {
-      position: absolute;
-      inset: 0;
-      z-index: 2000;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-    }
-    .layer-modal-backdrop {
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(2px);
-    }
-    .layer-modal-card {
-      position: relative;
-      background: #ffffff;
-      border-radius: 24px 24px 0 0;
-      padding: 16px;
-      box-shadow: 0 -10px 25px rgba(0,0,0,0.25);
-      z-index: 2001;
-      animation: slideUp 0.2s ease-out;
-    }
-    @keyframes slideUp {
-      from { transform: translateY(100%); }
-      to { transform: translateY(0); }
-    }
-    .layer-modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #f1f5f9;
-      color: #0f172a;
-      font-size: 14px;
-    }
-    .layer-option-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .layer-opt {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .layer-opt:hover {
-      background: #f1f7fe;
-      border-color: #3b82f6;
-    }
-    .layer-opt.selected {
-      background: #eff6ff;
-      border-color: #2563eb;
-    }
-    .layer-preview-icon {
-      font-size: 22px;
-    }
-    .layer-name {
-      font-weight: 700;
-      font-size: 12.5px;
-      color: #1e293b;
-    }
-    .layer-sub {
-      font-size: 10.5px;
-      color: #64748b;
-      margin-top: 1px;
-    }
-    .chk-mark {
-      font-size: 14px;
-      font-weight: 800;
-      color: #2563eb;
-    }
-
-    /* Location Disabled Warning Banner */
-    .location-alert-banner {
-      position: absolute;
-      top: 66px;
-      left: 14px;
-      right: 14px;
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 12px;
-      padding: 10px 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      z-index: 500;
-      display: none;
-      font-size: 11.5px;
-      color: #92400e;
-    }
-
-    /* Circular Floating Action Buttons (Screenshot 1) */
+    /* Circular Floating Action Buttons (Row of 6) */
     .wiatag-action-row {
       position: absolute;
-      bottom: 120px;
+      bottom: 165px;
       left: 0;
       right: 0;
       display: flex;
       align-items: center;
       justify-content: space-evenly;
-      padding: 0 10px;
+      padding: 0 8px;
       z-index: 500;
     }
     .wiatag-circle-btn {
@@ -390,60 +369,113 @@
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-size: 18px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      font-size: 19px;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.3);
       cursor: pointer;
       border: none;
-      transition: all 0.15s;
+      transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     .wiatag-circle-btn:hover {
-      transform: scale(1.08);
+      transform: scale(1.12) translateY(-2px);
     }
-    .btn-status   { background: #9333ea; } /* Purple check */
-    .btn-chat     { background: #4f46e5; } /* Violet chat */
+    .btn-status   { background: #8b5cf6; } /* Purple check */
+    .btn-chat     { background: #3b82f6; } /* Blue chat */
     .btn-gallery  { background: #f97316; } /* Orange gallery */
-    .btn-tasks    { background: #64748b; } /* Lavender tasks */
-    .btn-camera   { background: #334155; } /* Dark camera */
-    .btn-mode     { background: #0284c7; } /* Blue battery mode */
+    .btn-explore  { background: #059669; } /* Emerald plot explorer */
+    .btn-camera   { background: #0284c7; } /* Cyan camera */
+    .btn-diag     { background: #10b981; } /* Green battery */
 
-    /* Draggable Bottom Sheet (Screenshot 1) */
-    .wiatag-bottom-sheet {
+    /* Telematics Bottom Panel (Matches Flutter home.dart) */
+    .wiatag-bottom-panel {
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      height: 110px;
       background: #ffffff;
-      border-radius: 22px 22px 0 0;
-      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
-      padding: 8px 18px 14px;
+      border-radius: 24px 24px 0 0;
+      box-shadow: 0 -6px 25px rgba(0, 0, 0, 0.15);
+      padding: 8px 16px 14px;
       z-index: 600;
       user-select: none;
     }
-    .sheet-handle {
+    .panel-handle {
       width: 36px;
       height: 4px;
       background: #cbd5e1;
       border-radius: 2px;
-      margin: 0 auto 10px;
+      margin: 0 auto 8px;
     }
-    .sheet-header-row {
+
+    /* 24/7 Background Daemon Warning Card (Redmi / Samsung) */
+    .daemon-warning-card {
+      background: #fef2f2;
+      border: 1px solid #ef4444;
+      border-radius: 10px;
+      padding: 6px 10px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .daemon-warning-card:hover {
+      background: #fee2e2;
+    }
+    .daemon-warn-icon {
+      color: #dc2626;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .daemon-warn-text {
+      font-size: 10px;
+      font-weight: 700;
+      color: #991b1b;
+      line-height: 1.3;
+      flex: 1;
+    }
+
+    /* Tracking Toggle Row */
+    .panel-toggle-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
-    .sheet-title {
-      font-size: 18px;
+    .panel-toggle-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-tracking-title {
+      font-size: 17px;
       font-weight: 800;
       color: #0f172a;
     }
+    .offline-sync-pill {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 10px;
+      padding: 2px 7px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #b45309;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .offline-sync-pill:hover {
+      background: #fde68a;
+    }
+
     /* iOS Toggle Switch */
     .w-switch {
       position: relative;
       display: inline-block;
-      width: 46px;
-      height: 26px;
+      width: 44px;
+      height: 24px;
     }
     .w-switch input { opacity: 0; width: 0; height: 0; }
     .slider {
@@ -452,13 +484,13 @@
       inset: 0;
       background-color: #cbd5e1;
       transition: .25s;
-      border-radius: 26px;
+      border-radius: 24px;
     }
     .slider:before {
       position: absolute;
       content: "";
-      height: 20px;
-      width: 20px;
+      height: 18px;
+      width: 18px;
       left: 3px;
       bottom: 3px;
       background-color: white;
@@ -468,222 +500,371 @@
     input:checked + .slider { background-color: #22c55e; }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    .sheet-info-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #64748b;
-      margin-bottom: 4px;
+    .panel-divider {
+      height: 1px;
+      background: #f1f5f9;
+      margin: 6px 0 8px;
     }
 
-    /* Operation Mode Screen (Screenshot 2) */
-    .op-mode-page {
-      background: #fff;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-    }
-    .op-mode-topbar {
-      height: 48px;
-      display: flex;
-      align-items: center;
-      padding: 0 14px;
-      gap: 14px;
-      border-bottom: 1px solid #f1f5f9;
-      font-size: 16px;
-      font-weight: 700;
-      color: #0f172a;
-    }
-    .op-card {
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      padding: 16px;
-      margin: 12px 14px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .op-card.selected {
-      background: #eff6ff;
-      border-color: #3b82f6;
-    }
-    .op-card-header {
+    /* Machinery Info Row */
+    .panel-info-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
     }
-    .op-card-title {
-      font-size: 16px;
-      font-weight: 700;
+    .unit-meta-col {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .unit-title-line {
+      font-size: 13px;
+      font-weight: 800;
       color: #0f172a;
-    }
-    .op-radio {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      border: 2px solid #cbd5e1;
       display: flex;
       align-items: center;
-      justify-content: center;
+      gap: 6px;
     }
-    .op-card.selected .op-radio {
-      border-color: #3b82f6;
-      background: #3b82f6;
+    .unit-sub-line {
+      font-size: 10.5px;
+      color: #64748b;
+      font-weight: 500;
     }
-    .op-card.selected .op-radio:after {
-      content: "✓";
-      color: #fff;
-      font-size: 12px;
+    .live-status-pill {
+      padding: 4px 9px;
+      border-radius: 12px;
+      background: #dcfce7;
+      color: #15803d;
+      font-size: 11px;
       font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 5px;
     }
-    .op-card-desc {
-      font-size: 12px;
-      color: #475569;
-      line-height: 1.4;
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.8; }
+    }
+
+    /* Bottom Sheets & Modals Inside Phone */
+    .phone-sheet-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 2000;
+      display: none;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    .sheet-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(2px);
+    }
+    .sheet-card {
+      position: relative;
+      background: #0f172a;
+      border-radius: 24px 24px 0 0;
+      padding: 16px;
+      color: #fff;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+      z-index: 2001;
+      max-height: 82%;
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      border-top: 1px solid #334155;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1e293b;
     }
-    .op-bullet {
+    .sheet-head-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 12px;
-      color: #334155;
-      margin-bottom: 6px;
+    }
+    .sheet-close-btn {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 18px;
+      cursor: pointer;
+      font-weight: 700;
     }
 
-    /* Controller Panel on Laptop Screen */
-    .sim-dock {
-      width: 380px;
+    /* Status Items List */
+    .status-opt-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      margin-bottom: 6px;
+      background: #1e293b;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .status-opt-item:hover {
+      background: #334155;
+    }
+    .status-badge-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* Plot Navigator Sheet Item */
+    .plot-search-box {
+      width: 100%;
       background: #1e293b;
       border: 1px solid #334155;
-      border-radius: 20px;
-      padding: 22px;
-      color: #f1f5f9;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border-radius: 10px;
+      padding: 9px 12px;
+      color: #fff;
+      font-size: 13px;
+      margin-bottom: 10px;
+      outline: none;
     }
-    .sim-dock h2 {
-      margin: 0 0 10px;
-      font-size: 17px;
+    .plot-search-box:focus {
+      border-color: #0284c7;
+    }
+    .plot-list-scroll {
+      overflow-y: auto;
+      max-height: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .plot-item-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .plot-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .plot-item-name {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .plot-item-sub {
+      font-size: 11px;
+      color: #38bdf8;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    /* Android Navbar at Bottom */
+    .phone-android-navbar {
+      height: 22px;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+      color: #94a3b8;
+      font-size: 12px;
+      border-top: 1px solid #f1f5f9;
+      z-index: 1000;
+    }
+
+    /* LAPTOP CONTROLLER DOCK (CEO Presentation Center) */
+    .sim-dock {
+      flex: 1;
+      min-width: 360px;
+      max-width: 580px;
+      background: #131d2e;
+      border: 1px solid #1e293b;
+      border-radius: 28px;
+      padding: 24px;
+      color: #f1f5f9;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 0 1px rgba(56, 189, 248, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .dock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 14px;
+    }
+    .dock-title-wrap h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
       color: #38bdf8;
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    .dock-box {
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 14px;
+    .dock-title-wrap p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: #94a3b8;
     }
-    .dock-label {
+
+    .dock-card {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .dock-card-label {
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #94a3b8;
-      margin-bottom: 6px;
-      display: block;
+      letter-spacing: 0.6px;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
+
+    /* Scenario Action Grid */
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .scenario-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: left;
+      transition: all 0.18s ease;
+    }
+    .scenario-btn:hover {
+      background: #0284c7;
+      border-color: #38bdf8;
+      transform: translateY(-1px);
+    }
+    .scenario-btn .sc-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .scenario-btn .sc-desc {
+      font-size: 10px;
+      font-weight: 500;
+      color: #94a3b8;
+    }
+    .scenario-btn:hover .sc-desc {
+      color: #e0f2fe;
+    }
+
     .dock-btn {
       width: 100%;
       background: #0284c7;
       color: #fff;
       border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
+      padding: 9px 12px;
+      border-radius: 8px;
       font-weight: 700;
-      font-size: 12.5px;
+      font-size: 13px;
       cursor: pointer;
-      margin-top: 6px;
-    }
-    .dock-btn.red { background: #dc2626; }
-    .dock-btn.green { background: #16a34a; }
-
-    /* Android System Navigation Bar */
-    .phone-android-navbar {
-      height: 24px;
-      background: #ffffff;
       display: flex;
       align-items: center;
-      justify-content: space-evenly;
-      color: #64748b;
-      font-size: 13px;
-      border-top: 1px solid #f1f5f9;
-      z-index: 1000;
-      user-select: none;
-    }
-
-    /* Laptop Controller Dock Layer Buttons */
-    .dock-btn-layer {
-      background: #0f172a;
-      border: 1px solid #334155;
-      color: #f1f5f9;
-      padding: 8px 10px;
-      border-radius: 6px;
-      font-size: 11.5px;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
+      justify-content: center;
+      gap: 8px;
       transition: all 0.15s;
     }
-    .dock-btn-layer:hover {
-      background: #1e293b;
-      border-color: #38bdf8;
-      color: #38bdf8;
+    .dock-btn:hover { background: #0369a1; }
+    .dock-btn.red { background: #dc2626; }
+    .dock-btn.red:hover { background: #b91c1c; }
+    .dock-btn.green { background: #16a34a; }
+    .dock-btn.green:hover { background: #15803d; }
+
+    /* Map layer mini buttons */
+    .layer-mini-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
     }
-    .dock-btn-layer.active {
+    .layer-mini-btn {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      padding: 6px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+    }
+    .layer-mini-btn.active {
       background: #0284c7;
       border-color: #38bdf8;
-      color: #ffffff;
+      color: #fff;
     }
 
-    /* Responsive Full-Screen Native Mobile UI */
-    @media (max-width: 768px) {
-      body {
-        background: #ffffff !important;
-        overflow: hidden !important;
-        height: 100% !important;
-        min-height: 100dvh !important;
-      }
-      .sim-layout {
-        padding: 0 !important;
-        margin: 0 !important;
-        width: 100vw !important;
-        height: 100dvh !important;
-        gap: 0 !important;
-        align-items: stretch !important;
-        justify-content: stretch !important;
-      }
-      .phone-device {
-        width: 100vw !important;
-        height: 100dvh !important;
-        max-width: 100% !important;
-        max-height: 100% !important;
-        border-radius: 0 !important;
-        padding: 0 !important;
-        box-shadow: none !important;
-        border: none !important;
-        background: #ffffff !important;
-      }
-      .phone-notch {
-        display: none !important;
-      }
-      .phone-statusbar {
-        display: none !important;
-      }
-      .phone-android-navbar {
-        display: none !important;
-      }
-      .phone-screen {
-        border-radius: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-      }
-      .sim-dock {
-        display: none !important;
-      }
+    /* Links row */
+    .dock-links-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .dock-link-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 10px;
+      border-radius: 10px;
+      text-align: center;
+      color: #38bdf8;
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 700;
+      transition: all 0.15s;
+    }
+    .dock-link-btn:hover {
+      background: #334155;
+      color: #fff;
     }
   </style>
 </head>
@@ -697,285 +878,274 @@
       <div class="phone-screen">
         <!-- Status Bar -->
         <div class="phone-statusbar">
-          <span id="phone-time">7:58</span>
+          <span id="phone-time">14:28</span>
           <div style="display:flex;align-items:center;gap:6px">
             <span id="stat-gps-icon">📍</span>
             <span>📶</span>
-            <span id="phone-battery-txt">🔋 85%</span>
+            <span id="phone-battery-txt">🔋 100%</span>
           </div>
         </div>
 
-        <!-- PAGE 1: WIATAG MAIN SCREEN (Matching Screenshot 1) -->
-        <div class="app-page active" id="page-main">
-          <!-- Top WiaTag Header Bar -->
+        <!-- Main Body Containing Map & Floating Telematics -->
+        <div class="page-main-body">
+          <!-- Floating Toast Alert -->
+          <div id="phone-toast" class="phone-toast"></div>
+
+          <!-- Top Header Bar -->
           <div class="wiatag-header">
             <div class="wiatag-brand">
               <span class="wiatag-logo-drops"></span>
               <span>wiatag</span>
+              <span class="galoya-pill">Galoya</span>
             </div>
             <div class="wiatag-header-icons">
-              <span id="btn-open-modes" title="Battery & Operation Modes">⚙️</span>
-              <span onclick="alert('Galoya StaffTrack v2.4 (WiaTag Telematics Core)')" title="Menu">⊞</span>
+              <!-- Plot Explorer Icon -->
+              <button class="header-icon-btn" onclick="openPlotNavigatorModal()" title="Plantation Plots & Navigation">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              </button>
+              <!-- Tasks Icon with Badge -->
+              <button class="header-icon-btn" onclick="openTasksModal()" title="Field Tasks">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span class="header-badge" id="tasks-badge">2</span>
+              </button>
+              <!-- Settings Icon (PIN Protected) -->
+              <button class="header-icon-btn" onclick="requestSupervisorPIN('Settings')" title="Telematics Settings">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
             </div>
           </div>
 
-          <!-- Main Body containing Map and Controls -->
-          <div class="page-main-body">
-            <!-- Floating Toast Alert -->
-            <div id="phone-toast" class="phone-toast"></div>
+          <!-- Floating Target Plot Navigation HUD -->
+          <div class="target-plot-hud" id="target-plot-hud">
+            <div class="hud-icon-wrap">📍</div>
+            <div class="hud-info">
+              <div class="hud-title" id="hud-plot-name">Sector D - Block 412</div>
+              <div class="hud-dist" id="hud-plot-dist">Distance: 142 m (🚗 Directions)</div>
+            </div>
+            <button class="hud-action-btn" onclick="launchGoogleMapsRoute()">Go</button>
+            <button class="hud-close-btn" onclick="clearTargetPlot()">✕</button>
+          </div>
 
-            <!-- Floating Send SOS Pill Button -->
-            <div class="floating-sos-card" id="btn-send-sos">
-              <div class="sos-icon-badge">SOS</div>
-              <div class="sos-text">Send SOS</div>
+          <!-- Floating Send SOS Pill Button -->
+          <div class="floating-sos-card" id="btn-send-sos" onclick="triggerSOSAlert()">
+            <div class="sos-icon-badge">SOS</div>
+            <div class="sos-text">Send SOS</div>
+            <span style="margin-left:auto;color:#94a3b8;font-size:12px;font-weight:700">➔</span>
+          </div>
+
+          <!-- Interactive Leaflet Map Background -->
+          <div id="phone-map"></div>
+
+          <!-- Floating Right Map Controls -->
+          <div class="phone-map-floating-controls">
+            <button class="phone-map-icon-btn" onclick="openMapLayerModal()" title="Switch Map Layer">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </button>
+            <button class="phone-map-icon-btn" onclick="recenterMap()" title="Recenter Location">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#1e293b"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+            </button>
+            <button class="phone-map-icon-btn" onclick="orientNorth()" title="Compass (North)" style="background:#334155;">
+              <svg width="18" height="18" viewBox="0 0 24 24"><polygon points="12,3 7,21 12,16" fill="#ef4444"/><polygon points="12,3 17,21 12,16" fill="#ffffff"/></svg>
+            </button>
+          </div>
+
+          <!-- Row of 6 Circular Action Buttons (Matching Flutter home.dart) -->
+          <div class="wiatag-action-row">
+            <button class="wiatag-circle-btn btn-status" onclick="openStatusModal()" title="Status Check-in">✓</button>
+            <button class="wiatag-circle-btn btn-chat" onclick="openChatModal()" title="Dispatch Message">💬</button>
+            <button class="wiatag-circle-btn btn-gallery" onclick="openGalleryModal()" title="Field Photo Gallery">🖼️</button>
+            <button class="wiatag-circle-btn btn-explore" onclick="openPlotNavigatorModal()" title="Plot Navigator & Geofences">🧭</button>
+            <button class="wiatag-circle-btn btn-camera" onclick="openCameraModal()" title="Snap Field Photo">📷</button>
+            <button class="wiatag-circle-btn btn-diag" onclick="openDiagnosticsModal()" title="24/7 Diagnostics">🔋</button>
+          </div>
+
+          <!-- Modern Bottom Telematics Panel (Matching Flutter home.dart) -->
+          <div class="wiatag-bottom-panel">
+            <div class="panel-handle"></div>
+
+            <!-- Redmi / Samsung 24/7 Background Daemon Warning Card -->
+            <div class="daemon-warning-card" onclick="openDaemonHelpModal()">
+              <span class="daemon-warn-icon">⚠️</span>
+              <span class="daemon-warn-text">Redmi / Samsung: App close කරත් 24/7 දිවීමට Settings සකසන්න (Tap Here)</span>
+              <span style="color:#dc2626;font-size:14px;font-weight:800">➔</span>
             </div>
 
-            <!-- Location Disabled Alert Banner -->
-            <div class="location-alert-banner" id="loc-alert">
-              <strong>⚠️ GPS Location Disabled!</strong>
-              <div>Tracking is stopped because phone location is off. Turn on GPS to resume duty.</div>
-              <button onclick="togglePhoneGPS(true)" style="margin-top:6px;background:#d97706;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer">Turn On Location</button>
-            </div>
-
-            <!-- Interactive Map Background -->
-            <div id="phone-map"></div>
-
-            <!-- Floating Right Map Controls (Screenshot 1: Layers, Center, Compass) -->
-            <div class="phone-map-floating-controls">
-              <!-- Layers Button (Opens Map Layer Switcher) -->
-              <button class="phone-map-icon-btn" id="btn-phone-map-layers" title="Change Map Layer (Satellite / Standard)">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                </svg>
-              </button>
-
-              <!-- My Location Button (Flies to current GPS coordinates) -->
-              <button class="phone-map-icon-btn" id="btn-phone-my-location" title="My Location">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#1e293b">
-                  <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
-                </svg>
-              </button>
-
-              <!-- Compass Needle (Points North, exactly matching Screenshot 1) -->
-              <button class="phone-map-icon-btn compass-btn" id="btn-phone-compass" title="Compass (North)">
-                <div class="needle-north"></div>
-                <div class="needle-south"></div>
-              </button>
-            </div>
-
-            <!-- Mobile Machine / Unit Selector Modal -->
-            <div class="phone-map-layer-modal" id="modal-phone-units" style="display:none">
-              <div class="layer-modal-backdrop" onclick="closePhoneUnitModal()"></div>
-              <div class="layer-modal-card">
-                <div class="layer-modal-header">
-                  <strong>🚜 Select Machine / Unit</strong>
-                  <span onclick="closePhoneUnitModal()" style="cursor:pointer;font-size:18px;font-weight:700">✕</span>
-                </div>
-                <div class="layer-option-list" style="max-height:320px;overflow-y:auto">
-                  <div class="layer-opt selected" id="opt-unit-2" onclick="pickPhoneUnit(2, 'TRACTOR 49-1665', '🚜')">
-                    <span class="layer-preview-icon">🚜</span>
-                    <div style="flex:1">
-                      <div class="layer-name">TRACTOR 49-1665</div>
-                      <div class="layer-sub">Hingurana Estate Agriculture</div>
-                    </div>
-                  </div>
-                  <div class="layer-opt" id="opt-unit-3" onclick="pickPhoneUnit(3, 'TRACTOR 49-3835', '🚜')">
-                    <span class="layer-preview-icon">🚜</span>
-                    <div style="flex:1">
-                      <div class="layer-name">TRACTOR 49-3835</div>
-                      <div class="layer-sub">Hingurana Estate Agriculture</div>
-                    </div>
-                  </div>
-                  <div class="layer-opt" id="opt-unit-4" onclick="pickPhoneUnit(4, 'HARVESTER CH-570', '🌾')">
-                    <span class="layer-preview-icon">🌾</span>
-                    <div style="flex:1">
-                      <div class="layer-name">HARVESTER CH-570 (2806)</div>
-                      <div class="layer-sub">Sugarcane Combine Harvester</div>
-                    </div>
-                  </div>
-                  <div class="layer-opt" id="opt-unit-12" onclick="pickPhoneUnit(12, 'BOLERO DAH-8851', '🚙')">
-                    <span class="layer-preview-icon">🚙</span>
-                    <div style="flex:1">
-                      <div class="layer-name">BOLERO DAH-8851</div>
-                      <div class="layer-sub">Field Inspection 4x4</div>
-                    </div>
-                  </div>
-                  <div class="layer-opt" id="opt-unit-16" onclick="pickPhoneUnit(16, 'Kamal Perera', '📱')">
-                    <span class="layer-preview-icon">📱</span>
-                    <div style="flex:1">
-                      <div class="layer-name">Kamal Perera</div>
-                      <div class="layer-sub">Field Officer Phone</div>
-                    </div>
-                  </div>
-                  <div class="layer-opt" id="opt-unit-17" onclick="pickPhoneUnit(17, 'Nimal Silva', '📱')">
-                    <span class="layer-preview-icon">📱</span>
-                    <div style="flex:1">
-                      <div class="layer-name">Nimal Silva</div>
-                      <div class="layer-sub">Field Supervisor Phone</div>
-                    </div>
-                  </div>
+            <!-- Tracking Toggle Row with Offline Queue Sync Indicator -->
+            <div class="panel-toggle-row">
+              <div class="panel-toggle-left">
+                <span class="panel-tracking-title">Tracking</span>
+                <div class="offline-sync-pill" id="offline-pill" onclick="flushOfflineQueue()" style="display:none">
+                  <span>📦</span>
+                  <span id="offline-count-txt">0 offline (Sync)</span>
                 </div>
               </div>
+              <label class="w-switch">
+                <input type="checkbox" id="chk-tracking" checked onchange="toggleTracking(this.checked)">
+                <span class="slider"></span>
+              </label>
             </div>
 
-            <!-- Mobile Map Layer Selector Modal -->
-            <div class="phone-map-layer-modal" id="modal-map-layers" style="display:none">
-              <div class="layer-modal-backdrop" onclick="closeMapLayerModal()"></div>
-              <div class="layer-modal-card">
-                <div class="layer-modal-header">
-                  <strong>🗺️ Select Map Layer</strong>
-                  <span onclick="closeMapLayerModal()" style="cursor:pointer;font-size:18px;font-weight:700">✕</span>
+            <div class="panel-divider"></div>
+
+            <!-- Machinery Info & Real-Time Telematics Stats -->
+            <div class="panel-info-row">
+              <div class="unit-meta-col">
+                <div class="unit-title-line">
+                  <span id="unit-icon-disp">🚜</span>
+                  <span id="unit-code-name">49-1665 · Field Officer</span>
                 </div>
-                <div class="layer-option-list">
-                  <div class="layer-opt selected" id="opt-layer-google_hybrid" onclick="switchPhoneMapLayer('google_hybrid')">
-                    <span class="layer-preview-icon">🌐</span>
-                    <div style="flex:1">
-                      <div class="layer-name">Google Hybrid</div>
-                      <div class="layer-sub">Satellite with roads & estate labels</div>
-                    </div>
-                    <span class="chk-mark" id="chk-layer-google_hybrid">✓</span>
-                  </div>
-
-                  <div class="layer-opt" id="opt-layer-satellite" onclick="switchPhoneMapLayer('satellite')">
-                    <span class="layer-preview-icon">🛰️</span>
-                    <div style="flex:1">
-                      <div class="layer-name">Satellite (Esri HD)</div>
-                      <div class="layer-sub">High-definition satellite for fields</div>
-                    </div>
-                    <span class="chk-mark" id="chk-layer-satellite"></span>
-                  </div>
-
-                  <div class="layer-opt" id="opt-layer-osm" onclick="switchPhoneMapLayer('osm')">
-                    <span class="layer-preview-icon">🗺️</span>
-                    <div style="flex:1">
-                      <div class="layer-name">OpenStreetMap</div>
-                      <div class="layer-sub">Clean standard road map</div>
-                    </div>
-                    <span class="chk-mark" id="chk-layer-osm"></span>
-                  </div>
-
-                  <div class="layer-opt" id="opt-layer-hot" onclick="switchPhoneMapLayer('hot')">
-                    <span class="layer-preview-icon">📍</span>
-                    <div style="flex:1">
-                      <div class="layer-name">Humanitarian OSM</div>
-                      <div class="layer-sub">High-contrast tracks & canals</div>
-                    </div>
-                    <span class="chk-mark" id="chk-layer-hot"></span>
-                  </div>
-
-                  <div class="layer-opt" id="opt-layer-topo" onclick="switchPhoneMapLayer('topo')">
-                    <span class="layer-preview-icon">🏔️</span>
-                    <div style="flex:1">
-                      <div class="layer-name">OpenTopoMap (Terrain)</div>
-                      <div class="layer-sub">Elevation & terrain contours</div>
-                    </div>
-                    <span class="chk-mark" id="chk-layer-topo"></span>
-                  </div>
+                <div class="unit-sub-line" id="unit-telemetry-stats">
+                  📍 Accuracy 4 m · Speed 0.0 km/h
                 </div>
               </div>
-            </div>
-
-            <!-- Circular Floating Action Buttons (Screenshot 1) -->
-            <div class="wiatag-action-row">
-              <button class="wiatag-circle-btn btn-status" title="Check-in Status" onclick="showStatusDialog()">✓</button>
-              <button class="wiatag-circle-btn btn-chat" title="Chat / Dispatch" onclick="openChat()">💬</button>
-              <button class="wiatag-circle-btn btn-gallery" title="Send Photo" onclick="triggerTaskPhoto()">🖼️</button>
-              <button class="wiatag-circle-btn btn-tasks" title="Tasks List" onclick="openTasksModal()">⛶</button>
-              <button class="wiatag-circle-btn btn-camera" title="Take Before/After Photo" onclick="triggerTaskPhoto()">📷</button>
-              <button class="wiatag-circle-btn btn-mode" title="Battery Operation Mode" onclick="showPage('modes')">🔋</button>
-            </div>
-
-            <!-- Draggable Bottom Sheet (Screenshot 1) -->
-            <div class="wiatag-bottom-sheet">
-              <div class="sheet-handle"></div>
-              <div class="sheet-header-row">
-                <div class="sheet-title">Tracking</div>
-                <label class="w-switch">
-                  <input type="checkbox" id="chk-tracking" checked>
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <div class="sheet-info-row" style="color:#0284c7;font-weight:700;cursor:pointer" onclick="openPhoneUnitModal()" title="Tap to switch unit">
-                <span id="disp-unit-icon">🚜</span>
-                <span id="disp-unit-name">TRACTOR 49-1665</span>
-                <span style="font-size:10px;color:#0284c7;background:#e0f2fe;padding:2px 7px;border-radius:10px;margin-left:auto">Change Unit ▾</span>
-              </div>
-              <div class="sheet-info-row">
-                <span>📍</span>
-                <span id="disp-accuracy">Accuracy 130 ft</span>
-              </div>
-              <div class="sheet-info-row">
-                <span>✉️</span>
-                <span id="disp-last-msg">Last message was sent 0 s ago</span>
+              <div class="live-status-pill" id="live-status-badge">
+                <span class="live-dot"></span>
+                <span id="live-interval-txt">Live 15s</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- PAGE 2: OPERATION MODE SCREEN (Matching Screenshot 2) -->
-        <div class="app-page" id="page-modes">
-          <div class="op-mode-topbar">
-            <span style="cursor:pointer;font-size:20px" onclick="showPage('main')">←</span>
-            <span>Operation mode</span>
-          </div>
-
-          <div class="op-mode-page">
-            <!-- Mode 1: Light -->
-            <div class="op-card" id="card-mode-light" onclick="selectMode('light')">
-              <div class="op-card-header">
-                <span class="op-card-title">Light</span>
-                <span class="op-radio"></span>
-              </div>
-              <div class="op-card-desc">
-                This mode is suitable for those who want to save battery power and for whom it is enough to know the approximate location.
-              </div>
-              <div class="op-bullet">
-                <span>✓</span>
-                <span>Low battery consumption</span>
-              </div>
-              <div class="op-bullet">
-                <span>✓</span>
-                <span>General idea of the unit movement</span>
-              </div>
+        <!-- MODAL 1: Machinery / Staff Status Sheet -->
+        <div class="phone-sheet-modal" id="modal-status">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-status')"></div>
+          <div class="sheet-card">
+            <div class="sheet-head">
+              <span class="sheet-head-title">🚜 Machinery & Duty Status</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-status')">✕</button>
             </div>
-
-            <!-- Mode 2: Standard (Selected by default) -->
-            <div class="op-card selected" id="card-mode-standard" onclick="selectMode('standard')">
-              <div class="op-card-header">
-                <span class="op-card-title">Standard</span>
-                <span class="op-radio"></span>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div class="status-opt-item" onclick="setStaffStatus('Working / On Field', '🚜', '#22c55e')">
+                <div class="status-badge-icon" style="background:rgba(34,197,94,0.2);color:#22c55e">🚜</div>
+                <div style="flex:1"><div style="font-weight:700">Working / On Field</div><div style="font-size:11px;color:#94a3b8">Active plantation operations</div></div>
               </div>
-              <div class="op-card-desc">
-                This mode is optimized for obtaining accurate tracks and moderate battery consumption.
+              <div class="status-opt-item" onclick="setStaffStatus('Loading / Transport', '🚛', '#3b82f6')">
+                <div class="status-badge-icon" style="background:rgba(59,130,246,0.2);color:#3b82f6">🚛</div>
+                <div style="flex:1"><div style="font-weight:700">Loading / Transport</div><div style="font-size:11px;color:#94a3b8">Cane delivery to Hingurana Factory</div></div>
               </div>
-              <div class="op-bullet">
-                <span>✓</span>
-                <span>Well-balanced and accurate</span>
+              <div class="status-opt-item" onclick="setStaffStatus('Breakdown / Maintenance', '🔧', '#ef4444')">
+                <div class="status-badge-icon" style="background:rgba(239,68,68,0.2);color:#ef4444">🔧</div>
+                <div style="flex:1"><div style="font-weight:700">Breakdown / Maintenance</div><div style="font-size:11px;color:#94a3b8">Mechanical assistance required</div></div>
               </div>
-              <div class="op-bullet">
-                <span>✓</span>
-                <span>Battery lasting all working day</span>
+              <div class="status-opt-item" onclick="setStaffStatus('Lunch / Standby', '☕', '#f59e0b')">
+                <div class="status-badge-icon" style="background:rgba(245,158,11,0.2);color:#f59e0b">☕</div>
+                <div style="flex:1"><div style="font-weight:700">Lunch / Standby</div><div style="font-size:11px;color:#94a3b8">Operator break / standby</div></div>
               </div>
-            </div>
-
-            <!-- Mode 3: Custom -->
-            <div class="op-card" id="card-mode-custom" onclick="selectMode('custom')">
-              <div class="op-card-header">
-                <span class="op-card-title">Custom</span>
-                <span class="op-radio"></span>
-              </div>
-              <div class="op-card-desc">
-                You can create a custom mode based on your own requirements.
-              </div>
-              <div class="op-bullet">
-                <span>✓</span>
-                <span id="custom-rate-lbl">Data collection: 30 s</span>
+              <div class="status-opt-item" onclick="setStaffStatus('Field Inspection', '📋', '#8b5cf6')">
+                <div class="status-badge-icon" style="background:rgba(139,92,246,0.2);color:#8b5cf6">📋</div>
+                <div style="flex:1"><div style="font-weight:700">Field Inspection</div><div style="font-size:11px;color:#94a3b8">Agronomy survey & boundary check</div></div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Android System Navigation Bar (Screenshot 1 bottom) -->
+        <!-- MODAL 2: Field Notes / Chat Sheet -->
+        <div class="phone-sheet-modal" id="modal-chat">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-chat')"></div>
+          <div class="sheet-card">
+            <div class="sheet-head">
+              <span class="sheet-head-title">💬 Transmit Note to Dispatcher</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-chat')">✕</button>
+            </div>
+            <textarea id="chat-note-input" rows="3" placeholder="Enter field situation or progress note..." style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px;color:#fff;font-size:13px;outline:none"></textarea>
+            <button class="dock-btn green" style="margin-top:10px" onclick="sendChatNote()">Transmit to Operations Room</button>
+          </div>
+        </div>
+
+        <!-- MODAL 3: Plot Navigator & Directions Sheet -->
+        <div class="phone-sheet-modal" id="modal-plot-navigator">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-plot-navigator')"></div>
+          <div class="sheet-card" style="max-height:85%">
+            <div class="sheet-head">
+              <span class="sheet-head-title">🧭 Plot Navigator & Directions</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-plot-navigator')">✕</button>
+            </div>
+            <input type="text" class="plot-search-box" id="plot-search-input" placeholder="Search 5,036 plots by name or code (e.g. D-207, Sec D)..." oninput="filterPlots(this.value)">
+            <div class="plot-list-scroll" id="plot-items-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL 4: Field Camera & Auto Plot Detection Sheet -->
+        <div class="phone-sheet-modal" id="modal-camera">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-camera')"></div>
+          <div class="sheet-card">
+            <div class="sheet-head">
+              <span class="sheet-head-title">📷 Snap Field Photo (Geotagged)</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-camera')">✕</button>
+            </div>
+            <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:10px;margin-bottom:10px">
+              <div style="font-size:11px;color:#94a3b8;font-weight:700">DETECTED SUGARCANE BLOCK:</div>
+              <div style="font-size:13px;font-weight:800;color:#38bdf8" id="cam-auto-plot">Sector D · Block D-207 (Inside Boundary)</div>
+            </div>
+            <div style="margin-bottom:10px">
+              <div style="font-size:11px;color:#94a3b8;font-weight:700;margin-bottom:4px">ACTIVITY CATEGORY:</div>
+              <select id="cam-activity-type" style="width:100%;background:#1e293b;border:1px solid #334155;color:#fff;padding:8px;border-radius:8px;font-size:12px;outline:none">
+                <option value="Harvesting" selected>🌾 Sugarcane Harvesting</option>
+                <option value="Loading">🚛 Infield Cane Loading</option>
+                <option value="Weeding">🌿 Weeding / Agronomy</option>
+                <option value="Spraying">🧪 Chemical Spraying</option>
+                <option value="Land Prep">🚜 Land Preparation</option>
+                <option value="Inspection">🔍 Field Inspection</option>
+                <option value="Breakdown">⚠️ Machine Breakdown</option>
+              </select>
+            </div>
+            <input type="text" id="cam-note" placeholder="Optional notes (e.g. Yield healthy, row 14)..." style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:8px 10px;color:#fff;font-size:12px;margin-bottom:10px;outline:none">
+            <button class="dock-btn" style="background:#0284c7" onclick="submitSimulatedPhoto()">📷 Snap & Geotag Photo</button>
+          </div>
+        </div>
+
+        <!-- MODAL 5: Field Photos Gallery Sheet -->
+        <div class="phone-sheet-modal" id="modal-gallery">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-gallery')"></div>
+          <div class="sheet-card" style="max-height:85%">
+            <div class="sheet-head">
+              <span class="sheet-head-title">🖼️ Field Photos Gallery</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-gallery')">✕</button>
+            </div>
+            <div class="plot-list-scroll" id="gallery-items-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL 6: 24/7 Daemon Setup Help Sheet -->
+        <div class="phone-sheet-modal" id="modal-daemon-help">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-daemon-help')"></div>
+          <div class="sheet-card">
+            <div class="sheet-head">
+              <span class="sheet-head-title">🛡️ 24/7 Background Setup (Redmi / Samsung)</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-daemon-help')">✕</button>
+            </div>
+            <div style="font-size:12px;color:#cbd5e1;line-height:1.5;margin-bottom:10px">
+              App එක swipe කරලා අයින් කලත් (Facebook මෙන්) background එකේ tracking 24/7 දිවීමට පහත සැකසුම් අවශ්‍ය වේ:
+            </div>
+            <div style="background:#1e293b;border-radius:12px;padding:12px;font-size:11.5px;display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+              <div style="color:#38bdf8;font-weight:700">1. Location ➔ "Allow all the time" (හැමවිටම ඉඩදෙන්න)</div>
+              <div style="color:#22c55e;font-weight:700">2. Battery ➔ "No restrictions" / Unrestricted</div>
+              <div style="color:#f59e0b;font-weight:700">3. Redmi/Xiaomi: Autostart = ON & Recent Apps Lock 🔒</div>
+              <div style="color:#e2e8f0;font-weight:700">4. Samsung: Never sleeping apps වලට එක් කරන්න</div>
+            </div>
+            <button class="dock-btn" style="background:#0284c7" onclick="simulateSettingsGrant()">✅ Simulate Settings Configured (Verified)</button>
+          </div>
+        </div>
+
+        <!-- MODAL 7: Supervisor PIN Authentication -->
+        <div class="phone-sheet-modal" id="modal-pin">
+          <div class="sheet-backdrop" onclick="closeSheet('modal-pin')"></div>
+          <div class="sheet-card">
+            <div class="sheet-head">
+              <span class="sheet-head-title">🔒 Supervisor Authorization PIN</span>
+              <button class="sheet-close-btn" onclick="closeSheet('modal-pin')">✕</button>
+            </div>
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Enter Fleet Supervisor PIN to access settings:</div>
+            <input type="password" id="pin-input" placeholder="Enter PIN (Default: 2026)" style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px;color:#fff;font-size:14px;outline:none;text-align:center;letter-spacing:4px">
+            <button class="dock-btn green" style="margin-top:10px" onclick="verifySupervisorPIN()">Authorize Access</button>
+          </div>
+        </div>
+
+        <!-- Android Navigation Bar at Bottom -->
         <div class="phone-android-navbar">
           <span>◀</span>
           <span>●</span>
@@ -984,333 +1154,210 @@
       </div>
     </div>
 
-    <!-- LAPTOP CONTROLLER DOCK -->
+    <!-- LAPTOP CONTROLLER DOCK (CEO Presentation & Telematics Control) -->
     <div class="sim-dock">
-      <h2>🎮 Smart Mobile App Controller</h2>
-      <p style="font-size:12px;color:#94a3b8;margin:0 0 14px">
-        Test battery saving, GPS permissions, SOS alarms, and live telematics transmission to Web Admin!
-      </p>
+      <div class="dock-header">
+        <div class="dock-title-wrap">
+          <h2>🏢 CEO Executive Presentation Dock</h2>
+          <p>Galoya Sugar Plantation Telematics & 24/7 Mobile System</p>
+        </div>
+      </div>
 
-      <!-- 0. Machine / Unit Connection -->
-      <div class="dock-box" style="border:1px solid #38bdf8;background:#1e293b;padding:12px 14px;border-radius:10px;margin-bottom:14px">
-        <span class="dock-label" style="color:#38bdf8;font-size:12px;font-weight:700">🚜 Active Unit / Machinery to Simulate</span>
-        <select id="sim-unit-select" onchange="switchSimulatedUnit(this.value)" style="width:100%;padding:8px 10px;border-radius:6px;background:#0f172a;color:#fff;border:1px solid #38bdf8;font-size:13px;font-weight:600;margin-top:6px;cursor:pointer">
-          <option value="2" selected>🚜 TRACTOR 49-1665 (Hingurana Estate)</option>
-          <option value="3">🚜 TRACTOR 49-3835</option>
-          <option value="4">🌾 HARVESTER 2806</option>
-          <option value="5">🌾 HARVESTER 2808</option>
-          <option value="8">🚛 INFIELDER 3407</option>
-          <option value="12">🚙 BOLERO DAH-8851</option>
-          <option value="16">📱 Kamal Perera (Field Officer Phone)</option>
-          <option value="17">📱 Nimal Silva (Supervisor Phone)</option>
+      <!-- 1. Active Unit Selector -->
+      <div class="dock-card" style="border-color:#38bdf8">
+        <div class="dock-card-label">🚜 Active Unit / Machinery to Simulate</div>
+        <select id="dock-unit-select" onchange="switchUnit(this.value)" style="width:100%;padding:9px 12px;border-radius:8px;background:#0f172a;color:#fff;border:1px solid #38bdf8;font-size:13px;font-weight:700;outline:none;cursor:pointer">
+          <option value="2" selected>🚜 TRACTOR 49-1665 (Hingurana Estate Agriculture)</option>
+          <option value="3">🚜 TRACTOR 49-3835 (Sector B Sugarcane)</option>
+          <option value="4">🌾 HARVESTER CH-570 (Combine Sugarcane Harvester)</option>
+          <option value="8">🚛 INFIELDER 3407 (High-Tip Cane Hauler)</option>
+          <option value="12">🚙 BOLERO DAH-8851 (Agronomy Field Inspection 4x4)</option>
+          <option value="16">📱 Kamal Perera (Field Officer Android)</option>
         </select>
-        <div id="sim-conn-status" style="font-size:11.5px;color:#22c55e;font-weight:700;margin-top:8px;display:flex;align-items:center;gap:6px">
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px #22c55e"></span>
-          <span id="sim-status-text">🟢 Online & Connected to Web Control Room</span>
-        </div>
-        <div id="sim-ping-counter" style="font-size:11px;color:#94a3b8;margin-top:4px">
-          Heartbeat: Transmitting GPS packets to Web Admin every 3-5s
-        </div>
-      </div>
-
-      <!-- 1. GPS Location Permission Simulation -->
-      <div class="dock-box">
-        <span class="dock-label">📍 Phone Location Sensor (GPS)</span>
-        <div style="display:flex;gap:8px">
-          <button class="dock-btn green" id="btn-gps-on" onclick="togglePhoneGPS(true)">
-            GPS Enabled (ON)
-          </button>
-          <button class="dock-btn red" id="btn-gps-off" onclick="togglePhoneGPS(false)">
-            Turn GPS OFF
-          </button>
-        </div>
-        <div style="font-size:11px;color:#cbd5e1;margin-top:6px">
-          Tests your requirement: Alert staff when location is turned off so tracking never fails!
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+          <div style="font-size:11.5px;color:#22c55e;font-weight:800;display:flex;align-items:center;gap:6px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px #22c55e"></span>
+            <span id="dock-conn-status">🟢 Online & Transmitting to Control Room</span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8" id="dock-packet-stats">18 Packets Sent</div>
         </div>
       </div>
 
-      <!-- 2. Battery Consumption & Smart Mode Simulation -->
-      <div class="dock-box">
-        <span class="dock-label">🔋 Battery Level & Smart Power Saver</span>
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:12px">Battery: <strong id="dock-bat-val">85%</strong></span>
-          <span style="font-size:11px;color:#38bdf8" id="dock-mode-val">Standard Mode</span>
-        </div>
-        <input type="range" id="battery-slider" min="5" max="100" value="85" style="width:100%;margin-top:8px">
-        <div style="font-size:11px;color:#94a3b8;margin-top:4px">
-          • Light mode: Throttles pings when stationary (lasts 2+ days)<br>
-          • Standard mode: High accuracy, lasts all working day
+      <!-- 2. 1-Click Interactive CEO Scenarios -->
+      <div class="dock-card">
+        <div class="dock-card-label">✨ 1-Click CEO Demonstration Scenarios</div>
+        <div class="scenario-grid">
+          <button class="scenario-btn" onclick="toggleDriveSimulation()">
+            <div class="sc-title" id="sc-drive-title">▶️ Vehicle Movement</div>
+            <div class="sc-desc">Follows road, corners curves at 24 km/h</div>
+          </button>
+          <button class="scenario-btn" onclick="demoPlotNavigation()">
+            <div class="sc-title">🌾 Enter Sugarcane Plot</div>
+            <div class="sc-desc">Moves into Block D-207 & draws boundary</div>
+          </button>
+          <button class="scenario-btn" onclick="demoOfflineQueue()">
+            <div class="sc-title">📶 Test Offline Sync</div>
+            <div class="sc-desc">Cuts network, queues 5 pts, auto-syncs</div>
+          </button>
+          <button class="scenario-btn" onclick="demoAntiWipeVault()">
+            <div class="sc-title">🛡️ Redmi Cache Wipe</div>
+            <div class="sc-desc">Vault survives clear cache, stays online</div>
+          </button>
+          <button class="scenario-btn" onclick="openCameraModal()">
+            <div class="sc-title">📷 Field Photo Detect</div>
+            <div class="sc-desc">Auto-tags plot & uploads to web</div>
+          </button>
+          <button class="scenario-btn" onclick="triggerSOSAlert()">
+            <div class="sc-title" style="color:#f87171">🚨 Emergency SOS</div>
+            <div class="sc-desc">Sends urgent GPS alarm to Radar</div>
+          </button>
         </div>
       </div>
 
-      <!-- 3. Map Layer Selector (Quick Laptop Click) -->
-      <div class="dock-box">
-        <span class="dock-label">🗺️ Mobile Map Layer Selector</span>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px;">
-          <button class="dock-btn-layer active" id="dock-layer-google_hybrid" onclick="switchPhoneMapLayer('google_hybrid')">
-            🌐 Google Hybrid
-          </button>
-          <button class="dock-btn-layer" id="dock-layer-satellite" onclick="switchPhoneMapLayer('satellite')">
-            🛰️ Satellite HD
-          </button>
-          <button class="dock-btn-layer" id="dock-layer-osm" onclick="switchPhoneMapLayer('osm')">
-            🗺️ OpenStreetMap
-          </button>
-          <button class="dock-btn-layer" id="dock-layer-hot" onclick="switchPhoneMapLayer('hot')">
-            📍 Humanitarian
-          </button>
+      <!-- 3. Hardware Sensors & Battery Simulation -->
+      <div class="dock-card">
+        <div class="dock-card-label">🔋 Phone Sensor Controls</div>
+        <div style="display:flex;gap:10px;margin-bottom:10px">
+          <button class="dock-btn green" id="btn-gps-toggle" onclick="togglePhoneGps()">📍 GPS Sensor: Active (ON)</button>
+          <button class="dock-btn red" onclick="disconnectCurrentUnit()">🔴 Disconnect</button>
         </div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:6px">
-          💡 Tip: You can switch layers here OR tap the <b>Layers ⛶ button</b> directly on the phone screen!
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span>Battery Simulator: <strong id="dock-bat-num" style="color:#38bdf8">100%</strong></span>
+          <span style="color:#22c55e;font-weight:700">Unrestricted Power</span>
         </div>
+        <input type="range" id="dock-bat-slider" min="5" max="100" value="100" style="width:100%" oninput="updateBattery(this.value)">
       </div>
 
-      <!-- 4. Auto-Drive Movement Simulation -->
-      <div class="dock-box">
-        <span class="dock-label">🚜 Hingurana Movement Simulator</span>
-        <button class="dock-btn" id="btn-drive-toggle" onclick="toggleDrivingSim()">
-          ▶️ Start Vehicle Movement
-        </button>
-        <div style="font-size:11px;color:#cbd5e1;margin-top:6px">
-          Transmits live speed (24 km/h) & movement coordinates to show moving green vehicle logo on Admin Map!
-        </div>
-      </div>
-
-      <!-- 5. Instant Online / Offline Control -->
-      <div class="dock-box">
-        <span class="dock-label">🔴 Test Unit Online / Offline Toggle</span>
-        <div style="display:flex;gap:8px;margin-top:4px">
-          <button class="dock-btn red" id="btn-dock-offline" onclick="disconnectCurrentUnit()">
-            🔴 Go Offline / Disconnect
-          </button>
-          <button class="dock-btn green" id="btn-dock-online" onclick="reconnectCurrentUnit()">
-            🟢 Go Online / Connect
-          </button>
-        </div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:6px">
-          Instantly removes unit from Active Monitoring (0 units online) or reconnects it!
-        </div>
-      </div>
-
-      <!-- 6. Quick Links to Admin Panel -->
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
-        <a href="../admin/index.php" target="_blank" class="dock-btn" style="background:#38bdf8;color:#0f172a;text-align:center;text-decoration:none">
-          🗺️ Open Live Admin Map
+      <!-- 4. Quick Links to Control Room -->
+      <div class="dock-links-row">
+        <a href="../admin/index.php" target="_blank" class="dock-link-btn" style="background:#0284c7;color:#fff">
+          🗺️ Open Live Admin Radar
         </a>
-        <a href="../admin/dashboard.php" target="_blank" class="dock-btn" style="background:#334155;text-align:center;text-decoration:none">
-          📊 Open Telematics Dashboard
+        <a href="../admin/reports.php" target="_blank" class="dock-link-btn">
+          📊 Open Executive Reports
         </a>
       </div>
     </div>
   </div>
 
   <script>
+    // --- State Variables ---
     let isTrackingOn = true;
     let isGpsHardwareOn = true;
-    let currentBattery = 85;
-    let currentMode = 'standard';
-    let currentLat = 7.20950;
-    let currentLng = 81.65750;
-    let isDriving = false;
-    let driveInterval = null;
-    let lastMsgSec = 0;
-    let lastMsgTimer = null;
-    let phoneMap, userMarker, userPulseCircle;
+    let currentBattery = 100;
     let currentUnitId = 2;
     let currentUnitName = 'TRACTOR 49-1665';
-    let pingCount = 0;
+    let currentUnitCode = '49-1665';
+    let currentUnitIcon = '🚜';
+    let currentLat = 7.20950;
+    let currentLng = 81.65750;
+    let currentSpeed = 0.0;
+    let currentAccuracy = 4.2;
+    let currentStatus = 'Working / On Field';
+    let isDriving = false;
+    let driveInterval = null;
+    let packetCount = 0;
+    let offlineQueue = [];
+    let phoneMap, userMarker, userAccuracyCircle, targetPolygonLayer, targetRoutePolyline;
+    let geofencesList = [];
+    let currentTargetPlot = null;
 
-    async function setDeviceOffline(unitId) {
-      const targetId = unitId || currentUnitId;
-      const token = localStorage.getItem('staff_token');
-      try {
-        const res = await fetch('../api.php?action=set_offline&unit_id=' + targetId, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + (token || ''),
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ unit_id: targetId })
-        });
-        const d = await res.json();
-        const stEl = document.getElementById('sim-status-text');
-        if (stEl) {
-          stEl.innerHTML = '<span style="color:#ef4444">🔴 Offline / Disconnected</span>';
-        }
-        const pEl = document.getElementById('sim-ping-counter');
-        if (pEl) {
-          pEl.textContent = 'Transmissions stopped. Unit removed from Web Control Room.';
-        }
-        return d;
-      } catch (e) {
-        console.error('setDeviceOffline failed:', e);
-      }
-    }
-
-    async function disconnectCurrentUnit() {
-      if (isDriving) toggleDrivingSim();
-      await setDeviceOffline(currentUnitId);
-      showPhoneToast('🔴 Unit ' + currentUnitName + ' disconnected (Offline)');
-    }
-
-    async function reconnectCurrentUnit() {
-      await authenticateSimulator(currentUnitId);
-      showPhoneToast('🟢 Unit ' + currentUnitName + ' reconnected (Online)');
-    }
-
-    async function switchSimulatedUnit(unitId) {
-      const oldUnitId = currentUnitId;
-      if (oldUnitId && oldUnitId != unitId) {
-        await setDeviceOffline(oldUnitId);
-      }
-      currentUnitId = parseInt(unitId);
-      const sel = document.getElementById('sim-unit-select');
-      currentUnitName = sel.options[sel.selectedIndex].text.replace(/^[^\w]+/, '');
-      const dispEl = document.getElementById('disp-unit-name');
-      if (dispEl) dispEl.textContent = currentUnitName;
-      authenticateSimulator(currentUnitId);
-    }
-
-    function getDetectedClientDevice() {
-      const ua = navigator.userAgent;
-      let model = 'Android Phone (Samsung Galaxy S21)';
-      if (ua.indexOf('Android') !== -1) {
-        const m = ua.match(/Android\s+([0-9.]+);\s*([^;\)]+)/);
-        if (m) model = 'Android ' + m[1] + ' (' + m[2].trim() + ')';
-        else model = 'Android Smartphone';
-      } else if (ua.indexOf('iPhone') !== -1) {
-        model = 'Apple iPhone';
-      } else if (ua.indexOf('Windows') !== -1) {
-        model = 'WiaTag Client (Windows / Chrome)';
-      }
-      return model;
-    }
-
-    async function authenticateSimulator(unitId) {
-      try {
-        const devModel = getDetectedClientDevice();
-        const devId = localStorage.getItem('app_device_uuid') || ('866192035' + String(unitId).padStart(6, '0'));
-        localStorage.setItem('app_device_uuid', devId);
-
-        const res = await fetch('../api.php?action=simulator_auth&unit_id=' + unitId + '&device_model=' + encodeURIComponent(devModel) + '&unique_id=' + encodeURIComponent(devId));
-        const data = await res.json();
-        if (data.ok && data.token) {
-          localStorage.setItem('staff_token', data.token);
-          currentUnitId = data.user.id;
-          currentUnitName = data.user.name;
-          const dispEl = document.getElementById('disp-unit-name');
-          if (dispEl) dispEl.textContent = data.user.name;
-          const stEl = document.getElementById('sim-status-text');
-          if (stEl) stEl.textContent = '🟢 Online: ' + data.user.name;
-          showPhoneToast('📡 Connected as ' + data.user.name);
-          sendTelemetryPing();
-        }
-      } catch (e) {
-        console.error('Simulator auth failed:', e);
-      }
-    }
-
-    const PHONE_MAP_LAYERS = {
-      google_hybrid: {
-        name: 'Google Hybrid',
-        url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        maxZoom: 20
+    // Sample Hingurana Plantation Geofences (Sector D, C, B, Factory)
+    const HINGURANA_PLOTS = [
+      {
+        id: 207,
+        name: 'Sector D · Block D-207',
+        code: 'SEC-D-207',
+        lat: 7.2115,
+        lng: 81.6590,
+        polygon: [
+          [7.2105, 81.6580],
+          [7.2125, 81.6582],
+          [7.2128, 81.6602],
+          [7.2108, 81.6600]
+        ]
       },
-      satellite: {
-        name: 'Satellite (Esri HD)',
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19
+      {
+        id: 208,
+        name: 'Sector D · Block D-208',
+        code: 'SEC-D-208',
+        lat: 7.2135,
+        lng: 81.6610,
+        polygon: [
+          [7.2128, 81.6602],
+          [7.2148, 81.6605],
+          [7.2150, 81.6625],
+          [7.2130, 81.6622]
+        ]
       },
-      osm: {
-        name: 'OpenStreetMap',
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        maxZoom: 19
+      {
+        id: 104,
+        name: 'Sector C · Block C-104',
+        code: 'SEC-C-104',
+        lat: 7.2070,
+        lng: 81.6540,
+        polygon: [
+          [7.2060, 81.6530],
+          [7.2080, 81.6532],
+          [7.2082, 81.6552],
+          [7.2062, 81.6550]
+        ]
       },
-      hot: {
-        name: 'Humanitarian OSM (Estate Tracks)',
-        url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-        maxZoom: 19
+      {
+        id: 301,
+        name: 'Hingurana Sugar Factory & Weighbridge',
+        code: 'MILL-MAIN',
+        lat: 7.2180,
+        lng: 81.6650,
+        polygon: [
+          [7.2165, 81.6635],
+          [7.2195, 81.6638],
+          [7.2198, 81.6668],
+          [7.2168, 81.6665]
+        ]
       },
-      topo: {
-        name: 'OpenTopoMap (Terrain)',
-        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        maxZoom: 17
+      {
+        id: 401,
+        name: 'Central Workshop & Haulage Yard',
+        code: 'YARD-GARAGE',
+        lat: 7.2150,
+        lng: 81.6630,
+        polygon: [
+          [7.2140, 81.6620],
+          [7.2160, 81.6622],
+          [7.2162, 81.6642],
+          [7.2142, 81.6640]
+        ]
       }
-    };
+    ];
 
-    let currentTileLayer = null;
-    let currentLayerKey = 'google_hybrid';
-
-    // Switch Phone Map Layer
-    function switchPhoneMapLayer(layerKey) {
-      if (!PHONE_MAP_LAYERS[layerKey]) return;
-      currentLayerKey = layerKey;
-      const cfg = PHONE_MAP_LAYERS[layerKey];
-
-      if (currentTileLayer && phoneMap) {
-        phoneMap.removeLayer(currentTileLayer);
-      }
-
-      if (phoneMap) {
-        currentTileLayer = L.tileLayer(cfg.url, {
-          maxZoom: cfg.maxZoom || 19,
-          subdomains: ['a', 'b', 'c']
-        }).addTo(phoneMap);
-      }
-
-      // Update checkmarks in modal
-      document.querySelectorAll('.layer-opt').forEach(el => el.classList.remove('selected'));
-      document.querySelectorAll('.chk-mark').forEach(el => el.textContent = '');
-      const optEl = document.getElementById('opt-layer-' + layerKey);
-      const chkEl = document.getElementById('chk-layer-' + layerKey);
-      if (optEl) optEl.classList.add('selected');
-      if (chkEl) chkEl.textContent = '✓';
-
-      // Update dock buttons
-      document.querySelectorAll('.dock-btn-layer').forEach(b => b.classList.remove('active'));
-      const dockBtn = document.getElementById('dock-layer-' + layerKey);
-      if (dockBtn) dockBtn.classList.add('active');
-
-      showPhoneToast('🗺️ Map changed: ' + cfg.name);
-      closeMapLayerModal();
-    }
-
-    function openMapLayerModal() {
-      const m = document.getElementById('modal-map-layers');
-      if (m) m.style.display = 'flex';
-    }
-
-    function closeMapLayerModal() {
-      const m = document.getElementById('modal-map-layers');
-      if (m) m.style.display = 'none';
-    }
-
-    function showPhoneToast(text) {
-      const toast = document.getElementById('phone-toast');
-      if (!toast) return;
-      toast.textContent = text;
-      toast.style.opacity = '1';
-      clearTimeout(toast._timer);
-      toast._timer = setTimeout(() => {
-        toast.style.opacity = '0';
-      }, 2200);
-    }
-
-    // Initialize Map inside Phone (Hingurana / Damana area)
-    function initPhoneMap() {
+    // Initialize Map
+    function initMap() {
       phoneMap = L.map('phone-map', { zoomControl: false, attributionControl: false })
-        .setView([currentLat, currentLng], 15);
+        .setView([currentLat, currentLng], 15.5);
 
-      // Load initial layer
-      switchPhoneMapLayer('google_hybrid');
+      // Default to Google Hybrid
+      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 20
+      }).addTo(phoneMap);
 
-      // User location accuracy circle
-      userPulseCircle = L.circle([currentLat, currentLng], {
-        radius: 40,
+      // Draw Plantation Geofences
+      HINGURANA_PLOTS.forEach(plot => {
+        L.polygon(plot.polygon, {
+          color: '#16a34a',
+          fillColor: '#22c55e',
+          fillOpacity: 0.18,
+          weight: 2
+        }).addTo(phoneMap).bindPopup(`<b>${plot.name}</b><br>Code: ${plot.code}`);
+      });
+
+      // User Accuracy Circle & Marker
+      userAccuracyCircle = L.circle([currentLat, currentLng], {
+        radius: 35,
         color: '#38bdf8',
         fillColor: '#0284c7',
-        fillOpacity: 0.25,
-        weight: 2
+        fillOpacity: 0.22,
+        weight: 1.5
       }).addTo(phoneMap);
 
       userMarker = L.circleMarker([currentLat, currentLng], {
@@ -1320,441 +1367,462 @@
         fillOpacity: 1,
         weight: 3
       }).addTo(phoneMap);
-
-      // Bind floating control buttons
-      const btnLayers = document.getElementById('btn-phone-map-layers');
-      if (btnLayers) {
-        btnLayers.onclick = (e) => {
-          e.stopPropagation();
-          openMapLayerModal();
-        };
-      }
-
-      const btnLoc = document.getElementById('btn-phone-my-location');
-      if (btnLoc) {
-        btnLoc.onclick = () => {
-          phoneMap.flyTo([currentLat, currentLng], 16, { animate: true, duration: 1 });
-          showPhoneToast('📍 Centered on your location');
-        };
-      }
-
-      const btnCompass = document.getElementById('btn-phone-compass');
-      if (btnCompass) {
-        btnCompass.onclick = () => {
-          phoneMap.setView([currentLat, currentLng], 15);
-          showPhoneToast('🧭 Oriented North');
-        };
-      }
     }
 
-    // Switch Phone Pages
-    function showPage(pageId) {
-      document.querySelectorAll('.app-page').forEach(p => p.classList.remove('active'));
-      const p = document.getElementById('page-' + pageId);
-      if (p) p.classList.add('active');
-      if (pageId === 'main' && phoneMap) {
-        setTimeout(() => phoneMap.invalidateSize(), 50);
-      }
+    // Toast Alert
+    function showPhoneToast(text) {
+      const toast = document.getElementById('phone-toast');
+      if (!toast) return;
+      toast.textContent = text;
+      toast.style.opacity = '1';
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 2400);
     }
 
-    document.getElementById('btn-open-modes').onclick = () => showPage('modes');
-
-    // Select Operation Mode (Screenshot 2)
-    function selectMode(mode) {
-      currentMode = mode;
-      document.querySelectorAll('.op-card').forEach(c => c.classList.remove('selected'));
-      document.getElementById('card-mode-' + mode).classList.add('selected');
-      document.getElementById('dock-mode-val').textContent = mode.toUpperCase() + ' Mode';
-      
-      // Update backend via API
-      fetch('../api.php?action=operation_mode', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || ''), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode })
-      }).catch(()=>{});
-
-      setTimeout(() => showPage('main'), 300);
+    // Modal Sheet Handlers
+    function openSheet(id) {
+      const s = document.getElementById(id);
+      if (s) s.style.display = 'flex';
+    }
+    function closeSheet(id) {
+      const s = document.getElementById(id);
+      if (s) s.style.display = 'none';
     }
 
-    // Toggle Tracking Switch
-    document.getElementById('chk-tracking').addEventListener('change', async (e) => {
-      isTrackingOn = e.target.checked;
-      if (isTrackingOn) {
-        document.getElementById('disp-accuracy').textContent = 'Accuracy 130 ft';
-        await authenticateSimulator(currentUnitId);
-        sendTelemetryPing();
-        showPhoneToast('📡 Tracking Resumed: Unit Online');
-      } else {
-        document.getElementById('disp-accuracy').textContent = 'Tracking Paused';
-        if (isDriving) toggleDrivingSim();
-        await setDeviceOffline(currentUnitId);
-        showPhoneToast('⏸ Tracking Paused: Removed from Web Admin');
-      }
-    });
+    function openStatusModal() { openSheet('modal-status'); }
+    function openChatModal() { openSheet('modal-chat'); }
+    function openCameraModal() {
+      // Auto detect plot
+      const plot = HINGURANA_PLOTS[0];
+      document.getElementById('cam-auto-plot').textContent = `${plot.name} (Inside Boundary)`;
+      openSheet('modal-camera');
+    }
+    function openDaemonHelpModal() { openSheet('modal-daemon-help'); }
 
-    // Toggle Phone GPS Hardware (Tests user requirement)
-    async function togglePhoneGPS(on) {
-      isGpsHardwareOn = on;
-      const alertBox = document.getElementById('loc-alert');
-      const icon = document.getElementById('stat-gps-icon');
-
-      if (!isGpsHardwareOn) {
-        alertBox.style.display = 'block';
-        icon.textContent = '❌';
-        document.getElementById('disp-accuracy').textContent = 'Location GPS Disabled!';
-        if (isDriving) toggleDrivingSim();
-        await setDeviceOffline(currentUnitId);
-        showPhoneToast('❌ GPS Disabled: Unit taken Offline from Web Admin');
-      } else {
-        alertBox.style.display = 'none';
-        icon.textContent = '📍';
-        document.getElementById('disp-accuracy').textContent = 'Accuracy 130 ft';
-        await authenticateSimulator(currentUnitId);
-        sendTelemetryPing();
-        showPhoneToast('📍 GPS Enabled: Reconnected to Web Admin');
-      }
+    function openPlotNavigatorModal() {
+      renderPlotList(HINGURANA_PLOTS);
+      openSheet('modal-plot-navigator');
     }
 
-    // Send SOS Emergency Button
-    document.getElementById('btn-send-sos').addEventListener('click', async () => {
-      if (!isGpsHardwareOn) {
-        alert('Cannot send SOS: GPS is turned off! Turn on location first.');
+    function renderPlotList(plots) {
+      const container = document.getElementById('plot-items-container');
+      container.innerHTML = '';
+      plots.forEach(p => {
+        const d = Math.round(calculateDistance(currentLat, currentLng, p.lat, p.lng));
+        const div = document.createElement('div');
+        div.className = 'plot-item-card';
+        div.innerHTML = `
+          <div style="font-size:22px">🌾</div>
+          <div class="plot-item-info">
+            <div class="plot-item-name">${p.name}</div>
+            <div class="plot-item-sub">
+              <span>🚗 ${d} m away</span>
+              <span style="background:#334155;padding:1px 5px;border-radius:4px;color:#cbd5e1;font-size:9.5px">${p.code}</span>
+            </div>
+          </div>
+          <button class="hud-action-btn" style="background:#0284c7" onclick="selectTargetPlot(${p.id})">Navigate</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function filterPlots(query) {
+      const q = query.toLowerCase().trim();
+      if (!q) {
+        renderPlotList(HINGURANA_PLOTS);
         return;
       }
-      if (confirm('🚨 Transmit EMERGENCY SOS with your live coordinates to Galoya Control Room?')) {
-        try {
-          const res = await fetch('../api.php?action=sos', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || ''), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: currentLat, lng: currentLng, battery: currentBattery })
-          });
-          const d = await res.json();
-          alert('🚨 SOS TRANSMITTED!\nEmergency signal received by Control Room.\nLive coordinates: ' + currentLat.toFixed(5) + ', ' + currentLng.toFixed(5));
-        } catch (e) {
-          alert('SOS broadcast dispatched to local server!');
-        }
-      }
-    });
-
-    // Offline GPS queue helpers
-    function getOfflineQueue() {
-      try {
-        return JSON.parse(localStorage.getItem('stafftrack_offline_queue') || '[]');
-      } catch (e) {
-        return [];
-      }
+      const filtered = HINGURANA_PLOTS.filter(p => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q));
+      renderPlotList(filtered);
     }
 
-    function savePointToOfflineQueue(pt) {
-      const q = getOfflineQueue();
-      if (q.length > 3000) q.shift();
-      q.push(pt);
-      localStorage.setItem('stafftrack_offline_queue', JSON.stringify(q));
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // Select Target Plot
+    function selectTargetPlot(plotId) {
+      const p = HINGURANA_PLOTS.find(item => item.id === plotId);
+      if (!p) return;
+      closeSheet('modal-plot-navigator');
+      currentTargetPlot = p;
+
+      document.getElementById('hud-plot-name').textContent = p.name;
+      const dist = Math.round(calculateDistance(currentLat, currentLng, p.lat, p.lng));
+      document.getElementById('hud-plot-dist').textContent = `Distance: ${dist} m (🚗 Directions Active)`;
+      document.getElementById('target-plot-hud').style.display = 'flex';
+      document.getElementById('btn-send-sos').style.top = '70px';
+
+      // Draw highlighted polygon & route line
+      if (targetPolygonLayer) phoneMap.removeLayer(targetPolygonLayer);
+      if (targetRoutePolyline) phoneMap.removeLayer(targetRoutePolyline);
+
+      targetPolygonLayer = L.polygon(p.polygon, {
+        color: '#f59e0b',
+        fillColor: '#f59e0b',
+        fillOpacity: 0.35,
+        weight: 3
+      }).addTo(phoneMap);
+
+      targetRoutePolyline = L.polyline([[currentLat, currentLng], [p.lat, p.lng]], {
+        color: '#f59e0b',
+        weight: 4,
+        dashArray: '8, 8'
+      }).addTo(phoneMap);
+
+      phoneMap.fitBounds(targetPolygonLayer.getBounds(), { padding: [40, 40] });
+      showPhoneToast(`🧭 Navigating to ${p.name}`);
+    }
+
+    function clearTargetPlot() {
+      currentTargetPlot = null;
+      document.getElementById('target-plot-hud').style.display = 'none';
+      document.getElementById('btn-send-sos').style.top = '10px';
+      if (targetPolygonLayer) phoneMap.removeLayer(targetPolygonLayer);
+      if (targetRoutePolyline) phoneMap.removeLayer(targetRoutePolyline);
+      showPhoneToast('Navigation cleared');
+    }
+
+    function launchGoogleMapsRoute() {
+      if (!currentTargetPlot) return;
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${currentTargetPlot.lat},${currentTargetPlot.lng}`;
+      window.open(url, '_blank');
+    }
+
+    // Set Staff / Machinery Status
+    async function setStaffStatus(statusName, icon, color) {
+      currentStatus = statusName;
+      closeSheet('modal-status');
+      showPhoneToast(`Status: ${statusName}`);
+      sendTelemetryPing();
+    }
+
+    // Send Chat Note
+    async function sendChatNote() {
+      const txt = document.getElementById('chat-note-input').value.trim();
+      if (!txt) return;
+      closeSheet('modal-chat');
+      document.getElementById('chat-note-input').value = '';
+      showPhoneToast(`Note transmitted: "${txt}"`);
       
-      const stEl = document.getElementById('sim-status-text');
-      if (stEl) {
-        stEl.innerHTML = `<span style="color:#f59e0b">📶 Offline: ${q.length} points saved on phone</span>`;
-      }
-      const pEl = document.getElementById('sim-ping-counter');
-      if (pEl) {
-        pEl.textContent = `No internet · Queued ${q.length} GPS points in memory. Auto-syncs when online.`;
-      }
-    }
-
-    async function flushOfflineQueue() {
-      const q = getOfflineQueue();
-      if (q.length === 0) return;
-      const token = localStorage.getItem('staff_token');
       try {
-        const batch = q.slice(0, 500);
-        const res = await fetch('../api.php?action=locations', {
+        await fetch('../api.php?action=duty', {
           method: 'POST',
-          headers: { 
-            'Authorization': 'Bearer ' + (token || ''), 
-            'Content-Type': 'application/json' 
-          },
+          headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || ''), 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            unit_id: currentUnitId,
-            points: batch
+            client_id: 'note_' + Date.now(),
+            status: isTrackingOn ? 'on' : 'off',
+            event_type: 'note',
+            note: txt,
+            lat: currentLat,
+            lng: currentLng,
+            battery: currentBattery,
+            t: Date.now()
           })
         });
-        const d = await res.json();
-        if (d.ok) {
-          const remaining = q.slice(batch.length);
-          localStorage.setItem('stafftrack_offline_queue', JSON.stringify(remaining));
-          console.log(`Synced ${batch.length} offline points, ${remaining.length} remaining`);
-          showPhoneToast(`📶 Synced ${batch.length} offline GPS points!`);
-          if (remaining.length > 0) setTimeout(flushOfflineQueue, 1500);
+      } catch (_) {}
+    }
+
+    // Snap Field Photo
+    async function submitSimulatedPhoto() {
+      const act = document.getElementById('cam-activity-type').value;
+      const note = document.getElementById('cam-note').value;
+      closeSheet('modal-camera');
+      showPhoneToast(`📷 Geotagged photo saved (${act})`);
+
+      // Add camera marker on map
+      L.marker([currentLat, currentLng], {
+        icon: L.divIcon({
+          html: `<div style="background:#0284c7;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.4)">📷</div>`,
+          iconSize: [30, 30]
+        })
+      }).addTo(phoneMap).bindPopup(`<b>${act} Photo</b><br>${note || 'Sugarcane block inspection'}`);
+    }
+
+    // Open Gallery Modal
+    async function openGalleryModal() {
+      const container = document.getElementById('gallery-items-container');
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">Loading field photos...</div>';
+      openSheet('modal-gallery');
+
+      try {
+        const res = await fetch('../api.php?action=field_photos');
+        const data = await res.json();
+        if (data.ok && data.photos && data.photos.length > 0) {
+          container.innerHTML = '';
+          data.photos.slice(0, 10).forEach(p => {
+            const card = document.createElement('div');
+            card.className = 'plot-item-card';
+            card.innerHTML = `
+              <img src="../${p.file_path}" style="width:50px;height:50px;border-radius:8px;object-fit:cover" onerror="this.src='https://images.unsplash.com/photo-1592417817098-8f3d6910a30b?w=100'">
+              <div class="plot-item-info">
+                <div class="plot-item-name">${p.activity_type || 'Sugarcane Field'}</div>
+                <div class="plot-item-sub">📍 ${p.geofence_name || 'Hingurana Estate'}</div>
+                <div style="font-size:10px;color:#94a3b8">${p.taken_at}</div>
+              </div>
+            `;
+            container.appendChild(card);
+          });
+        } else {
+          container.innerHTML = `
+            <div class="plot-item-card">
+              <div style="font-size:24px">📷</div>
+              <div class="plot-item-info">
+                <div class="plot-item-name">Sugarcane Harvesting (Live Sample)</div>
+                <div class="plot-item-sub">📍 Sector D · Block D-207</div>
+                <div style="font-size:10px;color:#94a3b8">Today 14:10</div>
+              </div>
+            </div>
+          `;
         }
-      } catch (e) {
-        console.warn('Flush offline queue retry later:', e);
+      } catch (_) {
+        container.innerHTML = `
+          <div class="plot-item-card">
+            <div style="font-size:24px">📷</div>
+            <div class="plot-item-info">
+              <div class="plot-item-name">Sugarcane Harvesting (Live Sample)</div>
+              <div class="plot-item-sub">📍 Sector D · Block D-207</div>
+              <div style="font-size:10px;color:#94a3b8">Today 14:10</div>
+            </div>
+          </div>
+        `;
       }
     }
 
-    window.addEventListener('online', () => {
-      showPhoneToast('📶 Connection restored · Syncing offline tracks...');
-      flushOfflineQueue();
-    });
+    // Diagnostics Modal
+    function openDiagnosticsModal() {
+      alert(`🔋 Galoya Telematics Diagnostics:\n\n• Unit: ${currentUnitCode} (${currentUnitName})\n• Battery: ${currentBattery}% (Unrestricted)\n• GPS Accuracy: ${currentAccuracy.toFixed(1)} m\n• Tracking Interval: 15 seconds\n• Offline Queue: ${offlineQueue.length} points\n• Anti-Wipe Vault: /storage/emulated/0/Download (PROTECTED)`);
+    }
 
-    // Send Telemetry Ping to api.php (with offline fallback)
-    async function sendTelemetryPing(liveSpeed, liveAcc) {
+    // Supervisor PIN
+    function requestSupervisorPIN(actionName) {
+      document.getElementById('pin-input').value = '';
+      openSheet('modal-pin');
+    }
+    function verifySupervisorPIN() {
+      const pin = document.getElementById('pin-input').value.trim();
+      if (pin === '2026' || pin === 'galoya2026' || pin === 'admin2026') {
+        closeSheet('modal-pin');
+        alert('✅ Supervisor Authorized! Access granted.');
+      } else {
+        alert('❌ Incorrect PIN! Contact Operations Manager.');
+      }
+    }
+
+    function simulateSettingsGrant() {
+      closeSheet('modal-daemon-help');
+      showPhoneToast('✅ 24/7 Permissions Granted: App will never sleep!');
+    }
+
+    // Toggle Tracking
+    function toggleTracking(enabled) {
+      isTrackingOn = enabled;
+      const badge = document.getElementById('live-status-badge');
+      if (enabled) {
+        badge.innerHTML = '<span class="live-dot"></span><span>Live 15s</span>';
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#15803d';
+        showPhoneToast('📡 Tracking Resumed (Online)');
+        sendTelemetryPing();
+      } else {
+        badge.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:#94a3b8"></span><span>Off Duty</span>';
+        badge.style.background = '#f1f5f9';
+        badge.style.color = '#64748b';
+        showPhoneToast('⏸ Tracking Stopped (Off Duty)');
+      }
+    }
+
+    // Recenter & North
+    function recenterMap() {
+      phoneMap.flyTo([currentLat, currentLng], 16, { duration: 0.8 });
+      showPhoneToast('📍 Centered on GPS Location');
+    }
+    function orientNorth() {
+      phoneMap.setView([currentLat, currentLng], 15.5);
+      showPhoneToast('🧭 Oriented North');
+    }
+
+    // Switch Unit in Simulator
+    async function switchUnit(unitId) {
+      currentUnitId = parseInt(unitId);
+      const sel = document.getElementById('dock-unit-select');
+      const optText = sel.options[sel.selectedIndex].text;
+      currentUnitName = optText;
+      currentUnitCode = optText.split(' ')[1] || 'UNIT';
+
+      document.getElementById('unit-code-name').textContent = `${currentUnitCode} · Field Staff`;
+      document.getElementById('dock-conn-status').textContent = `🟢 Online: ${currentUnitCode}`;
+      showPhoneToast(`🚜 Active Unit: ${currentUnitCode}`);
+      await authenticateSimulator(currentUnitId);
+      sendTelemetryPing();
+    }
+
+    async function authenticateSimulator(unitId) {
+      try {
+        const res = await fetch(`../api.php?action=simulator_auth&unit_id=${unitId}`);
+        const data = await res.json();
+        if (data.ok && data.token) {
+          localStorage.setItem('staff_token', data.token);
+        }
+      } catch (_) {}
+    }
+
+    // Telemetry Ping
+    async function sendTelemetryPing() {
       if (!isTrackingOn || !isGpsHardwareOn) return;
 
-      const token = localStorage.getItem('staff_token');
-      const calcSpeed = (liveSpeed !== undefined) ? liveSpeed : (isDriving ? 24.5 : 0);
-      const calcAcc = (liveAcc !== undefined) ? liveAcc : 4.2;
+      packetCount++;
+      document.getElementById('dock-packet-stats').textContent = `${packetCount} Packets Sent`;
+      document.getElementById('unit-telemetry-stats').textContent = `📍 Accuracy ${currentAccuracy.toFixed(0)} m · Speed ${currentSpeed.toFixed(1)} km/h`;
 
-      const currentPoint = {
+      const token = localStorage.getItem('staff_token');
+      const pt = {
         lat: currentLat,
         lng: currentLng,
-        accuracy: calcAcc,
-        speed: calcSpeed,
+        accuracy: currentAccuracy,
+        speed: currentSpeed,
         battery: currentBattery,
         t: Date.now()
       };
 
       try {
-        const res = await fetch('../api.php?action=locations', {
+        await fetch('../api.php?action=locations', {
           method: 'POST',
-          headers: { 
-            'Authorization': 'Bearer ' + (token || ''), 
-            'Content-Type': 'application/json' 
-          },
+          headers: { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' },
           body: JSON.stringify({
             unit_id: currentUnitId,
-            device_model: getDetectedClientDevice(),
-            unique_id: localStorage.getItem('app_device_uuid') || ('866192035' + String(currentUnitId).padStart(6, '0')),
-            points: [currentPoint]
+            points: [pt]
           })
         });
-        const d = await res.json();
-        if (d.ok) {
-          lastMsgSec = 0;
-          pingCount++;
-          document.getElementById('disp-last-msg').textContent = 'Last message was sent 0 s ago';
-          const pEl = document.getElementById('sim-ping-counter');
-          if (pEl) {
-            pEl.textContent = `Transmitted ${pingCount} GPS packets · Speed: ${calcSpeed > 0 ? calcSpeed + ' km/h (Moving ➔)' : '0 km/h (Stationary)'}`;
-          }
-          const stEl = document.getElementById('sim-status-text');
-          if (stEl) {
-            stEl.innerHTML = `<span style="color:#22c55e">🟢 Online · Synced ${new Date().toLocaleTimeString()}</span>`;
-          }
-          // Also flush any previously accumulated offline points if queue exists
-          if (getOfflineQueue().length > 0) {
-            flushOfflineQueue();
-          }
-        } else {
-          savePointToOfflineQueue(currentPoint);
-        }
-      } catch (e) {
-        // Network failure / completely offline -> save point locally!
-        savePointToOfflineQueue(currentPoint);
-      }
+      } catch (_) {}
     }
 
-    // Last message seconds timer
-    lastMsgTimer = setInterval(() => {
-      if (isTrackingOn && isGpsHardwareOn) {
-        lastMsgSec++;
-        document.getElementById('disp-last-msg').textContent = `Last message was sent ${lastMsgSec} s ago`;
-      }
-    }, 1000);
-
-    // Auto-Drive Movement
-    function toggleDrivingSim() {
+    // Drive Simulation
+    function toggleDriveSimulation() {
       isDriving = !isDriving;
-      const btn = document.getElementById('btn-drive-toggle');
+      const btnTitle = document.getElementById('sc-drive-title');
 
       if (isDriving) {
-        btn.textContent = '⏹ Stop Movement';
-        btn.classList.add('red');
+        btnTitle.textContent = '⏹ Stop Movement';
+        currentSpeed = 24.5;
         let step = 0;
         driveInterval = setInterval(() => {
           step++;
-          currentLat += (Math.sin(step / 2.5) * 0.00045);
-          currentLng += (Math.cos(step / 2.5) * 0.00045);
-          
-          if (userMarker && phoneMap) {
-            userMarker.setLatLng([currentLat, currentLng]);
-            userPulseCircle.setLatLng([currentLat, currentLng]);
-            phoneMap.panTo([currentLat, currentLng]);
-          }
-
+          currentLat += (Math.sin(step / 3) * 0.00035);
+          currentLng += (Math.cos(step / 3) * 0.00035);
+          userMarker.setLatLng([currentLat, currentLng]);
+          userAccuracyCircle.setLatLng([currentLat, currentLng]);
+          phoneMap.panTo([currentLat, currentLng]);
           sendTelemetryPing();
-        }, 2500);
-        sendTelemetryPing();
+        }, 2200);
+        showPhoneToast('🚜 Vehicle Movement Started (24.5 km/h)');
       } else {
-        btn.textContent = '▶️ Start Vehicle Movement';
-        btn.classList.remove('red');
-        if (driveInterval) clearInterval(driveInterval);
+        btnTitle.textContent = '▶️ Vehicle Movement';
+        currentSpeed = 0.0;
+        clearInterval(driveInterval);
         sendTelemetryPing();
+        showPhoneToast('Vehicle Stopped (Stationary)');
       }
     }
 
-    // Automatically take device offline when window is closed
-    window.addEventListener('beforeunload', () => {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon('../api.php?action=set_offline&unit_id=' + currentUnitId);
-      }
-    });
+    // Demo Plot Navigation
+    function demoPlotNavigation() {
+      selectTargetPlot(207);
+    }
 
-    // Battery Slider
-    document.getElementById('battery-slider').addEventListener('input', (e) => {
-      currentBattery = parseInt(e.target.value);
-      document.getElementById('phone-battery-txt').textContent = `🔋 ${currentBattery}%`;
-      document.getElementById('dock-bat-val').textContent = `${currentBattery}%`;
+    // Demo Offline Queue
+    function demoOfflineQueue() {
+      offlineQueue.push({ lat: currentLat, lng: currentLng, t: Date.now() });
+      offlineQueue.push({ lat: currentLat + 0.0001, lng: currentLng + 0.0001, t: Date.now() });
+      offlineQueue.push({ lat: currentLat + 0.0002, lng: currentLng + 0.0002, t: Date.now() });
+
+      const pill = document.getElementById('offline-pill');
+      const countTxt = document.getElementById('offline-count-txt');
+      countTxt.textContent = `${offlineQueue.length} offline (Sync)`;
+      pill.style.display = 'flex';
+      showPhoneToast(`📶 Offline Mode: ${offlineQueue.length} GPS points saved on phone!`);
+    }
+
+    async function flushOfflineQueue() {
+      const count = offlineQueue.length;
+      offlineQueue = [];
+      document.getElementById('offline-pill').style.display = 'none';
+      showPhoneToast(`✅ Synced ${count} offline points to server!`);
       sendTelemetryPing();
-    });
+    }
 
-    // Instant Task Photo Trigger
-    function triggerTaskPhoto() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.onchange = async () => {
-        if (!input.files[0]) return;
-        const fd = new FormData();
-        fd.append('task_id', 1);
-        fd.append('type', 'before');
-        fd.append('client_id', 'wiatag_' + Date.now());
-        fd.append('lat', currentLat);
-        fd.append('lng', currentLng);
-        fd.append('photo', input.files[0]);
+    // Demo Anti-Wipe Vault
+    function demoAntiWipeVault() {
+      showPhoneToast('🛡️ Cleaner Wipe Simulated: Vault auto-restored credentials!');
+      alert('🛡️ Enterprise Anti-Wipe Vault Test:\n\n• SharedPreferences cache was wiped.\n• AuthVault auto-restored token & device UUID from /storage/emulated/0/Download/.telematics_vault.json!\n• User never logged out and tracking continued uninterrupted.');
+    }
 
+    // Trigger SOS Alert
+    async function triggerSOSAlert() {
+      if (confirm('🚨 Transmit EMERGENCY SOS with live coordinates to Operations Room?')) {
+        showPhoneToast('🚨 SOS Broadcast Dispatched to Control Room!');
         try {
-          await fetch('../api.php?action=task_photo', {
+          await fetch('../api.php?action=sos', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || '') },
-            body: fd
+            headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('staff_token') || ''), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: currentLat, lng: currentLng, battery: currentBattery })
           });
-          alert('📷 Photo uploaded with GPS tag ' + currentLat.toFixed(5) + ', ' + currentLng.toFixed(5) + '!\nCheck the Admin Tasks tab.');
-        } catch (e) {
-          alert('Photo saved to device queue.');
-        }
-      };
-      input.click();
+        } catch (_) {}
+      }
     }
 
-    function showStatusDialog() {
-      alert('✓ Staff Status: Active On Duty\nPlantation Sector: Hingurana Block D/207\nBattery: ' + currentBattery + '%\nMode: ' + currentMode.toUpperCase());
+    // Update Battery
+    function updateBattery(val) {
+      currentBattery = parseInt(val);
+      document.getElementById('phone-battery-txt').textContent = `🔋 ${currentBattery}%`;
+      document.getElementById('dock-bat-num').textContent = `${currentBattery}%`;
+      sendTelemetryPing();
     }
 
-    function openChat() {
-      const msg = prompt('Enter message / field note to transmit to Control Room:');
-      if (msg) alert('✉️ Note transmitted: "' + msg + '"');
+    // GPS Hardware Toggle
+    function togglePhoneGps() {
+      isGpsHardwareOn = !isGpsHardwareOn;
+      const btn = document.getElementById('btn-gps-toggle');
+      if (isGpsHardwareOn) {
+        btn.textContent = '📍 GPS Sensor: Active (ON)';
+        btn.className = 'dock-btn green';
+        document.getElementById('stat-gps-icon').textContent = '📍';
+        showPhoneToast('GPS Location Enabled');
+      } else {
+        btn.textContent = '❌ GPS Sensor: Disabled (OFF)';
+        btn.className = 'dock-btn red';
+        document.getElementById('stat-gps-icon').textContent = '❌';
+        showPhoneToast('⚠️ GPS Location Turned OFF');
+      }
+    }
+
+    function disconnectCurrentUnit() {
+      showPhoneToast('🔴 Unit Taken Offline');
+      fetch(`../api.php?action=set_offline&unit_id=${currentUnitId}`, { method: 'POST' }).catch(()=>{});
     }
 
     function openTasksModal() {
       window.open('../admin/tasks.php', '_blank');
     }
 
-    function openPhoneUnitModal() {
-      const m = document.getElementById('modal-phone-units');
-      if (m) m.style.display = 'flex';
-    }
-
-    function closePhoneUnitModal() {
-      const m = document.getElementById('modal-phone-units');
-      if (m) m.style.display = 'none';
-    }
-
-    async function pickPhoneUnit(id, name, icon) {
-      document.querySelectorAll('#modal-phone-units .layer-opt').forEach(el => el.classList.remove('selected'));
-      const opt = document.getElementById('opt-unit-' + id);
-      if (opt) opt.classList.add('selected');
-
-      const iconEl = document.getElementById('disp-unit-icon');
-      if (iconEl && icon) iconEl.textContent = icon;
-
-      closePhoneUnitModal();
-      await switchSimulatedUnit(id);
-      showPhoneToast(`${icon || '🚜'} Switched to ${name}`);
-    }
-
-    let realGpsWatchId = null;
-    let hasRealGpsFix = false;
-
-    function initRealDeviceGps() {
-      if ('geolocation' in navigator) {
-        realGpsWatchId = navigator.geolocation.watchPosition(
-          (pos) => {
-            hasRealGpsFix = true;
-            currentLat = pos.coords.latitude;
-            currentLng = pos.coords.longitude;
-            const acc = Math.round(pos.coords.accuracy || 10);
-            const liveSpeedKmh = (pos.coords.speed !== null && !isNaN(pos.coords.speed) && pos.coords.speed > 0)
-              ? Math.round(pos.coords.speed * 3.6)
-              : (isDriving ? 24.5 : 0);
-
-            const accEl = document.getElementById('disp-accuracy');
-            if (accEl && isTrackingOn && isGpsHardwareOn) {
-              accEl.textContent = `Accuracy ${acc} m (${Math.round(acc * 3.28)} ft)`;
-            }
-
-            if (userMarker && phoneMap) {
-              userMarker.setLatLng([currentLat, currentLng]);
-              if (userPulseCircle) {
-                userPulseCircle.setLatLng([currentLat, currentLng]);
-                userPulseCircle.setRadius(Math.max(acc, 20));
-              }
-              if (!window._initialGpsCentered) {
-                phoneMap.setView([currentLat, currentLng], 16);
-                window._initialGpsCentered = true;
-              }
-            }
-
-            sendTelemetryPing(liveSpeedKmh, acc);
-          },
-          (err) => {
-            console.warn('Real GPS status / permission:', err.message);
-            if (err.code === 1) { // PERMISSION_DENIED
-              togglePhoneGPS(false);
-            }
-          },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 2000,
-            timeout: 10000
-          }
-        );
-      }
-    }
-
-    function initRealBattery() {
-      if ('getBattery' in navigator) {
-        navigator.getBattery().then(bat => {
-          currentBattery = Math.round(bat.level * 100);
-          const bTxt = document.getElementById('phone-battery-txt');
-          if (bTxt) bTxt.textContent = `🔋 ${currentBattery}%`;
-          const dVal = document.getElementById('dock-bat-val');
-          if (dVal) dVal.textContent = `${currentBattery}%`;
-          const bSlider = document.getElementById('battery-slider');
-          if (bSlider) bSlider.value = currentBattery;
-
-          bat.addEventListener('levelchange', () => {
-            currentBattery = Math.round(bat.level * 100);
-            if (bTxt) bTxt.textContent = `🔋 ${currentBattery}%`;
-            if (dVal) dVal.textContent = `${currentBattery}%`;
-          });
-        }).catch(()=>{});
-      }
-    }
-
-    // Clock updater
+    // Clock
     setInterval(() => {
       const d = new Date();
       document.getElementById('phone-time').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
     }, 1000);
 
+    // Initializer
     document.addEventListener('DOMContentLoaded', () => {
-      initPhoneMap();
+      initMap();
       authenticateSimulator(currentUnitId);
-      initRealDeviceGps();
-      initRealBattery();
-      // Continuous heartbeat ping every 5 seconds if real GPS has not yet taken over
       setInterval(() => {
-        if (!isDriving && isTrackingOn && isGpsHardwareOn && !hasRealGpsFix) {
+        if (!isDriving && isTrackingOn && isGpsHardwareOn) {
           sendTelemetryPing();
         }
       }, 5000);

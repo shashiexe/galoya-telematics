@@ -86,32 +86,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: const Color(0xff0284c7).withOpacity(0.2),
-                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.info_outline, color: Color(0xff38bdf8), size: 22),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset('assets/logo.png', width: 36, height: 36, fit: BoxFit.contain),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Gal-Oya OmniOps', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                          Text('Field, Workshop & Fleet Platform', style: TextStyle(color: Color(0xff94a3b8), fontSize: 11)),
+                          Text('GalOya Track360', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                          Text('People • Field • Fleet', style: TextStyle(color: Color(0xff22c55e), fontSize: 11, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: const Color(0xff334155), borderRadius: BorderRadius.circular(8)),
-                      child: const Text('v$kAppVersion', style: TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.bold)),
+                      decoration: BoxDecoration(color: const Color(0xff064e3b), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xff10b981), width: 0.8)),
+                      child: const Text('v$kAppVersion', style: TextStyle(color: Color(0xff34d399), fontSize: 11, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
                 const Divider(color: Color(0xff334155), height: 24),
-                const Text('Created by GOPL IT Department', style: TextStyle(color: Color(0xffcbd5e1), fontSize: 12, fontWeight: FontWeight.bold)),
+                const Text('Created by GOPL IT', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 2),
                 const Text('Gal-Oya Plantations (Pvt) Limited', style: TextStyle(color: Color(0xff64748b), fontSize: 11)),
                 const SizedBox(height: 14),

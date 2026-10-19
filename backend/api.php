@@ -30,6 +30,13 @@ function get_auth_user(): ?array {
         $token = trim($_REQUEST['token']);
     } elseif (!empty($_POST['token'])) {
         $token = trim($_POST['token']);
+    } elseif (!empty($_GET['token'])) {
+        $token = trim($_GET['token']);
+    } else {
+        $b = body();
+        if (!empty($b['token'])) {
+            $token = trim($b['token']);
+        }
     }
     if (!$token) return null;
     $u = q('SELECT u.* FROM api_tokens t JOIN users u ON u.id=t.user_id

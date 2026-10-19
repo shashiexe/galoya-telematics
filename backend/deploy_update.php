@@ -263,6 +263,16 @@ try {
 $totalGf = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
 $results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-weight:bold"];
 
+try {
+    $latestPt = $pdo->query("SELECT user_id, lat, lng, speed, recorded_at, received_at FROM locations ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $results[] = ["📍 Latest GPS Point in DB: " . json_encode($latestPt), "color:#a855f7;font-weight:bold"];
+} catch (Throwable $e) {}
+
+try {
+    $latestPhotos = $pdo->query("SELECT id, user_id, lat, lng, taken_at, activity_type, geofence_name FROM field_photos ORDER BY id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
+    $results[] = ["📷 Latest Field Photos in DB: " . json_encode($latestPhotos), "color:#ec4899;font-weight:bold"];
+} catch (Throwable $e) {}
+
 if ($totalGf < 100) {
     $results[] = ["🌾 Tip: Click 'Fast Agriculture Sync' below to import all 5,034 sectors across the 5 Zones.", "color:#f59e0b;font-weight:bold"];
 }

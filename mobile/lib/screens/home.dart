@@ -54,7 +54,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   
   bool _tracking = false;
   String _name = 'Field Officer';
-  String _code = 'STAFF-01';
+  String _code = '';
+  String _unitType = 'staff';
+  String _designation = 'Field Officer';
   int _interval = 15;
   int _pendingPts = 0;
   
@@ -159,13 +161,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Default to true so tracking runs like a background daemon (Facebook-style)
     final tracking = sp.getBool('tracking') ?? true;
     final name = sp.getString('name') ?? 'Field Officer';
-    final code = sp.getString('code') ?? '49-1665';
+    var code = sp.getString('code') ?? '';
+    final unitType = sp.getString('unit_type') ?? 'staff';
+    final designation = sp.getString('designation') ?? 'Field Officer';
     final interval = await effectiveInterval();
+
+    // Clean up any legacy saved tractor number '49-1665' for staff/field officers
+    if (code == '49-1665' && (unitType == 'staff' || unitType.isEmpty)) {
+      code = '';
+      sp.setString('code', '');
+    }
 
     setState(() {
       _tracking = tracking;
       _name = name;
       _code = code;
+      _unitType = unitType;
+      _designation = designation;
       _interval = interval;
     });
 
@@ -952,234 +964,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showGalleryModal() {
-    String dateStr = "${_galleryDate.year}-${_galleryDate.month.toString().padLeft(2, '0')}-${_galleryDate.day.toString().padLeft(2, '0')}";
-
-    Future<void> fetchDatePhotos(StateSetter setModalState, DateTime date) async {
-      setModalState(() => _loadingGallery = true);
-      final dStr = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-      try {
-        final res = await Api.get('my_field_photos', params: {'date': dStr});
-        if (res['ok'] == true && res['photos'] is List) {
-          final list = (res['photos'] as List).cast<Map<String, dynamic>>();
-          setModalState(() {
-            _serverPhotos = list;
-            _galleryDate = date;
-            _loadingGallery = false;
-          });
-          return;
-        }
-      } catch (_) {}
-      setModalState(() {
-        _galleryDate = date;
-        _loadingGallery = false;
-      });
-    }
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xff0f172a),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          final isToday = _galleryDate.year == DateTime.now().year &&
-              _galleryDate.month == DateTime.now().month &&
-              _galleryDate.day == DateTime.now().day;
-          
-          final localTodayPhotos = _capturedPhotos.where((p) {
-            final t = p['time'] as DateTime?;
-            if (t == null) return false;
-            return t.year == _galleryDate.year && t.month == _galleryDate.month && t.day == _galleryDate.day;
-          }).toList();
-
-          return Container(
-            padding: const EdgeInsets.all(16),
-            height: MediaQuery.of(context).size.height * 0.75,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Field Photos Gallery',
-                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white54),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // Date Filter Selector Bar
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xff1e293b),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xff334155)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.chevron_left, color: Colors.white70, size: 22),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () {
-                          final prev = _galleryDate.subtract(const Duration(days: 1));
-                          fetchDatePhotos(setModalState, prev);
-                        },
-                      ),
-                      InkWell(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _galleryDate,
-                            firstDate: DateTime(2025),
-                            lastDate: DateTime.now(),
-                          );
-                          if (picked != null) {
-                            fetchDatePhotos(setModalState, picked);
-                          }
-                        },
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_month, color: Color(0xff38bdf8), size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              isToday
-                                  ? 'Today, ${_galleryDate.day}/${_galleryDate.month}/${_galleryDate.year}'
-                                  : '${_galleryDate.day}/${_galleryDate.month}/${_galleryDate.year}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: Colors.white54),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.chevron_right, color: isToday ? Colors.white24 : Colors.white70, size: 22),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: isToday
-                            ? null
-                            : () {
-                                final next = _galleryDate.add(const Duration(days: 1));
-                                fetchDatePhotos(setModalState, next);
-                              },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                if (_loadingGallery)
-                  const Expanded(
-                    child: Center(
-                      child: CircularProgressIndicator(color: Color(0xff38bdf8)),
-                    ),
-                  )
-                else if (_serverPhotos.isEmpty && localTodayPhotos.isEmpty)
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.photo_library_outlined, size: 48, color: Colors.white24),
-                          const SizedBox(height: 12),
-                          Text('No photos for this date', style: const TextStyle(color: Colors.white54)),
-                          const SizedBox(height: 4),
-                          const Text('Snap field photos or choose another date above',
-                              style: TextStyle(color: Colors.white38, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: ListView(
-                      children: [
-                        // Server synced photos
-                        ..._serverPhotos.map((item) {
-                          final fullUrl = item['full_url'] ?? (item['file_path'] != null ? 'https://track.galoya.lk/uploads/${item['file_path']}' : '');
-                          return Card(
-                            color: const Color(0xff1e293b),
-                            margin: const EdgeInsets.only(bottom: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: ListTile(
-                              leading: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  fullUrl,
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    width: 50,
-                                    height: 50,
-                                    color: Colors.white12,
-                                    child: const Icon(Icons.image, color: Colors.white54),
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                item['activity_type']?.toString().isNotEmpty == true
-                                    ? item['activity_type'].toString()
-                                    : (item['note']?.toString().isNotEmpty == true ? item['note'].toString() : 'Field Photo'),
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                              subtitle: Text(
-                                '📍 ${item['geofence_name'] ?? 'Field Plot'}${item['note']?.toString().isNotEmpty == true ? ' • ${item['note']}' : ''}\n🕒 ${item['taken_at'] ?? ''}',
-                                style: const TextStyle(color: Colors.white60, fontSize: 11),
-                              ),
-                              trailing: const Icon(Icons.cloud_done, color: Color(0xff38bdf8), size: 20),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                _viewPhotoDetail(item);
-                              },
-                            ),
-                          );
-                        }),
-                        // Local pending/recent photos
-                        ...localTodayPhotos.map((item) {
-                          final f = File(item['file'] as String);
-                          final dt = item['time'] as DateTime;
-                          return Card(
-                            color: const Color(0xff1e293b),
-                            margin: const EdgeInsets.only(bottom: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: ListTile(
-                              leading: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: f.existsSync()
-                                    ? Image.file(f, width: 50, height: 50, fit: BoxFit.cover)
-                                    : const Icon(Icons.image, color: Colors.white54),
-                              ),
-                              title: Text(
-                                item['activity_type']?.toString().isNotEmpty == true
-                                    ? item['activity_type'].toString()
-                                    : (item['note']?.toString().isNotEmpty == true ? item['note'].toString() : 'Field Photo'),
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                              subtitle: Text(
-                                '📍 ${item['selected_geofence'] ?? item['auto_geofence'] ?? 'Field Plot'}${item['note']?.toString().isNotEmpty == true ? ' • ${item['note']}' : ''}\n🕒 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
-                                style: const TextStyle(color: Colors.white60, fontSize: 11),
-                              ),
-                              trailing: const Icon(Icons.check_circle, color: Color(0xff22c55e), size: 20),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                _viewPhotoDetail(item);
-                              },
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          );
+      builder: (ctx) => _FieldPhotosGallerySheet(
+        capturedPhotos: _capturedPhotos,
+        onPhotoTap: (item) {
+          Navigator.pop(ctx);
+          _viewPhotoDetail(item);
         },
       ),
     );
@@ -1987,27 +1781,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     const Divider(height: 16),
 
                     // Unit info & real-time stats
-                    Row(
-                      children: [
-                        const Text('🚜', style: TextStyle(fontSize: 20)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '$_code · $_name',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xff0f172a)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                    Builder(
+                      builder: (context) {
+                        final isStaff = _unitType == 'staff' || _code.isEmpty || _code == '49-1665';
+                        final iconEmoji = isStaff ? '👤' : '🚜';
+                        final displayName = isStaff
+                            ? (_name.toLowerCase().contains('officer')
+                                ? _name
+                                : '$_name · ${_designation.isNotEmpty ? _designation : 'Field Officer'}')
+                            : (_code.isNotEmpty ? '$_code · $_name' : _name);
+
+                        return Row(
+                          children: [
+                            Text(iconEmoji, style: const TextStyle(fontSize: 20)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xff0f172a)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '📍 Accuracy ${_accuracy.toStringAsFixed(0)} m · Speed ${(_speed * 3.6).toStringAsFixed(1)} km/h',
+                                    style: const TextStyle(fontSize: 11, color: Color(0xff64748b)),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                '📍 Accuracy ${_accuracy.toStringAsFixed(0)} m · Speed ${(_speed * 3.6).toStringAsFixed(1)} km/h',
-                                style: const TextStyle(fontSize: 11, color: Color(0xff64748b)),
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                         // Live Status pill
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -2395,3 +2203,251 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
     );
   }
 }
+
+class _FieldPhotosGallerySheet extends StatefulWidget {
+  final List<Map<String, dynamic>> capturedPhotos;
+  final Function(Map<String, dynamic>) onPhotoTap;
+
+  const _FieldPhotosGallerySheet({
+    required this.capturedPhotos,
+    required this.onPhotoTap,
+  });
+
+  @override
+  State<_FieldPhotosGallerySheet> createState() => _FieldPhotosGallerySheetState();
+}
+
+class _FieldPhotosGallerySheetState extends State<_FieldPhotosGallerySheet> {
+  late DateTime _galleryDate;
+  bool _loading = true;
+  List<Map<String, dynamic>> _photos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _galleryDate = DateTime.now();
+    _fetchPhotos(_galleryDate);
+  }
+
+  Future<void> _fetchPhotos(DateTime date) async {
+    setState(() => _loading = true);
+    final dStr = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+    try {
+      final res = await Api.get('my_field_photos', params: {'date': dStr});
+      if (res['ok'] == true && res['photos'] is List) {
+        if (mounted) {
+          setState(() {
+            _photos = (res['photos'] as List).cast<Map<String, dynamic>>();
+            _galleryDate = date;
+            _loading = false;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _galleryDate = date;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final isToday = _galleryDate.year == now.year &&
+        _galleryDate.month == now.month &&
+        _galleryDate.day == now.day;
+
+    final localTodayPhotos = widget.capturedPhotos.where((p) {
+      final t = p['time'] as DateTime?;
+      if (t == null) return false;
+      return t.year == _galleryDate.year && t.month == _galleryDate.month && t.day == _galleryDate.day;
+    }).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      height: MediaQuery.of(context).size.height * 0.75,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Field Photos Gallery',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Date Filter Selector Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xff1e293b),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xff334155)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left, color: Colors.white70, size: 22),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    final prev = _galleryDate.subtract(const Duration(days: 1));
+                    _fetchPhotos(prev);
+                  },
+                ),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _galleryDate,
+                      firstDate: DateTime(2025),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      _fetchPhotos(picked);
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_month, color: Color(0xff38bdf8), size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        isToday
+                            ? 'Today, ${_galleryDate.day}/${_galleryDate.month}/${_galleryDate.year}'
+                            : '${_galleryDate.day}/${_galleryDate.month}/${_galleryDate.year}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_drop_down, color: Colors.white54),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.chevron_right, color: isToday ? Colors.white24 : Colors.white70, size: 22),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: isToday
+                      ? null
+                      : () {
+                          final next = _galleryDate.add(const Duration(days: 1));
+                          _fetchPhotos(next);
+                        },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          if (_loading)
+            const Expanded(
+              child: Center(
+                child: CircularProgressIndicator(color: Color(0xff38bdf8)),
+              ),
+            )
+          else if (_photos.isEmpty && localTodayPhotos.isEmpty)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.photo_library_outlined, size: 48, color: Colors.white24),
+                    const SizedBox(height: 12),
+                    const Text('No photos for this date', style: TextStyle(color: Colors.white54)),
+                    const SizedBox(height: 4),
+                    const Text('Snap field photos or choose another date above',
+                        style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  ],
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView(
+                children: [
+                  // Server synced photos
+                  ..._photos.map((item) {
+                    final fullUrl = item['full_url'] ?? (item['file_path'] != null ? 'https://track.galoya.lk/uploads/${item['file_path']}' : '');
+                    return Card(
+                      color: const Color(0xff1e293b),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            fullUrl,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 50,
+                              height: 50,
+                              color: Colors.white12,
+                              child: const Icon(Icons.image, color: Colors.white54),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          item['activity_type']?.toString().isNotEmpty == true
+                              ? item['activity_type'].toString()
+                              : (item['note']?.toString().isNotEmpty == true ? item['note'].toString() : 'Field Photo'),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          '📍 ${item['geofence_name'] ?? 'Field Plot'}${item['note']?.toString().isNotEmpty == true ? ' • ${item['note']}' : ''}\n🕒 ${item['taken_at'] ?? ''}',
+                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                        ),
+                        trailing: const Icon(Icons.cloud_done, color: Color(0xff38bdf8), size: 20),
+                        onTap: () => widget.onPhotoTap(item),
+                      ),
+                    );
+                  }),
+                  // Local pending/recent photos
+                  ...localTodayPhotos.map((item) {
+                    final f = File(item['file'] as String);
+                    final dt = item['time'] as DateTime;
+                    return Card(
+                      color: const Color(0xff1e293b),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: f.existsSync()
+                              ? Image.file(f, width: 50, height: 50, fit: BoxFit.cover)
+                              : const Icon(Icons.image, color: Colors.white54),
+                        ),
+                        title: Text(
+                          item['activity_type']?.toString().isNotEmpty == true
+                              ? item['activity_type'].toString()
+                              : (item['note']?.toString().isNotEmpty == true ? item['note'].toString() : 'Field Photo'),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          '📍 ${item['selected_geofence'] ?? item['auto_geofence'] ?? 'Field Plot'}${item['note']?.toString().isNotEmpty == true ? ' • ${item['note']}' : ''}\n🕒 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                        ),
+                        trailing: const Icon(Icons.check_circle, color: Color(0xff22c55e), size: 20),
+                        onTap: () => widget.onPhotoTap(item),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+

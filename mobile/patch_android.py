@@ -26,6 +26,21 @@ if os.path.exists(proguard_template):
     shutil.copyfile(proguard_template, proguard_target)
     print(f"[Patch] Copied {proguard_template} to {proguard_target}")
 
+# 1.25 Copy custom app_icon.png to all mipmap directories
+app_icon_source = "app_icon.png"
+if os.path.exists(app_icon_source):
+    mipmap_dirs = [
+        "android/app/src/main/res/mipmap-mdpi",
+        "android/app/src/main/res/mipmap-hdpi",
+        "android/app/src/main/res/mipmap-xhdpi",
+        "android/app/src/main/res/mipmap-xxhdpi",
+        "android/app/src/main/res/mipmap-xxxhdpi",
+    ]
+    for mdir in mipmap_dirs:
+        os.makedirs(mdir, exist_ok=True)
+        shutil.copyfile(app_icon_source, os.path.join(mdir, "ic_launcher.png"))
+    print("[Patch] Copied custom app_icon.png to all mipmap directories!")
+
 # 1.3 Configure gradle.properties (Disable R8 FullMode)
 gradle_props = "android/gradle.properties"
 if os.path.exists("gradle.properties.template") and not os.path.exists(gradle_props):

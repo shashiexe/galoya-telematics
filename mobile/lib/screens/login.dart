@@ -118,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: RadialGradient(center: Alignment(.8, -1), radius: 1.2, colors: [Color(0x552A3A80), AppColors.bg]),
+          gradient: RadialGradient(center: Alignment(.8, -1), radius: 1.2, colors: [Color(0x55047857), AppColors.bg]),
         ),
         child: SafeArea(
           child: Center(
@@ -128,17 +128,46 @@ class _LoginScreenState extends State<LoginScreen> {
                 tween: Tween(begin: 0, end: 1), duration: const Duration(milliseconds: 600), curve: Curves.easeOutCubic,
                 builder: (_, v, child) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, 20 * (1 - v)), child: child)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Container(
-                    width: 72, height: 72, alignment: Alignment.center,
-                    decoration: BoxDecoration(gradient: AppColors.grad, borderRadius: BorderRadius.circular(22),
-                        boxShadow: [BoxShadow(color: AppColors.pri.withOpacity(.5), blurRadius: 30)]),
-                    child: const Icon(Icons.eco, color: Colors.white, size: 38),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(color: const Color(0xff10b981).withOpacity(0.35), blurRadius: 28, offset: const Offset(0, 6)),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.asset(
+                          'assets/logo.png',
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.location_on, color: Color(0xff15803d), size: 48),
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  const Text('Gal-Oya OmniOps', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'GalOya Track360',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 4),
-                  const Text('Field & Fleet Telematics Ecosystem', style: TextStyle(color: Color(0xff38bdf8), fontSize: 13, fontWeight: FontWeight.w600)),
-                  const Text('Sign in to start your duty', style: TextStyle(color: AppColors.mut, fontSize: 14)),
+                  const Text(
+                    'People • Field • Fleet',
+                    style: TextStyle(color: Color(0xff22c55e), fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Sign in to start your duty',
+                    style: TextStyle(color: AppColors.mut, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 28),
                   TextField(controller: _phone, keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone))),
@@ -149,13 +178,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Text(_err!, style: const TextStyle(color: AppColors.bad))),
                   const SizedBox(height: 24),
                   GradButton(label: 'Sign in', icon: Icons.login, busy: _busy, onTap: _login),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 28),
                   const Center(
                     child: Column(
                       children: [
-                        Text('Created by GOPL IT', style: TextStyle(color: Color(0xff94a3b8), fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text('Created by GOPL IT', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 12, fontWeight: FontWeight.bold)),
                         SizedBox(height: 3),
-                        Text('Gal-Oya Plantations (Pvt) Limited • v1.2.0', style: TextStyle(color: Color(0xff64748b), fontSize: 11)),
+                        Text('Gal-Oya Plantations (Pvt) Limited • v1.3.0', style: TextStyle(color: Color(0xff64748b), fontSize: 11)),
                       ],
                     ),
                   ),

@@ -224,11 +224,9 @@ void _serviceMain(ServiceInstance service) async {
   streamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
     if (!running) return;
 
-    // 1. Dynamic Accuracy Filter:
-    // When stationary/walking (< 10 km/h): strict 35m to prevent building jitter.
-    // When moving in vehicle (speed > 2.8 m/s / ~10 km/h): allow up to 75m so in-car attenuation never drops points!
-    final double maxAccuracy = pos.speed > 2.8 ? 75.0 : 35.0;
-    if (pos.accuracy > maxAccuracy) return;
+    // 1. In-Vehicle & Field Accuracy Filter:
+    // Allow up to 80m so in-car attenuation / rural plantation canopy never silently drops points!
+    if (pos.accuracy > 80.0) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final int interval = await effectiveInterval(); // e.g. 15s
@@ -243,8 +241,8 @@ void _serviceMain(ServiceInstance service) async {
       final double headingDelta = (pos.heading - lastHeading).abs();
       final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
       final double elapsedSec = (now - lastTime) / 1000.0;
-      // Genuine vehicle motion requires both speed and physical displacement (stops indoor jitter)
-      final bool isMoving = pos.speed > 0.8 && dist >= 8.0;
+      // Vehicle motion: either hardware speed sensor OR physical GPS displacement >= 12m
+      final bool isMoving = pos.speed > 0.8 || dist >= 12.0;
 
       if (isMoving) {
         // MOVING RULES (Follow roads accurately & capture curves):
@@ -275,8 +273,12 @@ void _serviceMain(ServiceInstance service) async {
       final double distFromLast = (lastLat != null && lastLng != null)
           ? Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude)
           : 999.0;
-      final bool isGenuineMotion = pos.speed > 0.8 && distFromLast >= 8.0;
-      final double actualSpeedKmh = isGenuineMotion ? (pos.speed >= 0 ? pos.speed * 3.6 : 0.0) : 0.0;
+      final double elapsed = lastTime > 0 ? ((now - lastTime) / 1000.0) : 1.0;
+      final bool isGenuineMotion = pos.speed > 0.8 || distFromLast >= 12.0;
+      final double computedKmh = elapsed > 0 ? ((distFromLast / elapsed) * 3.6) : 0.0;
+      final double actualSpeedKmh = isGenuineMotion 
+          ? (pos.speed > 0.5 ? pos.speed * 3.6 : (computedKmh > 3.0 ? computedKmh : 0.0))
+          : 0.0;
 
       lastLat = pos.latitude;
       lastLng = pos.longitude;
@@ -290,11 +292,14 @@ void _serviceMain(ServiceInstance service) async {
       if (service is AndroidServiceInstance) {
         final pending = await LocalDb.countPoints();
         final speedDisplay = actualSpeedKmh.toStringAsFixed(1);
+        final syncStatus = pending > 1 
+            ? '· $pending offline points' 
+            : (pending == 1 ? '· Syncing Live' : '· Live Synced 🟢');
         service.setForegroundNotificationInfo(
           title: 'Galoya Telematics – Live',
           content: isGenuineMotion
-              ? 'Speed: $speedDisplay km/h · $pending offline points'
-              : 'Stationary · $pending offline points',
+              ? 'Speed: $speedDisplay km/h $syncStatus'
+              : 'Stationary $syncStatus',
         );
       }
 

@@ -18,6 +18,7 @@ import '../db.dart';
 import '../sync.dart';
 import '../theme.dart';
 import '../tracker.dart';
+import '../updater.dart';
 import '../vault.dart';
 import 'login.dart';
 import 'settings.dart';
@@ -87,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bootstrap();
+    WidgetsBinding.instance.addPostFrameCallback((_) => AppUpdater.checkOnLaunch(context));
   }
 
   @override
@@ -1388,32 +1390,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 child: Row(
                   children: [
-                    // WiaTag Droplet Logo
-                    Transform.rotate(
-                      angle: -0.785, // -45 deg
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(colors: [Color(0xff42a5f5), Color(0xff1976d2)]),
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(12),
-                            topRight: Radius.circular(12),
-                            bottomLeft: Radius.circular(12),
+                    // Gal-Oya Official Branding & GOPL IT
+                    GestureDetector(
+                      onTap: () => AppUpdater.checkForUpdates(context),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xff15803d), Color(0xff16a34a)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: const [
+                                BoxShadow(color: Color(0x3316a34a), blurRadius: 6, offset: Offset(0, 2)),
+                              ],
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.eco, color: Colors.white, size: 18),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Gal-Oya',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff0f172a), letterSpacing: -0.5),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xffdcfce7),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xff86efac), width: 0.8),
+                            ),
+                            child: const Text('GOPL IT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xff15803d))),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'wiatag',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xff1e293b), letterSpacing: -0.5),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: const Color(0xffe2e8f0), borderRadius: BorderRadius.circular(6)),
-                      child: const Text('Galoya', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xff475569))),
                     ),
                     const Spacer(),
                     // Find & Navigate to Plot Icon
@@ -1659,12 +1676,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: const Color(0xff1e293b),
-                          title: const Text('Diagnostics', style: TextStyle(color: Colors.white)),
-                          content: Text(
-                            'Battery Level: $_batteryLevel%\nGPS Accuracy: ${_accuracy.toStringAsFixed(1)} m\nInterval: ${_interval}s\nPending Sync: $_pendingPts points',
-                            style: const TextStyle(color: Colors.white70),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          title: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(color: const Color(0xff10b981).withOpacity(0.2), shape: BoxShape.circle),
+                                child: const Icon(Icons.info_outline, color: Color(0xff10b981), size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text('System Diagnostics', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
                           ),
-                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '🔋 Battery Level: $_batteryLevel%\n📍 GPS Accuracy: ${_accuracy.toStringAsFixed(1)} m\n⏱ Interval: ${_interval}s\n☁️ Pending Sync: $_pendingPts points\n\n📱 App: Gal-Oya OmniOps\n🏷 Version: v$kAppVersion (Build $kAppBuildNumber)\n👨‍💻 $kCreatedBy\n🏢 $kOrganization',
+                                style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45),
+                              ),
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xff0284c7),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                  ),
+                                  icon: const Icon(Icons.system_update, size: 16),
+                                  label: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    AppUpdater.checkForUpdates(context);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close', style: TextStyle(color: Colors.white54)))],
                         ),
                       );
                     },

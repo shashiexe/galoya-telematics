@@ -48,7 +48,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final MapController _mapController = MapController();
   
   bool _tracking = false;
@@ -80,24 +80,64 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _bootstrap();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _locationTimer?.cancel();
     _syncTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      LocalDb.enqueue(
+        'duty',
+        jsonEncode({
+          'client_id': 'close_$now',
+          'status': _tracking ? 'on' : 'off',
+          'event_type': 'app_close',
+          'note': 'App Minimized / Swiped Away',
+          'lat': _currentPosition?.latitude,
+          'lng': _currentPosition?.longitude,
+          'battery': _batteryLevel,
+          't': now,
+        }),
+      );
+      Sync.run();
+    } else if (state == AppLifecycleState.resumed) {
+      LocalDb.enqueue(
+        'duty',
+        jsonEncode({
+          'client_id': 'open_$now',
+          'status': _tracking ? 'on' : 'off',
+          'event_type': 'app_open',
+          'note': 'App Restored to Foreground',
+          'lat': _currentPosition?.latitude,
+          'lng': _currentPosition?.longitude,
+          'battery': _batteryLevel,
+          't': now,
+        }),
+      );
+      Sync.run();
+      _fetchLiveLocation();
+    }
   }
 
   Future<void> _bootstrap() async {
     final sp = await SharedPreferences.getInstance();
     await sp.reload();
     
-    // Request all permissions upfront
+    // Request all permissions upfront including battery optimization
     await Tracker.ensurePermissions();
     
-    final tracking = sp.getBool('tracking') ?? false;
+    // Default to true so tracking runs like a background daemon (Facebook-style)
+    final tracking = sp.getBool('tracking') ?? true;
     final name = sp.getString('name') ?? 'Field Officer';
     final code = sp.getString('code') ?? '49-1665';
     final interval = await effectiveInterval();
@@ -109,9 +149,30 @@ class _HomeScreenState extends State<HomeScreen> {
       _interval = interval;
     });
 
+    if (tracking) {
+      await Tracker.start();
+    }
+
     _loadBattery();
     _fetchLiveLocation();
     _loadTasks();
+
+    // Log App Launch
+    final now = DateTime.now().millisecondsSinceEpoch;
+    LocalDb.enqueue(
+      'duty',
+      jsonEncode({
+        'client_id': 'launch_$now',
+        'status': tracking ? 'on' : 'off',
+        'event_type': 'app_open',
+        'note': 'App Initial Launch',
+        'lat': _currentPosition?.latitude,
+        'lng': _currentPosition?.longitude,
+        'battery': _batteryLevel,
+        't': now,
+      }),
+    );
+    Sync.run();
 
     // High frequency UI location updates
     _locationTimer = Timer.periodic(const Duration(seconds: 4), (_) => _fetchLiveLocation());
@@ -466,21 +527,32 @@ class _HomeScreenState extends State<HomeScreen> {
         _currentPosition = pos;
       }
 
-      // 1. Proximity query for nearest plots (top 8, zero lag)
+      // 1. Proximity query for nearest plots (sorted by boundary edge distance)
       List<Map<String, dynamic>> nearbyPlots = [];
       try {
+        final onlinePlots = await Sync.refreshNearbyGeofences(lat, lng)
+            .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
+        if (onlinePlots != null && onlinePlots.isNotEmpty) {
+          nearbyPlots = onlinePlots.take(8).toList();
+        } else {
+          nearbyPlots = await LocalDb.getNearbyGeofences(lat, lng, limit: 8);
+        }
+      } catch (_) {
         nearbyPlots = await LocalDb.getNearbyGeofences(lat, lng, limit: 8);
-      } catch (_) {}
+      }
 
       String autoGeofence = 'Field Area';
       String selectedGeofence = '';
       if (nearbyPlots.isNotEmpty) {
         final closest = nearbyPlots.first;
-        final dMeters = (closest['distance'] as num?)?.round() ?? 0;
-        if (dMeters <= 250) {
+        final bool isInside = closest['is_inside'] == true;
+        final edgeMeters = (closest['edge_distance'] as num?)?.round() ?? (closest['distance'] as num?)?.round() ?? 0;
+        if (isInside || edgeMeters <= 10) {
           autoGeofence = 'Inside ${closest['name']}';
+        } else if (edgeMeters < 1000) {
+          autoGeofence = 'Near ${closest['name']} (${edgeMeters}m)';
         } else {
-          autoGeofence = 'Near ${closest['name']} (${dMeters}m)';
+          autoGeofence = 'Near ${closest['name']} (${(edgeMeters / 1000).toStringAsFixed(1)}km)';
         }
         selectedGeofence = closest['name']?.toString() ?? '';
       }
@@ -1929,11 +2001,20 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
     setState(() => _loading = true);
     try {
       if (widget.currentPosition != null) {
-        final list = await LocalDb.getNearbyGeofences(
-          widget.currentPosition!.latitude,
-          widget.currentPosition!.longitude,
-          limit: 15,
-        );
+        final lat = widget.currentPosition!.latitude;
+        final lng = widget.currentPosition!.longitude;
+        List<Map<String, dynamic>> list = [];
+        try {
+          final online = await Sync.refreshNearbyGeofences(lat, lng)
+              .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
+          if (online != null && online.isNotEmpty) {
+            list = online.take(15).toList();
+          } else {
+            list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
+          }
+        } catch (_) {
+          list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
+        }
         if (mounted) {
           setState(() {
             _results = list;

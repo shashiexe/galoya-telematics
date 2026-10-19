@@ -26,11 +26,15 @@ class Sync {
     if (await Api.token() == null) return;
     _running = true;
     try {
-      await _points();
-      await _queue();
-      await refreshGeofences();
-    } catch (_) {
-      // offline – will retry on the next tick / connectivity change
+      try {
+        await _points();
+      } catch (_) {}
+      try {
+        await _queue();
+      } catch (_) {}
+      try {
+        await refreshGeofences();
+      } catch (_) {}
     } finally {
       _running = false;
     }

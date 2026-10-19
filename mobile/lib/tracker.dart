@@ -110,7 +110,7 @@ class Tracker {
   /// Call on app launch: resume tracking if staff was on duty.
   static Future<void> resumeIfNeeded() async {
     final sp = await SharedPreferences.getInstance();
-    if (sp.getBool('tracking') == true) {
+    if (sp.getBool('tracking') ?? true) {
       await start();
       try {
         int? battery;
@@ -202,6 +202,8 @@ void _serviceMain(ServiceInstance service) async {
   double lastHeading = 0.0;
   int lastTime = 0;
   int lastSync = 0;
+  int stationaryStartTime = 0;
+  bool isParkedLogged = false;
 
   final locationSettings = AndroidSettings(
     accuracy: LocationAccuracy.bestForNavigation,
@@ -245,6 +247,30 @@ void _serviceMain(ServiceInstance service) async {
       final bool isMoving = pos.speed > 0.8 || dist >= 12.0;
 
       if (isMoving) {
+        // If vehicle was parked, log parking_end upon motion resumption!
+        if (isParkedLogged) {
+          final stopMins = stationaryStartTime > 0 ? (((now - stationaryStartTime) / 60000).round()) : 0;
+          try {
+            int? bat;
+            try { bat = await Battery().batteryLevel; } catch (_) {}
+            await LocalDb.enqueue(
+              'duty',
+              jsonEncode({
+                'client_id': 'parkend_$now',
+                'status': 'on',
+                'event_type': 'parking_end',
+                'note': 'Vehicle Departed (Stop Duration: $stopMins mins)',
+                'lat': pos.latitude,
+                'lng': pos.longitude,
+                'battery': bat,
+                't': now,
+              }),
+            );
+          } catch (_) {}
+          isParkedLogged = false;
+          stationaryStartTime = 0;
+        }
+
         // MOVING RULES (Follow roads accurately & capture curves):
         // A) Cornering / Turn: Heading changed >= 20 deg and moved >= 8m
         if (normalizedAngle >= 20.0 && dist >= 8.0) {
@@ -260,6 +286,29 @@ void _serviceMain(ServiceInstance service) async {
         }
       } else {
         // STATIONARY RULES (Prevent GPS jitter / drift while stopped):
+        if (stationaryStartTime == 0) {
+          stationaryStartTime = now;
+        } else if (!isParkedLogged && (now - stationaryStartTime) >= 180000) { // >= 3 minutes stationary
+          isParkedLogged = true;
+          try {
+            int? bat;
+            try { bat = await Battery().batteryLevel; } catch (_) {}
+            await LocalDb.enqueue(
+              'duty',
+              jsonEncode({
+                'client_id': 'parkstart_$now',
+                'status': 'on',
+                'event_type': 'parking_start',
+                'note': 'Vehicle Parked / Stationary Stop (>= 3 mins)',
+                'lat': pos.latitude,
+                'lng': pos.longitude,
+                'battery': bat,
+                't': now,
+              }),
+            );
+          } catch (_) {}
+        }
+
         // Filter out small random GPS drifts under 16 meters!
         if (dist >= 16.0) {
           shouldRecord = true; // genuine motion resumed

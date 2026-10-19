@@ -61,6 +61,8 @@ class _LoginScreenState extends State<LoginScreen> {
         await sp?.setString('token', j['token']);
         await sp?.setString('name', j['user']['name'] ?? 'Staff');
         if (j['user']['code'] != null) await sp?.setString('code', j['user']['code'].toString());
+        if (j['user']['unit_type'] != null) await sp?.setString('unit_type', j['user']['unit_type'].toString());
+        if (j['user']['designation'] != null) await sp?.setString('designation', j['user']['designation'].toString());
         await sp?.setString('phone', phone);
       } catch (e) {
         debugPrint('SharedPreferences save note: $e');

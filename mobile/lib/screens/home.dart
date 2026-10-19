@@ -974,8 +974,245 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       builder: (ctx) => _FieldPhotosGallerySheet(
         capturedPhotos: _capturedPhotos,
         onPhotoTap: (item) {
-          Navigator.pop(ctx);
-          _viewPhotoDetail(item);
+          _openFullScreenPhotoViewer(context, item);
+        },
+      ),
+    );
+  }
+
+  void _openFullScreenPhotoViewer(BuildContext context, Map<String, dynamic> item) {
+    final fullUrl = item['full_url'] ?? (item['file_path'] != null ? 'https://track.galoya.lk/uploads/${item['file_path']}' : '');
+    final localPath = item['file'] as String?;
+    final lat = (item['lat'] as num?)?.toDouble();
+    final lng = (item['lng'] as num?)?.toDouble();
+    final activity = item['activity_type']?.toString().isNotEmpty == true ? item['activity_type'].toString() : 'Field Photo';
+    final sector = item['geofence_name'] ?? item['selected_geofence'] ?? item['auto_geofence'] ?? 'Gal-Oya Plantation';
+    final timeStr = item['taken_at']?.toString() ?? (item['time'] is DateTime ? (item['time'] as DateTime).toIso8601String().substring(0, 19).replaceAll('T', ' ') : '');
+    final note = item['note']?.toString();
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black.withOpacity(0.94),
+        pageBuilder: (ctx, anim, _) {
+          return FadeTransition(
+            opacity: anim,
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: SafeArea(
+                child: Stack(
+                  children: [
+                    // 1. Interactive Zoomable Photo (Pinch to Zoom & Pan)
+                    Center(
+                      child: InteractiveViewer(
+                        minScale: 0.8,
+                        maxScale: 5.0,
+                        child: localPath != null && File(localPath).existsSync()
+                            ? Image.file(
+                                File(localPath),
+                                fit: BoxFit.contain,
+                              )
+                            : (fullUrl.toString().isNotEmpty
+                                ? Image.network(
+                                    fullUrl.toString(),
+                                    fit: BoxFit.contain,
+                                    loadingBuilder: (_, child, prog) {
+                                      if (prog == null) return child;
+                                      final total = prog.expectedTotalBytes;
+                                      final loaded = prog.cumulativeBytesLoaded;
+                                      return Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const CircularProgressIndicator(color: Color(0xff10b981)),
+                                            const SizedBox(height: 12),
+                                            Text(
+                                              total != null ? '${(loaded / total * 100).toInt()}%' : 'Loading photo...',
+                                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (_, __, ___) => const Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.broken_image, color: Colors.white38, size: 64),
+                                        SizedBox(height: 10),
+                                        Text('Could not load photo', style: TextStyle(color: Colors.white54)),
+                                      ],
+                                    ),
+                                  )
+                                : const Center(child: Text('No photo source', style: TextStyle(color: Colors.white54)))),
+                      ),
+                    ),
+
+                    // 2. Top Bar (Back button, Activity badge, Close button)
+                    Positioned(
+                      top: 10,
+                      left: 12,
+                      right: 12,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.arrow_back, color: Colors.white),
+                              onPressed: () => Navigator.pop(ctx),
+                              tooltip: 'Close',
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff064e3b).withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xff10b981), width: 1.2),
+                              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10)],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.verified, color: Color(0xff34d399), size: 16),
+                                const SizedBox(width: 6),
+                                Text(
+                                  activity,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () => Navigator.pop(ctx),
+                              tooltip: 'Close',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 3. Bottom Glass Overlay Card with Geofence & GPS Info
+                    Positioned(
+                      bottom: 16,
+                      left: 16,
+                      right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff0f172a).withOpacity(0.92),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xff334155), width: 1.2),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black54, blurRadius: 16, offset: Offset(0, 6)),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.location_on, color: Color(0xff10b981), size: 18),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    sector,
+                                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (timeStr.isNotEmpty)
+                                  Text(
+                                    timeStr.length > 16 ? timeStr.substring(0, 16) : timeStr,
+                                    style: const TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            if (lat != null && lng != null)
+                              Row(
+                                children: [
+                                  const Icon(Icons.my_location, color: Color(0xff38bdf8), size: 14),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'GPS: ${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}',
+                                    style: const TextStyle(color: Color(0xff38bdf8), fontSize: 12, fontFamily: 'monospace'),
+                                  ),
+                                ],
+                              ),
+                            if (note != null && note.trim().isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.note_alt_outlined, color: Colors.amber, size: 14),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      note,
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                if (lat != null && lng != null)
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xff0284c7),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(vertical: 9),
+                                      ),
+                                      icon: const Icon(Icons.map, size: 16),
+                                      label: const Text('Show on Map', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                      onPressed: () {
+                                        Navigator.pop(ctx);
+                                        _mapController.move(LatLng(lat, lng), 17.0);
+                                      },
+                                    ),
+                                  ),
+                                if (lat != null && lng != null) const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white70,
+                                      side: const BorderSide(color: Color(0xff475569)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      padding: const EdgeInsets.symmetric(vertical: 9),
+                                    ),
+                                    child: const Text('Close', style: TextStyle(fontSize: 12)),
+                                    onPressed: () => Navigator.pop(ctx),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
         },
       ),
     );
@@ -1009,23 +1246,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: localPath != null && File(localPath).existsSync()
-                  ? Image.file(File(localPath), height: 200, width: double.infinity, fit: BoxFit.cover)
-                  : (fullUrl.toString().isNotEmpty
-                      ? Image.network(
-                          fullUrl.toString(),
-                          height: 200,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            height: 140,
-                            color: Colors.white12,
-                            child: const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 40)),
-                          ),
-                        )
-                      : const SizedBox(height: 50, child: Center(child: Text('Image not found', style: TextStyle(color: Colors.white54))))),
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(ctx);
+                _openFullScreenPhotoViewer(context, item);
+              },
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: localPath != null && File(localPath).existsSync()
+                        ? Image.file(File(localPath), height: 200, width: double.infinity, fit: BoxFit.cover)
+                        : (fullUrl.toString().isNotEmpty
+                            ? Image.network(
+                                fullUrl.toString(),
+                                height: 200,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  height: 140,
+                                  color: Colors.white12,
+                                  child: const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 40)),
+                                ),
+                              )
+                            : const SizedBox(height: 50, child: Center(child: Text('Image not found', style: TextStyle(color: Colors.white54))))),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                        SizedBox(width: 4),
+                        Text('Tap to View Full Screen', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Container(
@@ -1053,6 +1314,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openFullScreenPhotoViewer(context, item);
+            },
+            child: const Text('🔍 Full Screen', style: TextStyle(color: Color(0xff10b981), fontWeight: FontWeight.bold)),
+          ),
           if (lat != null && lng != null)
             TextButton(
               onPressed: () {
@@ -1396,38 +1664,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xff15803d), Color(0xff16a34a)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                              boxShadow: const [
-                                BoxShadow(color: Color(0x3316a34a), blurRadius: 6, offset: Offset(0, 2)),
-                              ],
-                            ),
-                            child: const Center(
-                              child: Icon(Icons.eco, color: Colors.white, size: 18),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.asset(
+                              'assets/logo.png',
+                              width: 32,
+                              height: 32,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.location_on, color: Color(0xff15803d), size: 28),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Text(
-                            'Gal-Oya',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff0f172a), letterSpacing: -0.5),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('GalOya', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xff15803d), letterSpacing: -0.3)),
+                                  Text('Track', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xff0f172a), letterSpacing: -0.3)),
+                                  Text('360', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xffeab308), letterSpacing: -0.3)),
+                                ],
+                              ),
+                              Text('People • Field • Fleet', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700, color: Color(0xff64748b))),
+                            ],
                           ),
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                             decoration: BoxDecoration(
                               color: const Color(0xffdcfce7),
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(4),
                               border: Border.all(color: const Color(0xff86efac), width: 0.8),
                             ),
-                            child: const Text('GOPL IT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xff15803d))),
+                            child: const Text('GOPL IT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xff15803d))),
                           ),
                         ],
                       ),
@@ -1693,7 +1964,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '🔋 Battery Level: $_batteryLevel%\n📍 GPS Accuracy: ${_accuracy.toStringAsFixed(1)} m\n⏱ Interval: ${_interval}s\n☁️ Pending Sync: $_pendingPts points\n\n📱 App: Gal-Oya OmniOps\n🏷 Version: v$kAppVersion (Build $kAppBuildNumber)\n👨‍💻 $kCreatedBy\n🏢 $kOrganization',
+                                '🔋 Battery Level: $_batteryLevel%\n📍 GPS Accuracy: ${_accuracy.toStringAsFixed(1)} m\n⏱ Interval: ${_interval}s\n☁️ Pending Sync: $_pendingPts points\n\n📱 App: GalOya Track360\n🏷 Version: v$kAppVersion (Build $kAppBuildNumber)\n👨‍💻 $kCreatedBy\n🏢 $kOrganization',
                                 style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45),
                               ),
                               const SizedBox(height: 14),

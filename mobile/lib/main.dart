@@ -42,7 +42,11 @@ Future<void> main() async {
   // Upload offline data the moment internet comes back.
   try {
     Connectivity().onConnectivityChanged.listen((r) {
-      if (!r.contains(ConnectivityResult.none)) Sync.run();
+      if (!r.contains(ConnectivityResult.none)) {
+        Sync.run();
+        Future.delayed(const Duration(seconds: 4), () => Sync.run());
+        Future.delayed(const Duration(seconds: 10), () => Sync.run());
+      }
     });
   } catch (e) {
     debugPrint('Connectivity listen error: $e');

@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WiaTag Mobile App · Galoya Telematics (Executive Simulator)</title>
+  <title>GalOya Track360 · Mobile Telematics System</title>
+  <link rel="icon" type="image/png" href="../admin/assets/favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -893,10 +894,15 @@
 
           <!-- Top Header Bar -->
           <div class="wiatag-header">
-            <div class="wiatag-brand">
-              <span class="wiatag-logo-drops"></span>
-              <span>wiatag</span>
-              <span class="galoya-pill">Galoya</span>
+            <div class="wiatag-brand" style="display:flex;align-items:center;gap:8px">
+              <img src="../admin/assets/logo.png" style="height:26px;width:26px;border-radius:5px;object-fit:contain;background:#fff;padding:1px;box-shadow:0 1px 3px rgba(0,0,0,0.2)">
+              <div style="line-height:1.15">
+                <div style="font-weight:900;font-size:13px;letter-spacing:0.2px">
+                  <span style="color:#22c55e">GalOya</span> <span style="color:#0f172a">Track</span><span style="color:#eab308;font-weight:900">360</span>
+                </div>
+                <div style="font-size:8px;color:#64748b;font-weight:700">People • Field • Fleet</div>
+              </div>
+              <span class="galoya-pill" style="margin-left:4px">GOPL IT</span>
             </div>
             <div class="wiatag-header-icons">
               <!-- Plot Explorer Icon -->

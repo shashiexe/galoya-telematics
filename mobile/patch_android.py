@@ -39,6 +39,10 @@ if os.path.exists(app_icon_source):
     for mdir in mipmap_dirs:
         os.makedirs(mdir, exist_ok=True)
         shutil.copyfile(app_icon_source, os.path.join(mdir, "ic_launcher.png"))
+    anydpi = "android/app/src/main/res/mipmap-anydpi-v26"
+    if os.path.exists(anydpi):
+        shutil.rmtree(anydpi, ignore_errors=True)
+        print("[Patch] Removed default mipmap-anydpi-v26 to ensure custom ic_launcher is loaded!")
     print("[Patch] Copied custom app_icon.png to all mipmap directories!")
 
 # 1.3 Configure gradle.properties (Disable R8 FullMode)

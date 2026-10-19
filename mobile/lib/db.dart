@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -11,7 +12,7 @@ class LocalDb {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'stafftrack.db'),
-      version: 2,
+      version: 3,
       onCreate: (d, v) async {
         await d.execute('''CREATE TABLE points(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,12 +22,17 @@ class LocalDb {
           kind TEXT, payload TEXT, file TEXT, created INTEGER, tries INTEGER DEFAULT 0, last_error TEXT)''');
         await d.execute('CREATE TABLE tasks_cache(id INTEGER PRIMARY KEY, json TEXT)');
         await d.execute('''CREATE TABLE IF NOT EXISTS geofences_cache(
-          id INTEGER PRIMARY KEY, name TEXT, code TEXT, lat REAL, lng REAL)''');
+          id INTEGER PRIMARY KEY, name TEXT, code TEXT, lat REAL, lng REAL, coordinates TEXT)''');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 2) {
           await d.execute('''CREATE TABLE IF NOT EXISTS geofences_cache(
-            id INTEGER PRIMARY KEY, name TEXT, code TEXT, lat REAL, lng REAL)''');
+            id INTEGER PRIMARY KEY, name TEXT, code TEXT, lat REAL, lng REAL, coordinates TEXT)''');
+        }
+        if (oldV < 3) {
+          try {
+            await d.execute('ALTER TABLE geofences_cache ADD COLUMN coordinates TEXT');
+          } catch (_) {}
         }
       },
     );
@@ -62,12 +68,23 @@ class LocalDb {
 
   // --- Lightweight Geofences Cache (Proximity Filtering) ---
 
-  /// Save lightweight geofences (only ID, name, code, lat, lng centroids)
+  // --- Geofences Proximity & Edge-Distance Calculation ---
+
+  /// Save geofences (centroids + optional full polygon coordinates for offline high-precision boundary checks)
   static Future<void> saveGeofences(List<dynamic> list) async {
     final d = await db;
     final batch = d.batch();
     for (final item in list) {
       if (item is Map) {
+        String? coordsStr;
+        if (item['coordinates'] is String) {
+          coordsStr = item['coordinates'] as String;
+        } else if (item['coordinates'] != null) {
+          try {
+            coordsStr = jsonEncode(item['coordinates']);
+          } catch (_) {}
+        }
+
         batch.insert(
           'geofences_cache',
           {
@@ -76,6 +93,7 @@ class LocalDb {
             'code': item['code'] ?? '',
             'lat': (item['lat'] is num) ? (item['lat'] as num).toDouble() : 0.0,
             'lng': (item['lng'] is num) ? (item['lng'] as num).toDouble() : 0.0,
+            'coordinates': coordsStr,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -88,7 +106,7 @@ class LocalDb {
       Sqflite.firstIntValue(await (await db).rawQuery('SELECT COUNT(*) FROM geofences_cache')) ?? 0;
 
   /// Calculate distance in meters using Haversine formula
-  static double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  static double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
     const r = 6371000.0; // Earth radius in meters
     final dLat = (lat2 - lat1) * (pi / 180.0);
     final dLon = (lon2 - lon1) * (pi / 180.0);
@@ -98,34 +116,153 @@ class LocalDb {
     return r * c;
   }
 
-  /// Get nearest 5-8 plots close to the current location (sorted by distance)
+  /// Ray-casting Point-in-Polygon check
+  static bool isPointInsidePolygon(double lat, double lng, List<List<double>> polygon) {
+    if (polygon.length < 3) return false;
+    bool inside = false;
+    final n = polygon.length;
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+      final xi = polygon[i][0];
+      final yi = polygon[i][1];
+      final xj = polygon[j][0];
+      final yj = polygon[j][1];
+      final intersect = ((yi > lng) != (yj > lng)) &&
+          (lat < (xj - xi) * (lng - yi) / ((yj - yi) == 0 ? 0.00000001 : (yj - yi)) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  /// Calculates minimum perpendicular distance from (lat, lng) to closest polygon boundary segment
+  static double minDistanceToPolygonBoundary(double lat, double lng, List<List<double>> polygon) {
+    if (polygon.isEmpty) return double.infinity;
+    if (polygon.length < 3) {
+      return distanceMeters(lat, lng, polygon[0][0], polygon[0][1]);
+    }
+    double minDist = double.infinity;
+    final n = polygon.length;
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+      final aLat = polygon[j][0];
+      final aLng = polygon[j][1];
+      final bLat = polygon[i][0];
+      final bLng = polygon[i][1];
+
+      final dLat = bLat - aLat;
+      final dLng = bLng - aLng;
+      double pLat, pLng;
+      if (dLat == 0.0 && dLng == 0.0) {
+        pLat = aLat;
+        pLng = aLng;
+      } else {
+        double t = (((lat - aLat) * dLat) + ((lng - aLng) * dLng)) / ((dLat * dLat) + (dLng * dLng));
+        t = t.clamp(0.0, 1.0);
+        pLat = aLat + (t * dLat);
+        pLng = aLng + (t * dLng);
+      }
+      final dist = distanceMeters(lat, lng, pLat, pLng);
+      if (dist < minDist) {
+        minDist = dist;
+      }
+    }
+    return minDist;
+  }
+
+  /// Parse dynamic coordinates JSON array into List<List<double>>
+  static List<List<double>>? _parsePolygon(dynamic raw) {
+    if (raw == null) return null;
+    try {
+      dynamic parsed = raw;
+      if (raw is String) {
+        if (raw.trim().isEmpty) return null;
+        parsed = jsonDecode(raw);
+      }
+      if (parsed is List && parsed.length >= 3) {
+        final pts = <List<double>>[];
+        for (final pt in parsed) {
+          if (pt is List && pt.length >= 2) {
+            final pLat = (pt[0] is num) ? (pt[0] as num).toDouble() : 0.0;
+            final pLng = (pt[1] is num) ? (pt[1] as num).toDouble() : 0.0;
+            pts.add([pLat, pLng]);
+          }
+        }
+        if (pts.length >= 3) return pts;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get nearest plots close to the current location, sorted by TRUE BOUNDARY EDGE distance.
+  /// Inside plots (point-in-polygon) and boundary proximity (~5m) are prioritized over centroids.
   static Future<List<Map<String, dynamic>>> getNearbyGeofences(double lat, double lng, {int limit = 8}) async {
     final d = await db;
     final rows = await d.query('geofences_cache');
     if (rows.isEmpty) return [];
 
-    final list = <Map<String, dynamic>>[];
+    // Step 1: Pre-filter by centroid distance to isolate candidates within proximity (zero UI lag)
+    final candidates = <Map<String, dynamic>>[];
     for (final r in rows) {
       final gLat = (r['lat'] as num?)?.toDouble() ?? 0.0;
       final gLng = (r['lng'] as num?)?.toDouble() ?? 0.0;
       if (gLat == 0.0 && gLng == 0.0) continue;
 
-      final dist = _distanceMeters(lat, lng, gLat, gLng);
+      final cDist = distanceMeters(lat, lng, gLat, gLng);
+      candidates.add({
+        'row': r,
+        'cDist': cDist,
+      });
+    }
+
+    // Sort by centroid to examine the closest 30 candidates for edge calculations
+    candidates.sort((a, b) => (a['cDist'] as double).compareTo(b['cDist'] as double));
+    final topCandidates = candidates.take(30).toList();
+
+    // Step 2: Compute true boundary edge distance and point-in-polygon ray-casting
+    final list = <Map<String, dynamic>>[];
+    for (final c in topCandidates) {
+      final r = c['row'] as Map<String, Object?>;
+      final gLat = (r['lat'] as num?)?.toDouble() ?? 0.0;
+      final gLng = (r['lng'] as num?)?.toDouble() ?? 0.0;
+      final cDist = c['cDist'] as double;
+
+      final poly = _parsePolygon(r['coordinates']);
+      bool isInside = false;
+      double edgeDist = cDist;
+
+      if (poly != null && poly.isNotEmpty) {
+        isInside = isPointInsidePolygon(lat, lng, poly);
+        edgeDist = minDistanceToPolygonBoundary(lat, lng, poly);
+      } else {
+        // Fallback if full polygon coords not yet cached for this plot:
+        // Use centroid distance, assume inside if within 30m of centroid
+        isInside = (cDist <= 30.0);
+        edgeDist = cDist;
+      }
+
       list.add({
         'id': r['id'],
         'name': r['name'],
         'code': r['code'],
         'lat': gLat,
         'lng': gLng,
-        'distance': dist,
+        'is_inside': isInside,
+        'edge_distance': edgeDist,
+        'distance': isInside ? 0.0 : edgeDist, // 0 if inside, else boundary distance in meters
       });
     }
 
-    list.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+    // Step 3: Sort: Inside plots first, then by closest boundary edge distance (~5m plots beat 200m centroids!)
+    list.sort((a, b) {
+      final aInside = a['is_inside'] as bool;
+      final bInside = b['is_inside'] as bool;
+      if (aInside && !bInside) return -1;
+      if (!aInside && bInside) return 1;
+      return (a['distance'] as double).compareTo(b['distance'] as double);
+    });
+
     return list.take(limit).toList();
   }
 
-  /// Search any plot by name or code with optional distance calculation from user's location
+  /// Search any plot by name or code with optional boundary edge distance calculation
   static Future<List<Map<String, dynamic>>> searchGeofences(String query, {double? userLat, double? userLng, int limit = 20}) async {
     final d = await db;
     final q = '%${query.trim()}%';
@@ -140,8 +277,16 @@ class LocalDb {
       final gLat = (r['lat'] as num?)?.toDouble() ?? 0.0;
       final gLng = (r['lng'] as num?)?.toDouble() ?? 0.0;
       double dist = 0.0;
+      bool isInside = false;
+
       if (userLat != null && userLng != null && gLat != 0.0 && gLng != 0.0) {
-        dist = _distanceMeters(userLat, userLng, gLat, gLng);
+        final poly = _parsePolygon(r['coordinates']);
+        if (poly != null && poly.isNotEmpty) {
+          isInside = isPointInsidePolygon(userLat, userLng, poly);
+          dist = isInside ? 0.0 : minDistanceToPolygonBoundary(userLat, userLng, poly);
+        } else {
+          dist = distanceMeters(userLat, userLng, gLat, gLng);
+        }
       }
       list.add({
         'id': r['id'],
@@ -149,6 +294,7 @@ class LocalDb {
         'code': r['code'],
         'lat': gLat,
         'lng': gLng,
+        'is_inside': isInside,
         'distance': dist,
       });
     }

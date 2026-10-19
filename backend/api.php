@@ -53,16 +53,46 @@ function auth_user(): array {
 }
 
 function app_config(): array {
+    $latestVersion = setting('latest_app_version', '1.2.0');
+    $latestBuild = (int)setting('latest_app_build', 12);
     return [
         'location_interval' => (int)setting('location_interval', 60),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
         'upload_batch_size' => (int)setting('upload_batch_size', 500),
+        'app_version' => $latestVersion,
+        'app_build' => $latestBuild,
+        'apk_url' => 'https://track.galoya.lk/Galoya-Telematics.apk',
+        'created_by' => 'GOPL IT',
     ];
 }
 
 $action = $_GET['action'] ?? '';
 try {
     switch ($action) {
+
+    case 'check_update': {
+        $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
+        $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
+        
+        $latestVersion = setting('latest_app_version', '1.2.0');
+        $latestBuild = (int)setting('latest_app_build', 12);
+        $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
+        $changelog = setting('app_update_changelog', "• Today field photos auto-load in gallery\n• Field Officer profile & security updates\n• Created by GOPL IT");
+        $forceUpdate = setting('app_force_update', '0') === '1';
+
+        $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
+
+        out([
+            'ok' => true,
+            'has_update' => $hasUpdate,
+            'latest_version' => $latestVersion,
+            'latest_build' => $latestBuild,
+            'apk_url' => $apkUrl,
+            'changelog' => $changelog,
+            'force_update' => $forceUpdate,
+            'created_by' => 'GOPL IT',
+        ]);
+    }
 
     case 'login': {
         $b = body();

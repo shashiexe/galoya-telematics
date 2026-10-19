@@ -10,9 +10,10 @@ String photoUrl(String path) => '$kServerBase/uploads/$path';
 const int kDefaultIntervalSec = 15;
 
 /// App Branding & OTA Updates
-const String kAppName = 'Gal-Oya OmniOps';
-const String kAppVersion = '1.2.0';
-const int kAppBuildNumber = 12;
+const String kAppName = 'GalOya Track360';
+const String kAppTagline = 'People • Field • Fleet';
+const String kAppVersion = '1.3.0';
+const int kAppBuildNumber = 13;
 const String kCreatedBy = 'Created by GOPL IT';
 const String kOrganization = 'Gal-Oya Plantations (Pvt) Limited';
 const String kApkDownloadUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';

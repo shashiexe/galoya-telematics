@@ -14,6 +14,29 @@ if ($key !== 'galoya2026' && !$isAdmin) {
 
 set_time_limit(300);
 
+if (isset($_GET['test_report'])) {
+    echo "<h3>Testing admin/reports.php execution:</h3><pre>";
+    $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+    $_GET['type'] = $_GET['test_type'] ?? 'staff_audit';
+    $_GET['unit_id'] = (int)($_GET['test_unit'] ?? 22);
+    $_GET['period'] = 'today';
+    try {
+        ob_start();
+        include __DIR__ . '/admin/reports.php';
+        $out = ob_get_clean();
+        echo "SUCCESS! Output length: " . strlen($out) . " bytes\n";
+        echo htmlspecialchars(substr($out, 0, 800));
+    } catch (Throwable $e) {
+        ob_end_clean();
+        echo "CAUGHT EXCEPTION: " . $e->getMessage() . "\n";
+        echo "File: " . $e->getFile() . " Line: " . $e->getLine() . "\n";
+        echo "Trace:\n" . $e->getTraceAsString() . "\n";
+    }
+    echo "</pre>";
+    exit;
+}
+
+
 $filesToUpdate = [
     'bootstrap.php' => 'backend/bootstrap.php',
     'api.php' => 'backend/api.php',

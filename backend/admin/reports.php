@@ -125,9 +125,13 @@ if ($report_type === 'staff_audit') {
             $details = 'Motion resumed after stationary stop';
         }
 
-        $loc = (!empty($dl['lat']) && !empty($dl['lng']))
-            ? (find_nearest_geofence((float)$dl['lat'], (float)$dl['lng']) ?: round($dl['lat'], 4) . ', ' . round($dl['lng'], 4))
-            : 'Base / Yard';
+        $loc = 'Base / Yard';
+        if (!empty($dl['lat']) && !empty($dl['lng'])) {
+            $loc = round((float)$dl['lat'], 4) . ', ' . round((float)$dl['lng'], 4);
+            try {
+                $loc = find_nearest_geofence((float)$dl['lat'], (float)$dl['lng']) ?: $loc;
+            } catch (Throwable $e) {}
+        }
 
         $timeline[] = [
             'time' => $dl['at'],
@@ -205,21 +209,27 @@ if ($report_type === 'staff_audit') {
         // Segment Movement vs Stationary / Parking
         if ($spd > 3.0) {
             // Flush any accumulated stationary stop
-            if (count($stationaryPts) >= 2) {
-                $tS1 = strtotime($stationaryPts[0]['recorded_at']);
-                $tS2 = strtotime(end($stationaryPts)['recorded_at']);
+            $sCount = count($stationaryPts);
+            if ($sCount >= 2) {
+                $pStart = $stationaryPts[0];
+                $pEnd = $stationaryPts[$sCount - 1];
+                $tS1 = strtotime($pStart['recorded_at']);
+                $tS2 = strtotime($pEnd['recorded_at']);
                 $sDur = $tS2 - $tS1;
                 if ($sDur >= 180) { // >= 3 minutes
                     $sMins = round($sDur / 60);
-                    $pStop = $stationaryPts[0];
-                    $stopLoc = find_nearest_geofence((float)$pStop['lat'], (float)$pStop['lng']) ?: round((float)$pStop['lat'], 4) . ', ' . round((float)$pStop['lng'], 4);
+                    $stopLoc = round((float)$pStart['lat'], 4) . ', ' . round((float)$pStart['lng'], 4);
+                    try {
+                        $stopLoc = find_nearest_geofence((float)$pStart['lat'], (float)$pStart['lng']) ?: $stopLoc;
+                    } catch (Throwable $e) {}
+
                     $timeline[] = [
-                        'time' => $stationaryPts[0]['recorded_at'],
+                        'time' => $pStart['recorded_at'],
                         'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
                         'type' => 'parking',
                         'location' => $stopLoc,
                         'details' => 'Parked from ' . date('H:i', $tS1) . ' to ' . date('H:i', $tS2) . " ({$sMins} mins)",
-                        'battery' => ($stationaryPts[0]['battery'] ?? '—') . '%',
+                        'battery' => ($pStart['battery'] ?? '—') . '%',
                         'remarks' => 'Vehicle stationary'
                     ];
                 }
@@ -256,21 +266,27 @@ if ($report_type === 'staff_audit') {
     }
 
     // Flush any trailing stationary stop
-    if (count($stationaryPts) >= 2) {
-        $tS1 = strtotime($stationaryPts[0]['recorded_at']);
-        $tS2 = strtotime(end($stationaryPts)['recorded_at']);
+    $sCount = count($stationaryPts);
+    if ($sCount >= 2) {
+        $pStart = $stationaryPts[0];
+        $pEnd = $stationaryPts[$sCount - 1];
+        $tS1 = strtotime($pStart['recorded_at']);
+        $tS2 = strtotime($pEnd['recorded_at']);
         $sDur = $tS2 - $tS1;
         if ($sDur >= 180) {
             $sMins = round($sDur / 60);
-            $pStop = $stationaryPts[0];
-            $stopLoc = find_nearest_geofence((float)$pStop['lat'], (float)$pStop['lng']) ?: round((float)$pStop['lat'], 4) . ', ' . round((float)$pStop['lng'], 4);
+            $stopLoc = round((float)$pStart['lat'], 4) . ', ' . round((float)$pStart['lng'], 4);
+            try {
+                $stopLoc = find_nearest_geofence((float)$pStart['lat'], (float)$pStart['lng']) ?: $stopLoc;
+            } catch (Throwable $e) {}
+
             $timeline[] = [
-                'time' => $stationaryPts[0]['recorded_at'],
+                'time' => $pStart['recorded_at'],
                 'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
                 'type' => 'parking',
                 'location' => $stopLoc,
                 'details' => 'Parked from ' . date('H:i', $tS1) . ' to ' . date('H:i', $tS2) . " ({$sMins} mins)",
-                'battery' => ($stationaryPts[0]['battery'] ?? '—') . '%',
+                'battery' => ($pStart['battery'] ?? '—') . '%',
                 'remarks' => 'Vehicle parked at location'
             ];
         }

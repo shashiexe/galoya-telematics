@@ -991,21 +991,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                     const Text('Field Photos Gallery',
                         style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.add_photo_alternate, color: Color(0xff38bdf8)),
-                          tooltip: 'Upload from phone gallery',
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _snapPhoto(ImageSource.gallery);
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white54),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ],
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white54),
+                      onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
                 ),

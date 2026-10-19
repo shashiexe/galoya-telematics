@@ -64,6 +64,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _currentStatus = 'Working';
   
   bool _isSatellite = true;
+  bool _isAlwaysLocation = true;
+  bool _isBatteryIgnored = true;
   Timer? _locationTimer;
   Timer? _syncTimer;
   List<Map<String, dynamic>> _tasks = [];
@@ -96,6 +98,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // Guarantee background daemon is actively started when app is minimized or swiped away
+      if (_tracking) {
+        Tracker.start();
+      }
       LocalDb.enqueue(
         'duty',
         jsonEncode({
@@ -126,6 +132,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       Sync.run();
       _fetchLiveLocation();
+      _refreshDaemonStatus();
+    }
+  }
+
+  Future<void> _refreshDaemonStatus() async {
+    final always = await Tracker.isAlwaysLocationGranted();
+    final batt = await Tracker.isBatteryOptimizationIgnored();
+    if (mounted) {
+      setState(() {
+        _isAlwaysLocation = always;
+        _isBatteryIgnored = batt;
+      });
     }
   }
 
@@ -135,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     // Request all permissions upfront including battery optimization
     await Tracker.ensurePermissions();
+    await _refreshDaemonStatus();
     
     // Default to true so tracking runs like a background daemon (Facebook-style)
     final tracking = sp.getBool('tracking') ?? true;
@@ -374,6 +393,84 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
   }
+
+  void _showBackgroundDaemonHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xff1e293b),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.security, color: Color(0xff38bdf8), size: 24),
+            SizedBox(width: 8),
+            Text('24/7 Background Setup', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'App එක close කරත් (Facebook මෙන්) background එකේ tracking ක්‍රියාත්මක වීමට පහත පියවර කරන්න:',
+              style: TextStyle(color: Colors.white70, fontSize: 12.5),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: const Color(0xff0f172a), borderRadius: BorderRadius.circular(8)),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('1. Location -> "Allow all the time" (හැමවිටම)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
+                  SizedBox(height: 6),
+                  Text('2. Battery -> "No restrictions" / Unrestricted', style: TextStyle(color: Color(0xff22c55e), fontWeight: FontWeight.bold, fontSize: 12)),
+                  SizedBox(height: 6),
+                  Text('3. Redmi/Xiaomi: Autostart = ON කරන්න', style: TextStyle(color: Color(0xfff59e0b), fontWeight: FontWeight.bold, fontSize: 12)),
+                  SizedBox(height: 6),
+                  Text('4. Samsung: Never sleeping apps වලට එක් කරන්න', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff0284c7)),
+                icon: const Icon(Icons.settings, color: Colors.white, size: 18),
+                label: const Text('Open App Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Geolocator.openAppSettings();
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xff22c55e))),
+                icon: const Icon(Icons.battery_charging_full, color: Color(0xff22c55e), size: 18),
+                label: const Text('Disable Battery Restrictions', style: TextStyle(color: Color(0xff22c55e), fontWeight: FontWeight.bold)),
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await Permission.ignoreBatteryOptimizations.request();
+                  _refreshDaemonStatus();
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   // --- SOS Alert Trigger ---
   Future<void> _sendSOS() async {
@@ -1805,6 +1902,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       decoration: BoxDecoration(color: const Color(0xffcbd5e1), borderRadius: BorderRadius.circular(2)),
                     ),
                     const SizedBox(height: 10),
+
+                    // 24/7 Background Daemon Warning Card (Redmi / Samsung)
+                    if (!_isAlwaysLocation || !_isBatteryIgnored) ...[
+                      GestureDetector(
+                        onTap: _showBackgroundDaemonHelpDialog,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xfffef2f2),
+                            border: Border.all(color: const Color(0xffef4444)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Color(0xffdc2626), size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Redmi / Samsung: App close කරත් 24/7 දිවීමට Settings සකසන්න (Tap Here)',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xff991b1b)),
+                                ),
+                              ),
+                              Icon(Icons.chevron_right, color: Color(0xffdc2626), size: 18),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
 
                     // Tracking Toggle Row
                     Row(

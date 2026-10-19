@@ -64,10 +64,13 @@ class Api {
       'Content-Type': 'application/json',
       if (t != null) 'Authorization': 'Bearer $t',
     };
+    final sendBody = Map<String, dynamic>.from(body);
+    if (t != null) sendBody['token'] = t;
+    final tokenQuery = (t != null && t.isNotEmpty) ? '&token=${Uri.encodeComponent(t)}' : '';
 
     try {
       final r = await http
-          .post(Uri.parse('$kApiUrl?action=$action'), headers: headers, body: jsonEncode(body))
+          .post(Uri.parse('$kApiUrl?action=$action$tokenQuery'), headers: headers, body: jsonEncode(sendBody))
           .timeout(const Duration(seconds: 25));
       return _handle(r);
     } catch (e) {
@@ -75,7 +78,7 @@ class Api {
       // Fallback to HTTP if HTTPS handshake or connection failed
       try {
         final rHttp = await http
-            .post(Uri.parse('$kApiUrlHttp?action=$action'), headers: headers, body: jsonEncode(body))
+            .post(Uri.parse('$kApiUrlHttp?action=$action$tokenQuery'), headers: headers, body: jsonEncode(sendBody))
             .timeout(const Duration(seconds: 25));
         return _handle(rHttp);
       } catch (_) {}
@@ -90,9 +93,9 @@ class Api {
       if (t != null) 'Authorization': 'Bearer $t',
     };
 
-    String queryString = '';
+    String queryString = (t != null && t.isNotEmpty) ? '&token=${Uri.encodeComponent(t)}' : '';
     if (params != null && params.isNotEmpty) {
-      queryString = '&' + params.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&');
+      queryString += '&' + params.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&');
     }
 
     try {

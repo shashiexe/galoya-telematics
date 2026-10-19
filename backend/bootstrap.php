@@ -66,25 +66,60 @@ function to_dt($v): string {
 /** Check if coordinates are inside or near an active Geofence */
 function find_nearest_geofence(?float $lat, ?float $lng): ?string {
     if ($lat === null || $lng === null || $lat == 0.0 || $lng == 0.0) return null;
+    
+    static $parsedGeofences = null;
     try {
-        $geofences = q("SELECT id, name, coordinates FROM geofences WHERE active=1")->fetchAll();
-        if (empty($geofences)) return null;
+        if ($parsedGeofences === null) {
+            $parsedGeofences = [];
+            $raw = q("SELECT id, name, coordinates FROM geofences WHERE active=1")->fetchAll();
+            foreach ($raw as $g) {
+                $coords = json_decode($g['coordinates'] ?? '[]', true);
+                if (!is_array($coords) || count($coords) < 3) continue;
+
+                $minLat = INF; $maxLat = -INF;
+                $minLng = INF; $maxLng = -INF;
+                foreach ($coords as $c) {
+                    $cLat = (float)$c[0]; $cLng = (float)$c[1];
+                    if ($cLat < $minLat) $minLat = $cLat;
+                    if ($cLat > $maxLat) $maxLat = $cLat;
+                    if ($cLng < $minLng) $minLng = $cLng;
+                    if ($cLng > $maxLng) $maxLng = $cLng;
+                }
+
+                $parsedGeofences[] = [
+                    'id' => $g['id'],
+                    'name' => $g['name'],
+                    'coords' => $coords,
+                    'minLat' => $minLat,
+                    'maxLat' => $maxLat,
+                    'minLng' => $minLng,
+                    'maxLng' => $maxLng,
+                ];
+            }
+        }
+
+        if (empty($parsedGeofences)) return null;
 
         $closestName = null;
         $minDist = INF;
 
-        foreach ($geofences as $g) {
-            $coords = json_decode($g['coordinates'], true);
-            if (!$coords || !is_array($coords) || count($coords) < 3) continue;
+        foreach ($parsedGeofences as $g) {
+            // Spatial Pre-Filter: Skip plots outside 2.5km bounding box (~0.023 degrees)
+            if ($lat < ($g['minLat'] - 0.025) || $lat > ($g['maxLat'] + 0.025) ||
+                $lng < ($g['minLng'] - 0.025) || $lng > ($g['maxLng'] + 0.025)) {
+                continue;
+            }
+
+            $coords = $g['coords'];
+            $n = count($coords);
 
             // Point-in-polygon ray casting algorithm
             $inside = false;
-            $n = count($coords);
             for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
                 $xi = (float)$coords[$i][0]; $yi = (float)$coords[$i][1];
                 $xj = (float)$coords[$j][0]; $yj = (float)$coords[$j][1];
                 $intersect = (($yi > $lng) !== ($yj > $lng)) &&
-                             ($lat < ($xj - $xi) * ($lng - $yi) / (($yj - $yi) ?: 0.00000001) + $xi);
+                             ($lat < ($xj - xi) * ($lng - $yi) / (($yj - $yi) ?: 0.00000001) + $xi);
                 if ($intersect) $inside = !$inside;
             }
 
@@ -92,23 +127,31 @@ function find_nearest_geofence(?float $lat, ?float $lng): ?string {
                 return "Inside " . $g['name'];
             }
 
-            // Calculate distance to polygon centroid
-            $sumLat = 0; $sumLng = 0;
-            foreach ($coords as $c) {
-                $sumLat += (float)$c[0];
-                $sumLng += (float)$c[1];
-            }
-            $cLat = $sumLat / $n;
-            $cLng = $sumLng / $n;
+            // Calculate minimum distance to polygon boundary line segments (True Edge Distance)
+            for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+                $aLat = (float)$coords[$j][0]; $aLng = (float)$coords[$j][1];
+                $bLat = (float)$coords[$i][0]; $bLng = (float)$coords[$i][1];
 
-            $dLat = deg2rad($lat - $cLat);
-            $dLng = deg2rad($lng - $cLng);
-            $a = sin($dLat / 2) ** 2 + cos(deg2rad($cLat)) * cos(deg2rad($lat)) * sin($dLng / 2) ** 2;
-            $dist = 6371000 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+                $dLat = $bLat - $aLat;
+                $dLng = $bLng - $aLng;
+                if ($dLat == 0.0 && $dLng == 0.0) {
+                    $pLat = $aLat; $pLng = $aLng;
+                } else {
+                    $t = ((($lat - $aLat) * $dLat) + (($lng - $aLng) * $dLng)) / (($dLat * $dLat) + ($dLng * $dLng));
+                    $t = max(0.0, min(1.0, $t));
+                    $pLat = $aLat + ($t * $dLat);
+                    $pLng = $aLng + ($t * $dLng);
+                }
 
-            if ($dist < $minDist) {
-                $minDist = $dist;
-                $closestName = $g['name'];
+                $d1 = deg2rad($lat - $pLat);
+                $d2 = deg2rad($lng - $pLng);
+                $val = sin($d1 / 2) ** 2 + cos(deg2rad($pLat)) * cos(deg2rad($lat)) * sin($d2 / 2) ** 2;
+                $dist = 6371000 * 2 * atan2(sqrt($val), sqrt(1 - $val));
+
+                if ($dist < $minDist) {
+                    $minDist = $dist;
+                    $closestName = $g['name'];
+                }
             }
         }
 

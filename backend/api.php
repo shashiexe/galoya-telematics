@@ -285,6 +285,83 @@ try {
         out(['ok' => true, 'geofences' => $light, 'total' => count($light)]);
     }
 
+    case 'geofences_nearby': {
+        // High-precision nearest geofence query with point-in-polygon ray-casting and boundary segment distance
+        auth_user();
+        $lat = isset($_GET['lat']) ? (float)$_GET['lat'] : (isset($_POST['lat']) ? (float)$_POST['lat'] : null);
+        $lng = isset($_GET['lng']) ? (float)$_GET['lng'] : (isset($_POST['lng']) ? (float)$_POST['lng'] : null);
+        $limit = isset($_GET['limit']) ? min(50, max(1, (int)$_GET['limit'])) : 20;
+
+        if ($lat === null || $lng === null || $lat == 0.0 || $lng == 0.0) {
+            fail('Missing or invalid lat/lng coordinates');
+        }
+
+        $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1")->fetchAll();
+        $results = [];
+
+        foreach ($rows as $r) {
+            $coords = json_decode($r['coordinates'] ?? '[]', true);
+            if (!is_array($coords) || count($coords) < 3) continue;
+
+            $inside = false;
+            $n = count($coords);
+            for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+                $xi = (float)$coords[$i][0]; $yi = (float)$coords[$i][1];
+                $xj = (float)$coords[$j][0]; $yj = (float)$coords[$j][1];
+                $intersect = (($yi > $lng) !== ($yj > $lng)) &&
+                             ($lat < ($xj - xi) * ($lng - $yi) / (($yj - $yi) ?: 0.00000001) + $xi);
+                if ($intersect) $inside = !$inside;
+            }
+
+            $minEdgeDist = INF;
+            for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+                $aLat = (float)$coords[$j][0]; $aLng = (float)$coords[$j][1];
+                $bLat = (float)$coords[$i][0]; $bLng = (float)$coords[$i][1];
+
+                $dLat = $bLat - $aLat;
+                $dLng = $bLng - $aLng;
+                if ($dLat == 0.0 && $dLng == 0.0) {
+                    $pLat = $aLat; $pLng = $aLng;
+                } else {
+                    $t = ((($lat - $aLat) * $dLat) + (($lng - $aLng) * $dLng)) / (($dLat * $dLat) + ($dLng * $dLng));
+                    $t = max(0.0, min(1.0, $t));
+                    $pLat = $aLat + ($t * $dLat);
+                    $pLng = $aLng + ($t * $dLng);
+                }
+
+                $d1 = deg2rad($lat - $pLat);
+                $d2 = deg2rad($lng - $pLng);
+                $val = sin($d1 / 2) ** 2 + cos(deg2rad($pLat)) * cos(deg2rad($lat)) * sin($d2 / 2) ** 2;
+                $dist = 6371000 * 2 * atan2(sqrt($val), sqrt(1 - $val));
+                if ($dist < $minEdgeDist) $minEdgeDist = $dist;
+            }
+
+            $sumLat = 0; $sumLng = 0;
+            foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
+
+            $results[] = [
+                'id' => (int)$r['id'],
+                'name' => $r['name'],
+                'code' => $r['code'] ?: $r['name'],
+                'lat' => round($sumLat / $n, 6),
+                'lng' => round($sumLng / $n, 6),
+                'is_inside' => $inside,
+                'edge_distance' => round($minEdgeDist, 1),
+                'distance' => $inside ? 0.0 : round($minEdgeDist, 1),
+                'coordinates' => $coords,
+            ];
+        }
+
+        usort($results, function($a, $b) {
+            if ($a['is_inside'] && !$b['is_inside']) return -1;
+            if (!$a['is_inside'] && $b['is_inside']) return 1;
+            return $a['edge_distance'] <=> $b['edge_distance'];
+        });
+
+        $top = array_slice($results, 0, $limit);
+        out(['ok' => true, 'geofences' => $top, 'count' => count($top)]);
+    }
+
     case 'my_field_photos': {
         // Fetch field photos for logged-in user on a selected date (or today)
         $u = auth_user();

@@ -5,6 +5,7 @@ import '../config.dart';
 import '../db.dart';
 import '../sync.dart';
 import '../theme.dart';
+import '../updater.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -75,6 +76,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () async { await Sync.run(); await _load(); }),
         ])),
         const SizedBox(height: 24),
+        Card(
+          color: const Color(0xff1e293b),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff0284c7).withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.info_outline, color: Color(0xff38bdf8), size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Gal-Oya OmniOps', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                          Text('Field, Workshop & Fleet Platform', style: TextStyle(color: Color(0xff94a3b8), fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: const Color(0xff334155), borderRadius: BorderRadius.circular(8)),
+                      child: const Text('v$kAppVersion', style: TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const Divider(color: Color(0xff334155), height: 24),
+                const Text('Created by GOPL IT Department', style: TextStyle(color: Color(0xffcbd5e1), fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                const Text('Gal-Oya Plantations (Pvt) Limited', style: TextStyle(color: Color(0xff64748b), fontSize: 11)),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff0284c7),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                    icon: const Icon(Icons.system_update, size: 18),
+                    label: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () => AppUpdater.checkForUpdates(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
         Center(child: Text('Server: $kServerBase', style: const TextStyle(color: AppColors.mut, fontSize: 12))),
       ]),
     );

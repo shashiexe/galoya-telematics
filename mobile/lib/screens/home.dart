@@ -1812,41 +1812,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 ],
                               ),
                             ),
+                            // Live Status pill
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: _tracking ? const Color(0xffdcfce7) : const Color(0xfff1f5f9),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: _tracking ? const Color(0xff22c55e) : const Color(0xff94a3b8),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _tracking ? 'Live ${_interval}s' : 'Off Duty',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _tracking ? const Color(0xff15803d) : const Color(0xff64748b),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         );
                       },
-                    ),
-                        // Live Status pill
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: _tracking ? const Color(0xffdcfce7) : const Color(0xfff1f5f9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _tracking ? const Color(0xff22c55e) : const Color(0xff94a3b8),
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _tracking ? 'Live ${_interval}s' : 'Off Duty',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: _tracking ? const Color(0xff15803d) : const Color(0xff64748b),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),

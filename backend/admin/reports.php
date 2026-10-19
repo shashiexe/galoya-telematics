@@ -47,7 +47,7 @@ $summary = [
     'max_speed' => 0
 ];
 
-$unitFilterSql = $unit_id ? "AND u.id = $unit_id" : "";
+$unitFilterSql = $unit_id ? "AND id = " . (int)$unit_id : "";
 $activeUnits = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 $unitFilterSql ORDER BY name ASC")->fetchAll();
 
 if ($report_type === 'staff_audit') {

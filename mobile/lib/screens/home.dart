@@ -449,20 +449,22 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (photo == null) return;
 
-      // Ensure GPS position
-      Position? pos = _currentPosition;
-      if (pos == null) {
-        try {
-          pos = await Geolocator.getLastKnownPosition();
-          pos ??= await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.medium,
-            timeLimit: const Duration(seconds: 4),
-          );
-        } catch (_) {}
-      }
+      // Ensure FRESH GPS position at the moment photo is taken
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
+        );
+      } catch (_) {}
+      pos ??= _currentPosition;
+      pos ??= await Geolocator.getLastKnownPosition();
 
       final lat = pos?.latitude ?? 7.2050;
       final lng = pos?.longitude ?? 81.6580;
+      if (pos != null) {
+        _currentPosition = pos;
+      }
 
       // 1. Proximity query for nearest plots (top 8, zero lag)
       List<Map<String, dynamic>> nearbyPlots = [];
@@ -1736,9 +1738,44 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Tracking',
-                          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xff0f172a)),
+                        Row(
+                          children: [
+                            const Text(
+                              'Tracking',
+                              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xff0f172a)),
+                            ),
+                            if (_pendingPts > 0) ...[
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () async {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Syncing offline data to server...'), duration: Duration(seconds: 2)),
+                                  );
+                                  await Sync.run();
+                                  await _refreshStatus();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xfffef3c7),
+                                    border: Border.all(color: const Color(0xfff59e0b)),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.cloud_queue, size: 13, color: Color(0xffb45309)),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '$_pendingPts offline (Sync)',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xffb45309)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         Switch(
                           value: _tracking,

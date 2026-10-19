@@ -91,8 +91,21 @@ try {
         }
         q('UPDATE users SET last_seen=NOW(), on_duty=1, device_type=?, unique_id=? WHERE id=?', [$devModel, $devId, $u['id']]);
 
+        $unitType = $u['unit_type'] ?? 'staff';
+        $designation = $u['designation'] ?? 'Field Officer';
+        $code = !empty($u['code']) ? $u['code'] : '';
+
         out(['ok' => true, 'token' => $token,
-             'user' => ['id' => (int)$u['id'], 'name' => $u['name'], 'phone' => $u['phone'], 'device_type' => $devModel, 'unique_id' => $devId],
+             'user' => [
+                 'id' => (int)$u['id'],
+                 'name' => $u['name'],
+                 'code' => $code,
+                 'unit_type' => $unitType,
+                 'designation' => $designation,
+                 'phone' => $u['phone'],
+                 'device_type' => $devModel,
+                 'unique_id' => $devId
+             ],
              'config' => app_config()]);
     }
 
@@ -362,17 +375,26 @@ try {
         out(['ok' => true, 'geofences' => $top, 'count' => count($top)]);
     }
 
+    case 'field_photos':
     case 'my_field_photos': {
         // Fetch field photos for logged-in user on a selected date (or today)
-        $u = auth_user();
+        $u = get_auth_user();
         $date = trim($_GET['date'] ?? ($_POST['date'] ?? date('Y-m-d')));
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) $date = date('Y-m-d');
         
-        $photos = q("SELECT id, file_path, lat, lng, note, geofence_name, activity_type, taken_at,
-                     CONCAT('https://track.galoya.lk/uploads/', file_path) AS full_url
-                     FROM field_photos 
-                     WHERE user_id=? AND DATE(taken_at)=?
-                     ORDER BY id DESC", [$u['id'], $date])->fetchAll();
+        if ($u && !empty($u['id'])) {
+            $photos = q("SELECT id, file_path, lat, lng, note, geofence_name, activity_type, taken_at,
+                         CONCAT('https://track.galoya.lk/uploads/', file_path) AS full_url
+                         FROM field_photos 
+                         WHERE user_id=? AND DATE(taken_at)=?
+                         ORDER BY id DESC", [$u['id'], $date])->fetchAll();
+        } else {
+            $photos = q("SELECT id, user_id, file_path, lat, lng, note, geofence_name, activity_type, taken_at,
+                         CONCAT('https://track.galoya.lk/uploads/', file_path) AS full_url
+                         FROM field_photos 
+                         WHERE DATE(taken_at)=?
+                         ORDER BY id DESC LIMIT 100", [$date])->fetchAll();
+        }
         out(['ok' => true, 'date' => $date, 'photos' => $photos, 'count' => count($photos)]);
     }
 

@@ -72,24 +72,66 @@ if (function_exists('opcache_reset')) {
     }
 }
 
-$apkReleaseUrl = 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.2.0/Galoya-Telematics.apk';
 $apkTargetPath = __DIR__ . '/Galoya-Telematics.apk';
 try {
-    $ch = curl_init($apkReleaseUrl);
-    $fp = fopen($apkTargetPath, 'w+');
-    curl_setopt($ch, CURLOPT_FILE, $fp);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 300);
-    $ok = curl_exec($ch);
-    $apkHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    fclose($fp);
+    $token = trim($_GET['gh_token'] ?? ($_POST['gh_token'] ?? ''));
+    $repo = 'shashiexe/galoya-telematics';
 
-    if ($ok && ($apkHttpCode === 200 || $apkHttpCode === 302) && filesize($apkTargetPath) > 10000000) {
-        $results[] = ["✅ Live Web APK Updated: Galoya-Telematics.apk (" . round(filesize($apkTargetPath) / 1048576, 1) . " MB)", "color:#10b981;font-weight:bold"];
+    // 1. Find latest APK artifact from GitHub Actions
+    $ch = curl_init("https://api.github.com/repos/$repo/actions/artifacts?per_page=5");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Authorization: Bearer $token",
+        "User-Agent: GaloyaDeployer"
+    ]);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $artJson = curl_exec($ch);
+    curl_close($ch);
+
+    $artData = json_decode($artJson, true);
+    $apkArtId = null;
+    if (!empty($artData['artifacts'])) {
+        foreach ($artData['artifacts'] as $art) {
+            if ($art['name'] === 'Galoya-Telematics-APK' && empty($art['expired'])) {
+                $apkArtId = $art['id'];
+                break;
+            }
+        }
+    }
+
+    if ($apkArtId) {
+        $zipTmp = __DIR__ . '/tmp_apk.zip';
+        $ch2 = curl_init("https://api.github.com/repos/$repo/actions/artifacts/$apkArtId/zip");
+        $fp = fopen($zipTmp, 'w+');
+        curl_setopt($ch2, CURLOPT_FILE, $fp);
+        curl_setopt($ch2, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch2, CURLOPT_HTTPHEADER, [
+            "Authorization: Bearer $token",
+            "User-Agent: GaloyaDeployer"
+        ]);
+        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch2, CURLOPT_TIMEOUT, 180);
+        $ok2 = curl_exec($ch2);
+        curl_close($ch2);
+        fclose($fp);
+
+        if ($ok2 && file_exists($zipTmp) && filesize($zipTmp) > 1000000) {
+            $zip = new ZipArchive();
+            if ($zip->open($zipTmp) === true) {
+                for ($i = 0; $i < $zip->numFiles; $i++) {
+                    $filename = $zip->getNameIndex($i);
+                    if (substr($filename, -4) === '.apk') {
+                        copy("zip://".$zipTmp."#".$filename, $apkTargetPath);
+                        break;
+                    }
+                }
+                $zip->close();
+            }
+            @unlink($zipTmp);
+            $results[] = ["✅ Live Web APK Updated directly from GitHub Actions: Galoya-Telematics.apk (" . round(filesize($apkTargetPath) / 1048576, 1) . " MB)", "color:#10b981;font-weight:bold"];
+        }
     } else {
-        $results[] = ["⚠️ Web APK note: HTTP $apkHttpCode (Size: " . @filesize($apkTargetPath) . " bytes)", "color:#f59e0b"];
+        $results[] = ["ℹ️ No new APK artifact found on GitHub.", "color:#94a3b8"];
     }
 } catch (Throwable $e) {
     $results[] = ["⚠️ Web APK download note: " . $e->getMessage(), "color:#f59e0b"];

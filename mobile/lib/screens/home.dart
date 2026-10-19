@@ -10,6 +10,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../api.dart';
 import '../config.dart';

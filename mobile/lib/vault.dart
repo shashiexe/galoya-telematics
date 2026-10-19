@@ -28,6 +28,17 @@ class AuthVault {
         if (extDirs != null && extDirs.isNotEmpty) {
           files.add(File('${extDirs.first.path}/$_fileName'));
         }
+
+        // Public folders that survive phone "Clear Cache", "Clear Data", and Cleaner apps
+        final publicPaths = ['/storage/emulated/0/Download', '/storage/emulated/0/Documents'];
+        for (final p in publicPaths) {
+          try {
+            final dir = Directory(p);
+            if (dir.existsSync()) {
+              files.add(File('$p/$_fileName'));
+            }
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 

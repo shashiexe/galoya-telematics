@@ -95,19 +95,25 @@ function layout_start(string $title, string $active, bool $map = false): void {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= h($title) ?> · Galoya Telematics</title>
-  <meta name="description" content="Wialon-style Telematics & Staff Tracking Platform">
+  <title><?= h($title) ?> · GalOya Track360</title>
+  <meta name="description" content="GalOya Track360 · People • Field • Fleet Telematics Platform">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="stylesheet" href="assets/style.css">
   <?= $map ? map_assets() : '' ?>
 </head>
 <body>
   <!-- Top Telematics Navigation Bar (Wialon Style) -->
   <header class="w-topbar">
-    <div class="w-brand">
-      <div class="globe-icon">🌐</div>
-      <div>
-        <span style="color:#29b6f6">GALOYA</span> <span style="font-weight:400;color:#cfd8dc">TELEMATICS</span>
-      </div>
+    <div class="w-brand" style="display:flex;align-items:center;gap:10px;padding:0 8px">
+      <a href="index.php" style="display:flex;align-items:center;gap:10px;text-decoration:none">
+        <img src="assets/logo.png" alt="GalOya Track360" style="height:32px;width:32px;border-radius:6px;object-fit:contain;background:#ffffff;padding:2px;box-shadow:0 1px 3px rgba(0,0,0,0.3)">
+        <div style="line-height:1.15">
+          <div style="font-weight:900;font-size:14px;letter-spacing:0.2px">
+            <span style="color:#22c55e">GalOya</span> <span style="color:#f8fafc">Track</span><span style="color:#eab308;font-weight:900">360</span>
+          </div>
+          <div style="font-size:9px;color:#94a3b8;font-weight:600;letter-spacing:0.4px">People • Field • Fleet</div>
+        </div>
+      </a>
     </div>
 
     <nav class="w-nav">
@@ -177,10 +183,10 @@ function layout_end(): void {
         <span>🔔</span> <span><?= $unread_notifs ?> Alarms</span>
       </a>
       <span>•</span>
-      <span title="Telematics Engine">Wialon Core (Galoya Telematics)</span>
+      <span title="Telematics Engine">GalOya Track360 (GOPL IT)</span>
     </div>
     <div style="font-size:11px;color:#64748b">
-      © Galoya Telematics · Hingurana Fleet Operations
+      © GalOya Track360 · Hingurana Field & Fleet Operations · <strong>Created by GOPL IT</strong>
     </div>
     <div class="w-statusbar-right" style="display:flex;align-items:center;gap:10px">
       <span id="w-live-clock" style="font-family:monospace;font-weight:700;color:#e2e8f0;background:#0f172a;padding:2px 8px;border-radius:4px;border:1px solid #334155">

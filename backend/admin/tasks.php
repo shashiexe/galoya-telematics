@@ -1,11 +1,13 @@
 <?php
 require __DIR__ . '/_common.php';
 $me = require_admin();
+require_perm('tasks', 'view');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
     $act = $_POST['act'] ?? '';
     if ($act === 'create') {
+        require_perm('tasks', 'create');
         $n = 0;
         $deptId = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
         $secId = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
@@ -40,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         flash("$n task(s) created successfully.");
     } elseif ($act === 'cancel') {
+        require_perm('tasks', 'status');
         q("UPDATE tasks SET status='cancelled' WHERE id=? AND status<>'done'", [(int)$_POST['id']]);
         flash('Task cancelled.');
     }
@@ -137,9 +140,11 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
     <a href="?<?= h(http_build_query($_GET + ['csv' => 1])) ?>" class="w-icon-btn" style="padding:4px 10px">📥 Export CSV</a>
   </form>
 
-  <button class="w-icon-btn primary" onclick="openCreateTaskModal()">
-    + Create New Task
-  </button>
+  <?php if (can('tasks', 'create')): ?>
+    <button class="w-icon-btn primary" onclick="openCreateTaskModal()">
+      + Create New Task
+    </button>
+  <?php endif; ?>
 </div>
 
 <div class="w-page-container">

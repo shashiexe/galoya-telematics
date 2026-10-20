@@ -236,6 +236,7 @@ function layout_start(string $title, string $active, bool $map = false): void {
   <meta name="description" content="GalOya Track360 · People • Field • Fleet Telematics Platform">
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/ai_widget.css">
   <?= $map ? map_assets() : '' ?>
 </head>
 <body>
@@ -351,6 +352,9 @@ function layout_end(): void {
   </script>
 
   <script src="assets/app.js"></script>
+  <?php if (can('reports', 'view') || is_super_admin()): ?>
+    <script src="assets/ai_widget.js"></script>
+  <?php endif; ?>
 </body>
 </html>
 <?php

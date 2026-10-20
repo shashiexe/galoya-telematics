@@ -26,6 +26,12 @@ if ($period === 'today') {
 } elseif ($period === 'week') {
     $date_from = date('Y-m-d 00:00:00', strtotime('-7 days'));
     $date_to = date('Y-m-d 23:59:59');
+} elseif ($period === 'month') {
+    $date_from = date('Y-m-01 00:00:00');
+    $date_to = date('Y-m-d 23:59:59');
+} elseif ($period === 'custom' && !empty($_GET['date_from']) && !empty($_GET['date_to'])) {
+    $date_from = date('Y-m-d 00:00:00', strtotime($_GET['date_from']));
+    $date_to = date('Y-m-d 23:59:59', strtotime($_GET['date_to']));
 }
 
 // Haversine distance in km
@@ -40,12 +46,17 @@ if (!function_exists('haversine_dist_km')) {
 
 // Generate Telematics Report Data
 $report_rows = [];
+$officerStats = [];
 $summary = [
     'total_mileage' => 0,
     'total_trips' => 0,
     'total_hours' => 0,
     'fuel_consumed' => 0,
-    'max_speed' => 0
+    'max_speed' => 0,
+    'total_visits' => 0,
+    'distinct_plots' => 0,
+    'active_officers' => 0,
+    'total_notes' => 0
 ];
 
 $unitFilterSql = $unit_id ? "AND id = " . (int)$unit_id : "";
@@ -477,6 +488,135 @@ if ($report_type === 'staff_audit') {
             'last_ping' => date('Y-m-d H:i:s', strtotime('-' . rand(1, 15) . ' minutes'))
         ];
     }
+} elseif ($report_type === 'field_visits') {
+    // -------------------------------------------------------------------------
+    // 🌾 Field Officer Plot Visits & Crop Inspection Summary Report
+    // -------------------------------------------------------------------------
+    $params = [$date_from, $date_to];
+    $extraWhere = "";
+
+    if ($unit_id > 0) {
+        $extraWhere .= " AND fp.user_id = ?";
+        $params[] = $unit_id;
+    }
+    if ($filterDept > 0) {
+        $extraWhere .= " AND u.department_id = ?";
+        $params[] = $filterDept;
+    }
+    if ($filterSec > 0) {
+        $extraWhere .= " AND u.section_id = ?";
+        $params[] = $filterSec;
+    }
+
+    $rawVisits = [];
+    try {
+        $rawVisits = q("SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name,
+                               COALESCE(fp.activity_type, 'Field Visit') as activity_type,
+                               fp.auto_geofence, fp.selected_geofence,
+                               fp.taken_at,
+                               u.name as user_name, u.code as user_code, u.phone as user_phone,
+                               d.name as dept_name, s.name as sec_name,
+                               'field' as photo_type
+                        FROM field_photos fp
+                        LEFT JOIN users u ON u.id = fp.user_id
+                        LEFT JOIN departments d ON d.id = u.department_id
+                        LEFT JOIN sections s ON s.id = u.section_id
+                        WHERE fp.taken_at BETWEEN ? AND ? $extraWhere
+                        ORDER BY fp.taken_at DESC", $params)->fetchAll();
+    } catch (Throwable $e) {}
+
+    $distinctPlots = [];
+    $activeOfficers = [];
+    $totalNotes = 0;
+
+    foreach ($rawVisits as $v) {
+        $uId = (int)$v['user_id'];
+        $uName = $v['user_name'] ?: ('Staff #' . $uId);
+        $plot = trim((string)($v['selected_geofence'] ?: ($v['geofence_name'] ?: ($v['auto_geofence'] ?: ''))));
+
+        // If no plot string was attached, try to match geofence if lat/lng are available
+        if ($plot === '' && !empty($v['lat']) && !empty($v['lng'])) {
+            try {
+                $gf = q("SELECT name, code FROM geofences WHERE active=1 AND ST_Contains(polygon, POINT(?, ?)) LIMIT 1", [(float)$v['lng'], (float)$v['lat']])->fetch();
+                if ($gf) {
+                    $plot = $gf['name'] . ($gf['code'] ? ' (' . $gf['code'] . ')' : '');
+                }
+            } catch (Throwable $e) {}
+        }
+
+        if ($plot === '') {
+            $plot = 'Unspecified Plot';
+        }
+
+        if ($plot !== 'Unspecified Plot') {
+            $distinctPlots[$plot] = true;
+        }
+        $activeOfficers[$uId] = true;
+
+        if (!empty($v['note'])) {
+            $totalNotes++;
+        }
+
+        // Aggregate individual officer stats
+        if (!isset($officerStats[$uId])) {
+            $officerStats[$uId] = [
+                'user_id' => $uId,
+                'name' => $uName,
+                'code' => $v['user_code'] ?? '',
+                'phone' => $v['user_phone'] ?? '',
+                'dept' => $v['dept_name'] ?? 'Sugar Cultivation',
+                'section' => $v['sec_name'] ?? 'Field Division',
+                'total_visits' => 0,
+                'plots' => [],
+                'first_time' => $v['taken_at'],
+                'last_time' => $v['taken_at'],
+                'notes_count' => 0
+            ];
+        }
+
+        $officerStats[$uId]['total_visits']++;
+        if ($plot !== 'Unspecified Plot') {
+            $officerStats[$uId]['plots'][$plot] = true;
+        }
+        if (!empty($v['note'])) {
+            $officerStats[$uId]['notes_count']++;
+        }
+        if (strtotime($v['taken_at']) < strtotime($officerStats[$uId]['first_time'])) {
+            $officerStats[$uId]['first_time'] = $v['taken_at'];
+        }
+        if (strtotime($v['taken_at']) > strtotime($officerStats[$uId]['last_time'])) {
+            $officerStats[$uId]['last_time'] = $v['taken_at'];
+        }
+
+        $photoUrl = '';
+        if (!empty($v['file_path'])) {
+            $photoUrl = 'download_photo.php?file=' . urlencode($v['file_path']);
+        }
+
+        $report_rows[] = [
+            'id' => $v['id'],
+            'time' => $v['taken_at'],
+            'officer' => $uName,
+            'user_id' => $uId,
+            'code' => $v['user_code'],
+            'phone' => $v['user_phone'],
+            'dept' => $v['dept_name'] ?: 'Sugar Cultivation',
+            'section' => $v['sec_name'] ?: 'Field Division',
+            'plot' => $plot,
+            'activity' => $v['activity_type'] ?: 'Inspection',
+            'lat' => $v['lat'],
+            'lng' => $v['lng'],
+            'note' => $v['note'],
+            'file_path' => $v['file_path'],
+            'photo_type' => 'field',
+            'photo_url' => $photoUrl
+        ];
+    }
+
+    $summary['total_visits'] = count($report_rows);
+    $summary['distinct_plots'] = count($distinctPlots);
+    $summary['active_officers'] = count($activeOfficers);
+    $summary['total_notes'] = $totalNotes;
 }
 
 // CSV Export Handler
@@ -486,9 +626,28 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Disposition: attachment; filename="galoya_telematics_report_' . $report_type . '_' . date('Ymd_His') . '.csv"');
     $out = fopen('php://output', 'w');
     if (!empty($report_rows)) {
-        fputcsv($out, array_keys($report_rows[0]));
-        foreach ($report_rows as $row) {
-            fputcsv($out, $row);
+        if ($report_type === 'field_visits') {
+            fputcsv($out, ['Time', 'Field Officer', 'Staff Code', 'Department', 'Section', 'Plot Number / Geofence', 'Activity Type', 'Latitude', 'Longitude', 'Field Observation / Notes', 'Photo Attached']);
+            foreach ($report_rows as $r) {
+                fputcsv($out, [
+                    $r['time'],
+                    $r['officer'],
+                    $r['code'] ?? '',
+                    $r['dept'] ?? '',
+                    $r['section'] ?? '',
+                    $r['plot'] ?? '',
+                    $r['activity'] ?? '',
+                    $r['lat'] ?? '',
+                    $r['lng'] ?? '',
+                    $r['note'] ?? '',
+                    !empty($r['file_path']) ? 'Yes' : 'No'
+                ]);
+            }
+        } else {
+            fputcsv($out, array_keys($report_rows[0]));
+            foreach ($report_rows as $row) {
+                fputcsv($out, $row);
+            }
         }
     }
     fclose($out);
@@ -502,6 +661,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Select Report Template</label>
       <select name="type" onchange="this.form.submit()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;font-weight:700;background:#fff;color:#0f172a">
+        <option value="field_visits" <?= $report_type === 'field_visits' ? 'selected' : '' ?>>🌾 Field Officer Plot Visits & Crop Inspection Summary</option>
         <option value="staff_audit" <?= $report_type === 'staff_audit' ? 'selected' : '' ?>>📱 Staff Daily Activity & Tracking Audit Report</option>
         <option value="dept_section" <?= $report_type === 'dept_section' ? 'selected' : '' ?>>📊 Section & Department Telematics Summary</option>
         <option value="engine_hours" <?= $report_type === 'engine_hours' ? 'selected' : '' ?>>🚜 Engine Hours - Galoya</option>
@@ -510,7 +670,17 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </select>
     </div>
 
-    <?php if ($report_type === 'staff_audit' || $report_type === 'engine_hours' || $report_type === 'trips' || $report_type === 'battery_level'): ?>
+    <?php if ($report_type === 'field_visits'): ?>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Field Staff / Officer</label>
+      <select name="unit_id" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
+        <option value="0" <?= $unit_id == 0 ? 'selected' : '' ?>>All Field Officers (Summary)</option>
+        <?php foreach ($units as $u): ?>
+          <option value="<?= $u['id'] ?>" <?= $unit_id == $u['id'] ? 'selected' : '' ?>><?= h($u['name']) ?> <?= $u['code'] ? '('.h($u['code']).')' : '' ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <?php elseif ($report_type === 'staff_audit' || $report_type === 'engine_hours' || $report_type === 'trips' || $report_type === 'battery_level'): ?>
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Field Staff / Unit</label>
       <select name="unit_id" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
@@ -521,7 +691,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
     <?php endif; ?>
 
-    <?php if ($report_type === 'dept_section'): ?>
+    <?php if ($report_type === 'dept_section' || $report_type === 'field_visits'): ?>
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Department</label>
       <select name="dept_id" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
@@ -544,11 +714,24 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Time Period</label>
-      <select name="period" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
+      <select name="period" id="report-period-select" onchange="toggleCustomDates(this.value)" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
         <option value="today" <?= $period === 'today' ? 'selected' : '' ?>>Today</option>
         <option value="yesterday" <?= $period === 'yesterday' ? 'selected' : '' ?>>Yesterday</option>
         <option value="week" <?= $period === 'week' ? 'selected' : '' ?>>Last 7 Days</option>
+        <option value="month" <?= $period === 'month' ? 'selected' : '' ?>>This Month</option>
+        <option value="custom" <?= $period === 'custom' ? 'selected' : '' ?>>Custom Date Range</option>
       </select>
+    </div>
+
+    <div id="custom-date-fields" style="display:<?= $period === 'custom' ? 'flex' : 'none' ?>;gap:8px;align-items:center">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">From Date</label>
+        <input type="date" name="date_from" value="<?= date('Y-m-d', strtotime($date_from)) ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">To Date</label>
+        <input type="date" name="date_to" value="<?= date('Y-m-d', strtotime($date_to)) ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px">
+      </div>
     </div>
 
     <div style="margin-top:18px;display:flex;gap:8px">
@@ -569,35 +752,143 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 
 <!-- Summary Stat Cards -->
 <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;margin-bottom:16px">
-  <div class="card" style="padding:14px;border-left:4px solid #0284c7">
-    <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">
-      <?= $report_type === 'staff_audit' ? 'Total Distance' : 'Distance Tracked' ?>
+  <?php if ($report_type === 'field_visits'): ?>
+    <div class="card" style="padding:14px;border-left:4px solid #0284c7">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Total Plot Visits</div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['total_visits'] ?> <span style="font-size:14px;color:#64748b">visits</span></div>
     </div>
-    <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= round($summary['total_mileage'], 1) ?> <span style="font-size:14px;color:#64748b">km</span></div>
-  </div>
-  <div class="card" style="padding:14px;border-left:4px solid #16a34a">
-    <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Activities & Events</div>
-    <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= count($report_rows) ?></div>
-  </div>
-  <div class="card" style="padding:14px;border-left:4px solid #f59e0b">
-    <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Operating Time</div>
-    <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= round($summary['total_hours'], 1) ?> <span style="font-size:14px;color:#64748b">hrs</span></div>
-  </div>
-  <div class="card" style="padding:14px;border-left:4px solid #9333ea">
-    <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">
-      <?= $report_type === 'staff_audit' ? 'Max Speed' : 'Fleet Utilization' ?>
+    <div class="card" style="padding:14px;border-left:4px solid #16a34a">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Distinct Plots Visited</div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['distinct_plots'] ?> <span style="font-size:14px;color:#64748b">plots</span></div>
     </div>
-    <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px">
-      <?= $report_type === 'staff_audit' ? round($summary['max_speed'], 1) . ' km/h' : count($report_rows) . ' Secs' ?>
+    <div class="card" style="padding:14px;border-left:4px solid #f59e0b">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Active Field Officers</div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['active_officers'] ?> <span style="font-size:14px;color:#64748b">staff</span></div>
     </div>
+    <div class="card" style="padding:14px;border-left:4px solid #9333ea">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Observations Logged</div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['total_notes'] ?> <span style="font-size:14px;color:#64748b">notes</span></div>
+    </div>
+  <?php else: ?>
+    <div class="card" style="padding:14px;border-left:4px solid #0284c7">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">
+        <?= $report_type === 'staff_audit' ? 'Total Distance' : 'Distance Tracked' ?>
+      </div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= round($summary['total_mileage'], 1) ?> <span style="font-size:14px;color:#64748b">km</span></div>
+    </div>
+    <div class="card" style="padding:14px;border-left:4px solid #16a34a">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Activities & Events</div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= count($report_rows) ?></div>
+    </div>
+    <div class="card" style="padding:14px;border-left:4px solid #f59e0b">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Operating Time</div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= round($summary['total_hours'], 1) ?> <span style="font-size:14px;color:#64748b">hrs</span></div>
+    </div>
+    <div class="card" style="padding:14px;border-left:4px solid #9333ea">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">
+        <?= $report_type === 'staff_audit' ? 'Max Speed' : 'Fleet Utilization' ?>
+      </div>
+      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px">
+        <?= $report_type === 'staff_audit' ? round($summary['max_speed'], 1) . ' km/h' : count($report_rows) . ' Secs' ?>
+      </div>
+    </div>
+  <?php endif; ?>
+</div>
+
+<?php if ($report_type === 'field_visits' && !empty($officerStats)): ?>
+<!-- Table 1: Individual Field Officer Visit & Plot Coverage Summary -->
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+  <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <strong style="font-size:14px;color:#1e293b">
+      👨‍🌾 Individual Field Officer Plot Coverage & Visit Summary
+    </strong>
+    <span style="font-size:11.5px;color:#64748b"><?= count($officerStats) ?> Active Field Staff</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
+          <th style="padding:10px 14px;text-align:left">Officer Name & Code</th>
+          <th style="padding:10px 14px;text-align:left">Division / Section</th>
+          <th style="padding:10px 14px;text-align:center">Total Visits</th>
+          <th style="padding:10px 14px;text-align:center">Distinct Plots</th>
+          <th style="padding:10px 14px;text-align:left">Plots Inspected</th>
+          <th style="padding:10px 14px;text-align:left">First Visit Time</th>
+          <th style="padding:10px 14px;text-align:left">Last Visit Time</th>
+          <th style="padding:10px 14px;text-align:center">Notes</th>
+          <th style="padding:10px 14px;text-align:center">Filter</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($officerStats as $uId => $os): ?>
+          <tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:10px 14px">
+              <strong style="color:#0f172a"><?= h($os['name']) ?></strong>
+              <?php if (!empty($os['code'])): ?>
+                <div style="font-size:11px;color:#64748b">Code: <code><?= h($os['code']) ?></code></div>
+              <?php endif; ?>
+            </td>
+            <td style="padding:10px 14px;color:#475569">
+              <span style="font-weight:600"><?= h($os['section']) ?></span>
+              <div style="font-size:11px;color:#64748b"><?= h($os['dept']) ?></div>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <span style="background:#e0f2fe;color:#0369a1;padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">
+                <?= $os['total_visits'] ?>
+              </span>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">
+                <?= count($os['plots']) ?>
+              </span>
+            </td>
+            <td style="padding:10px 14px;max-width:260px">
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                <?php 
+                $pList = array_keys($os['plots']);
+                $pDisplay = array_slice($pList, 0, 4);
+                foreach ($pDisplay as $pName): ?>
+                  <span style="background:#f1f5f9;border:1px solid #cbd5e1;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;color:#334155">
+                    <?= h($pName) ?>
+                  </span>
+                <?php endforeach; ?>
+                <?php if (count($pList) > 4): ?>
+                  <span style="font-size:11px;color:#64748b;font-weight:600">+<?= count($pList) - 4 ?> more</span>
+                <?php endif; ?>
+              </div>
+            </td>
+            <td style="padding:10px 14px;font-size:11.5px;color:#475569">
+              <?= date('h:i A', strtotime($os['first_time'])) ?>
+              <div style="font-size:10.5px;color:#94a3b8"><?= date('Y-m-d', strtotime($os['first_time'])) ?></div>
+            </td>
+            <td style="padding:10px 14px;font-size:11.5px;color:#475569">
+              <?= date('h:i A', strtotime($os['last_time'])) ?>
+              <div style="font-size:10.5px;color:#94a3b8"><?= date('Y-m-d', strtotime($os['last_time'])) ?></div>
+            </td>
+            <td style="padding:10px 14px;text-align:center;font-weight:700;color:#9333ea">
+              <?= $os['notes_count'] ?>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <a href="?type=field_visits&unit_id=<?= $uId ?>&period=<?= urlencode($period) ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>" 
+                 class="btn ghost" style="padding:4px 8px;font-size:11px;border-radius:4px;font-weight:600;background:#fff;border:1px solid #cbd5e1;text-decoration:none">
+                🔍 Filter
+              </a>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
   </div>
 </div>
+<?php endif; ?>
 
 <!-- Report Table Card -->
 <div class="card" style="padding:0;overflow:hidden">
   <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
     <strong style="font-size:14px;color:#1e293b">
-      <?php if ($report_type === 'staff_audit'): 
+      <?php if ($report_type === 'field_visits'): ?>
+        🌾 Field Officer Plot Visits & Crop Inspection Summary Log
+      <?php elseif ($report_type === 'staff_audit'): 
         $sName = is_array($staffUser) ? ($staffUser['name'] ?? 'Staff') : 'Staff';
         $sSec = (is_array($staffUser) && !empty($staffUser['sec_name'])) ? ' (' . $staffUser['sec_name'] . ')' : '';
       ?>
@@ -615,7 +906,17 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead>
         <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
-          <?php if ($report_type === 'staff_audit'): ?>
+          <?php if ($report_type === 'field_visits'): ?>
+            <th style="padding:10px 14px;text-align:center;width:40px">#</th>
+            <th style="padding:10px 14px;text-align:left">Visit Time</th>
+            <th style="padding:10px 14px;text-align:left">Field Officer</th>
+            <th style="padding:10px 14px;text-align:left">Division / Section</th>
+            <th style="padding:10px 14px;text-align:left">Plot Number / Geofence</th>
+            <th style="padding:10px 14px;text-align:left">Activity / Purpose</th>
+            <th style="padding:10px 14px;text-align:left">GPS Coordinates</th>
+            <th style="padding:10px 14px;text-align:left">Field Observation / Notes</th>
+            <th style="padding:10px 14px;text-align:center">Photo Preview</th>
+          <?php elseif ($report_type === 'staff_audit'): ?>
             <th style="padding:10px 14px;text-align:left">Time (Device)</th>
             <th style="padding:10px 14px;text-align:left">Event / Activity</th>
             <th style="padding:10px 14px;text-align:left">Location / Geofence Plot</th>
@@ -667,13 +968,75 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </thead>
       <tbody>
         <?php if (empty($report_rows)): ?>
-          <tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8">No telemetry records found for selected period.</td></tr>
+          <tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8">No telemetry or visit records found for selected period.</td></tr>
         <?php else: ?>
-          <?php foreach ($report_rows as $row): 
+          <?php 
+          $rowIdx = 0;
+          foreach ($report_rows as $row): 
+            $rowIdx++;
             $evStr = (string)($row['event'] ?? '');
           ?>
             <tr style="border-bottom:1px solid #f1f5f9">
-              <?php if ($report_type === 'staff_audit'): ?>
+              <?php if ($report_type === 'field_visits'): ?>
+                <td style="padding:10px 14px;text-align:center;color:#94a3b8;font-weight:600"><?= $rowIdx ?></td>
+                <td style="padding:10px 14px;color:#0f172a;font-weight:600;white-space:nowrap">
+                  <?= date('h:i:s A', strtotime($row['time'])) ?>
+                  <div style="font-size:11px;color:#64748b"><?= date('Y-m-d', strtotime($row['time'])) ?></div>
+                </td>
+                <td style="padding:10px 14px">
+                  <strong style="color:#0f172a"><?= h($row['officer']) ?></strong>
+                  <?php if (!empty($row['code'])): ?>
+                    <span style="font-size:11px;color:#64748b;display:block">Code: <code><?= h($row['code']) ?></code></span>
+                  <?php endif; ?>
+                </td>
+                <td style="padding:10px 14px;color:#475569">
+                  <span style="font-weight:600"><?= h($row['section']) ?></span>
+                  <div style="font-size:11px;color:#64748b"><?= h($row['dept']) ?></div>
+                </td>
+                <td style="padding:10px 14px">
+                  <span style="display:inline-block;padding:3px 10px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:6px;font-size:12px;font-weight:700">
+                    🌾 <?= h($row['plot']) ?>
+                  </span>
+                </td>
+                <td style="padding:10px 14px">
+                  <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700">
+                    <?= h($row['activity']) ?>
+                  </span>
+                </td>
+                <td style="padding:10px 14px;font-size:11.5px">
+                  <?php if (!empty($row['lat']) && !empty($row['lng'])): ?>
+                    <a href="https://www.google.com/maps?q=<?= (float)$row['lat'] ?>,<?= (float)$row['lng'] ?>" target="_blank" style="color:#0284c7;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+                      📍 <code><?= number_format((float)$row['lat'], 5) ?>, <?= number_format((float)$row['lng'], 5) ?></code>
+                    </a>
+                  <?php else: ?>
+                    <span style="color:#94a3b8">—</span>
+                  <?php endif; ?>
+                </td>
+                <td style="padding:10px 14px;max-width:320px;color:#334155;font-size:12px">
+                  <?php if (!empty($row['note'])): ?>
+                    <div style="background:#f8fafc;padding:6px 10px;border-left:3px solid #3b82f6;border-radius:4px">
+                      <?= nl2br(h($row['note'])) ?>
+                    </div>
+                  <?php else: ?>
+                    <span style="color:#94a3b8;font-style:italic">No observation note</span>
+                  <?php endif; ?>
+                </td>
+                <td style="padding:10px 14px;text-align:center">
+                  <?php if (!empty($row['file_path'])): ?>
+                    <div style="display:inline-flex;align-items:center;gap:6px">
+                      <a href="javascript:void(0)" onclick="openLightbox('download_photo.php?file=<?= urlencode($row['file_path']) ?>', '<?= h(addslashes($row['officer'])) ?> | <?= h(addslashes($row['plot'])) ?> (<?= h($row['time']) ?>)')" style="position:relative;display:inline-block" title="Click to view full photo">
+                        <img src="download_photo.php?file=<?= urlencode($row['file_path']) ?>" style="width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+                      </a>
+                      <a href="download_photo.php?file=<?= urlencode($row['file_path']) ?>" download style="color:#64748b;font-size:14px;text-decoration:none" title="Download High Res Photo">
+                        ⬇️
+                      </a>
+                    </div>
+                  <?php else: ?>
+                    <span style="color:#cbd5e1;font-size:11px">No Image</span>
+                  <?php endif; ?>
+                </td>
+
+              <?php elseif ($report_type === 'staff_audit'): ?>
                 <td style="padding:10px 14px;color:#475569;font-weight:600"><?= h($row['time']) ?></td>
                 <td style="padding:10px 14px">
                   <?php if (str_contains($evStr, 'Started')): ?>
@@ -749,4 +1112,46 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </table>
   </div>
 </div>
+
+<!-- Lightbox Modal for Photo Preview -->
+<div id="lightbox-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;flex-direction:column;padding:20px" onclick="closeLightbox()">
+  <div style="position:relative;max-width:90vw;max-height:85vh;text-align:center" onclick="event.stopPropagation()">
+    <img id="lightbox-img" src="" style="max-width:100%;max-height:80vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.5)">
+    <div id="lightbox-caption" style="color:#fff;margin-top:10px;font-size:13px;font-weight:600"></div>
+    <div style="margin-top:10px">
+      <a id="lightbox-dl" href="#" class="btn" style="background:#0284c7;color:#fff;display:inline-flex;padding:6px 16px;font-size:12px;border-radius:4px;text-decoration:none">
+        ⬇️ Download Full Resolution
+      </a>
+      <button type="button" class="btn ghost" onclick="closeLightbox()" style="margin-left:8px;padding:6px 16px;font-size:12px;border-radius:4px;background:#fff">
+        ✕ Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openLightbox(url, caption) {
+  var modal = document.getElementById('lightbox-modal');
+  var img = document.getElementById('lightbox-img');
+  var cap = document.getElementById('lightbox-caption');
+  var dl = document.getElementById('lightbox-dl');
+  if (!modal || !img) return;
+  img.src = url;
+  if (cap) cap.textContent = caption || '';
+  if (dl) dl.href = url;
+  modal.style.display = 'flex';
+}
+function closeLightbox() {
+  var modal = document.getElementById('lightbox-modal');
+  if (modal) modal.style.display = 'none';
+}
+function toggleCustomDates(val) {
+  var el = document.getElementById('custom-date-fields');
+  if (el) el.style.display = (val === 'custom') ? 'flex' : 'none';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
+</script>
+
 <?php layout_end(); ?>

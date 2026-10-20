@@ -213,10 +213,10 @@ try {
 } catch (Throwable $e) {}
 
 try {
-    set_setting('latest_app_version', '1.3.2');
-    set_setting('latest_app_build', '15');
-    set_setting('app_update_changelog', "• Emergency SOS / Push Panic Button: Instant direct transmission & offline sync\n• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Full-screen pinch-to-zoom field photo gallery viewer");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.2 (Build 15)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.3');
+    set_setting('latest_app_build', '16');
+    set_setting('app_update_changelog', "• Anti-Drift: Stabilized GPS under solar panels & metal roofs (eliminates false walking/moving alerts)\n• Enhanced stationary anchor (< 25m locked to 0 km/h)\n• Instant Emergency SOS Panic Button\n• Full-screen pinch-to-zoom field photo gallery");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.3 (Build 16)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 // Emergency SOS & Real-time Notifications Tables
@@ -373,17 +373,7 @@ try {
     $results[] = ["✅ Ensured `users.unit_type` supports all roles (VARCHAR 50)", "color:#10b981"];
 } catch (Throwable $e) {}
 
-// Speed Calculation Correction (Convert old m/s to km/h)
-try {
-    $speedFixCount = $pdo->exec("UPDATE locations SET speed = ROUND(speed * 3.6, 1) WHERE speed > 0 AND speed < 30");
-    if ($speedFixCount > 0) {
-        $results[] = ["⚡ Converted $speedFixCount historical GPS points from m/s to km/h (speed * 3.6)", "color:#38bdf8"];
-    } else {
-        $results[] = ["ℹ️ GPS speed telemetry points are already up to date.", "color:#94a3b8"];
-    }
-} catch (Throwable $e) {
-    $results[] = ["⚠️ Speed conversion note: " . $e->getMessage(), "color:#f59e0b"];
-}
+// Speed telemetry points are recorded directly in km/h by mobile app and Teltonika GPS
 
 // Check Geofences Count & Auto-Seed if needed
 $totalGf = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();

@@ -17,9 +17,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $username = trim($_POST['username'] ?? '');
             $role = trim($_POST['role'] ?? 'manager');
             $deptId = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
-            $secId = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
             $active = isset($_POST['active']) ? 1 : 0;
             $password = $_POST['password'] ?? '';
+
+            // Handle multi-section selection
+            $secIds = $_POST['section_ids'] ?? [];
+            if (!is_array($secIds) && $secIds !== '') $secIds = explode(',', (string)$secIds);
+            $secIds = array_values(array_filter(array_map('intval', (array)$secIds), fn($id) => $id > 0));
+            $secIdsStr = !empty($secIds) ? implode(',', $secIds) : null;
+            $primarySecId = !empty($secIds[0]) ? $secIds[0] : null;
 
             if (empty($name)) throw new Exception("Full name is required.");
             if (empty($username)) throw new Exception("Username / Phone login is required.");
@@ -49,8 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($id > 0) {
                 // Update existing user
-                q("UPDATE users SET name=?, phone=?, role=?, web_access=1, department_id=?, section_id=?, active=?, permissions_json=? WHERE id=?",
-                  [$name, $username, $role, $deptId, $secId, $active, $permsJson, $id]);
+                q("UPDATE users SET name=?, phone=?, role=?, web_access=1, department_id=?, section_id=?, section_ids=?, active=?, permissions_json=? WHERE id=?",
+                  [$name, $username, $role, $deptId, $primarySecId, $secIdsStr, $active, $permsJson, $id]);
 
                 if (!empty($password)) {
                     if (strlen($password) < 4) throw new Exception("Password must be at least 4 characters.");
@@ -63,9 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($password)) throw new Exception("Password is required for new accounts.");
                 if (strlen($password) < 4) throw new Exception("Password must be at least 4 characters.");
 
-                q("INSERT INTO users (name, code, phone, password_hash, role, web_access, unit_type, department_id, section_id, active, permissions_json)
-                   VALUES (?,?,?,?,?,1,'staff',?,?,?,?)",
-                  [$name, 'WEB-' . time(), $username, password_hash($password, PASSWORD_DEFAULT), $role, $deptId, $secId, $active, $permsJson]);
+                q("INSERT INTO users (name, code, phone, password_hash, role, web_access, unit_type, department_id, section_id, section_ids, active, permissions_json)
+                   VALUES (?,?,?,?,?,1,'staff',?,?,?,?,?)",
+                  [$name, 'WEB-' . time(), $username, password_hash($password, PASSWORD_DEFAULT), $role, $deptId, $primarySecId, $secIdsStr, $active, $permsJson]);
 
                 flash("New web user '{$name}' created successfully with customized permissions.");
             }
@@ -93,7 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch departments & sections for scoping
 $departments = q("SELECT id, name FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
-$sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY name ASC")->fetchAll();
+$sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY department_id ASC, name ASC")->fetchAll();
+$sectionsById = [];
+foreach ($sections as $s) {
+    $sectionsById[$s['id']] = $s;
+}
 
 // Filters & Search
 $search = trim($_GET['search'] ?? '');
@@ -261,13 +271,34 @@ layout_start('Web User Management', 'users.php');
               </span>
             </td>
             <td style="padding:10px 14px">
-              <?php if (!empty($u['dept_name'])): ?>
-                <div style="font-weight:600;color:#0369a1;font-size:11.5px">🏢 <?= h($u['dept_name']) ?></div>
-                <?php if (!empty($u['sec_name'])): ?>
-                  <div style="font-size:11px;color:#64748b">🌾 <?= h($u['sec_name']) ?></div>
+              <?php 
+                $userSecIds = [];
+                if (!empty($u['section_ids'])) {
+                    $userSecIds = array_values(array_filter(array_map('intval', explode(',', $u['section_ids'])), fn($id) => $id > 0));
+                } elseif (!empty($u['section_id'])) {
+                    $userSecIds = [(int)$u['section_id']];
+                }
+              ?>
+              <?php if (!empty($u['dept_name']) || !empty($userSecIds)): ?>
+                <?php if (!empty($u['dept_name'])): ?>
+                  <div style="font-weight:700;color:#0369a1;font-size:11.5px">🏢 <?= h($u['dept_name']) ?></div>
+                <?php endif; ?>
+                <?php if (!empty($userSecIds)): ?>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
+                    <?php foreach ($userSecIds as $sid): 
+                      $sObj = $sectionsById[$sid] ?? null;
+                      $secLabel = $sObj ? $sObj['name'] : ('Sec #' . $sid);
+                    ?>
+                      <span style="background:#e0f2fe;color:#0284c7;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:4px;border:1px solid #bae6fd" title="Section ID: <?= $sid ?>">
+                        🌾 <?= h($secLabel) ?>
+                      </span>
+                    <?php endforeach; ?>
+                  </div>
+                <?php else: ?>
+                  <span style="color:#64748b;font-size:10.5px">🌐 All Sections in Division</span>
                 <?php endif; ?>
               <?php else: ?>
-                <span style="color:#94a3b8;font-size:11px">All Divisions (Global)</span>
+                <span style="color:#94a3b8;font-size:11px">🌐 All Divisions & Sections (Global)</span>
               <?php endif; ?>
             </td>
             <td style="padding:10px 14px">
@@ -379,7 +410,7 @@ layout_start('Web User Management', 'users.php');
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-bottom:14px">
         <div>
           <label style="display:block;font-size:11.5px;font-weight:700;color:#334155;margin-bottom:4px">System Role Preset *</label>
           <select name="role" id="f-role" onchange="applyRolePreset(this.value)" style="width:100%;padding:6px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600">
@@ -393,7 +424,7 @@ layout_start('Web User Management', 'users.php');
         </div>
         <div>
           <label style="display:block;font-size:11.5px;font-weight:700;color:#334155;margin-bottom:4px">Estate Division Scope</label>
-          <select name="department_id" id="f-dept" style="width:100%;padding:6px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px">
+          <select name="department_id" id="f-dept" onchange="filterSectionCheckboxesByDept(this.value)" style="width:100%;padding:6px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px">
             <option value="">Global / All Estate Divisions</option>
             <?php foreach ($departments as $d): ?>
               <option value="<?= $d['id'] ?>"><?= h($d['name']) ?></option>
@@ -405,6 +436,33 @@ layout_start('Web User Management', 'users.php');
             <input type="checkbox" name="active" id="f-active" checked style="width:16px;height:16px;accent-color:#10b981">
             <span>Account Active (Can log in)</span>
           </label>
+        </div>
+      </div>
+
+      <!-- Field Officer & Unit Section Scope Selector -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:700;font-size:12px;color:#1e293b;text-transform:uppercase;letter-spacing:0.3px;display:flex;align-items:center;gap:6px">
+              <span>🌾</span> <span>Field Officer & Unit Section Scope (Data Access)</span>
+            </div>
+            <div style="font-size:11px;color:#64748b">
+              Units & Field Officers will be filtered so this user <strong>only sees staff/units in their assigned section(s)</strong>. Leave all unselected for Global / All Sections.
+            </div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn sm ghost" onclick="toggleAllSections(true)" style="padding:2px 8px;font-size:11px">Select All</button>
+            <button type="button" class="btn sm ghost" onclick="toggleAllSections(false)" style="padding:2px 8px;font-size:11px">Clear / Global</button>
+          </div>
+        </div>
+
+        <div id="sec-checkboxes-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:6px;max-height:130px;overflow-y:auto;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:8px">
+          <?php foreach ($sections as $s): ?>
+            <label class="sec-cb-item" data-dept="<?= $s['department_id'] ?>" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#334155;cursor:pointer;padding:4px 6px;border-radius:4px;border:1px solid #f1f5f9;background:#fafafa">
+              <input type="checkbox" name="section_ids[]" value="<?= $s['id'] ?>" class="f-sec-cb" style="accent-color:#0284c7">
+              <span><strong><?= h($s['name']) ?></strong> <?= !empty($s['code']) ? '<span style="color:#94a3b8;font-size:10px">(' . h($s['code']) . ')</span>' : '' ?></span>
+            </label>
+          <?php endforeach; ?>
         </div>
       </div>
 
@@ -521,6 +579,28 @@ layout_start('Web User Management', 'users.php');
 <script>
 var modal = document.getElementById('user-modal');
 
+function toggleAllSections(checked) {
+  document.querySelectorAll('.f-sec-cb').forEach(function(cb) {
+    var label = cb.closest('.sec-cb-item');
+    if (!label || label.style.display !== 'none') {
+      cb.checked = checked;
+    }
+  });
+}
+
+function filterSectionCheckboxesByDept(deptId) {
+  document.querySelectorAll('.sec-cb-item').forEach(function(lbl) {
+    var d = lbl.getAttribute('data-dept');
+    if (!deptId || !d || d === deptId) {
+      lbl.style.display = 'flex';
+    } else {
+      lbl.style.display = 'none';
+      var cb = lbl.querySelector('.f-sec-cb');
+      if (cb) cb.checked = false;
+    }
+  });
+}
+
 function openUserModal() {
   document.getElementById('modal-title').textContent = 'Add New Web User';
   document.getElementById('f-id').value = '0';
@@ -532,6 +612,8 @@ function openUserModal() {
   document.getElementById('f-dept').value = '';
   document.getElementById('f-active').checked = true;
   document.getElementById('f-role').value = 'manager';
+  filterSectionCheckboxesByDept('');
+  toggleAllSections(false);
   applyRolePreset('manager');
   modal.style.display = 'flex';
 }
@@ -553,6 +635,19 @@ function editUser(u) {
   
   var role = u.role || 'custom';
   document.getElementById('f-role').value = role;
+
+  filterSectionCheckboxesByDept(u.department_id || '');
+
+  // Populate section checkboxes
+  var secIds = [];
+  if (u.section_ids) {
+    secIds = String(u.section_ids).split(',').map(function(s) { return s.trim(); });
+  } else if (u.section_id) {
+    secIds = [String(u.section_id)];
+  }
+  document.querySelectorAll('.f-sec-cb').forEach(function(cb) {
+    cb.checked = (secIds.indexOf(String(cb.value)) !== -1);
+  });
 
   toggleAllPerms(false);
 

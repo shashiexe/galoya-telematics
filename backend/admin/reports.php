@@ -1,6 +1,7 @@
 <?php
 require __DIR__ . '/_common.php';
 $me = require_admin();
+require_perm('reports', 'view');
 
 $units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY name ASC")->fetchAll();
 $geofences = q("SELECT id, name, code FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
@@ -480,6 +481,7 @@ if ($report_type === 'staff_audit') {
 
 // CSV Export Handler
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    require_perm('reports', 'export');
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="galoya_telematics_report_' . $report_type . '_' . date('Ymd_His') . '.csv"');
     $out = fopen('php://output', 'w');
@@ -553,9 +555,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       <button type="submit" class="btn" style="background:#0284c7;color:#fff;padding:7px 16px;border-radius:4px;font-weight:700;border:none;cursor:pointer">
         Execute Report
       </button>
-      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="btn ghost" style="padding:7px 14px;border:1px solid #cbd5e1;border-radius:4px;font-weight:600;display:inline-flex;align-items:center;gap:6px;background:#fff">
-        📥 Export CSV
-      </a>
+      <?php if (can('reports', 'export')): ?>
+        <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="btn ghost" style="padding:7px 14px;border:1px solid #cbd5e1;border-radius:4px;font-weight:600;display:inline-flex;align-items:center;gap:6px;background:#fff">
+          📥 Export CSV
+        </a>
+      <?php endif; ?>
       <button type="button" onclick="window.print()" class="btn ghost" style="padding:7px 14px;border:1px solid #cbd5e1;border-radius:4px;font-weight:600;background:#fff">
         🖨️ Print
       </button>

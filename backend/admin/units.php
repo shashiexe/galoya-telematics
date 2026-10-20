@@ -1,6 +1,7 @@
 <?php
 require __DIR__ . '/_common.php';
 $me = require_admin();
+require_perm('units', 'view');
 
 // Handle Unit CRUD / quick actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -10,6 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($act === 'save_unit') {
             $id = (int)($_POST['id'] ?? 0);
+            require_perm('units', $id > 0 ? 'edit' : 'create');
+
             $name = trim($_POST['name'] ?? '');
             $code = trim($_POST['code'] ?? '');
             $phone = trim($_POST['phone'] ?? '');
@@ -51,10 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash("New unit '{$name}' registered in fleet");
             }
         } elseif ($act === 'toggle_active') {
+            require_perm('units', 'toggle');
             $id = (int)$_POST['id'];
             q("UPDATE users SET active = 1 - active WHERE id = ?", [$id]);
             flash("Unit status changed");
         } elseif ($act === 'delete_unit') {
+            require_perm('units', 'delete');
             $id = (int)$_POST['id'];
             if ($id !== (int)$me['id']) {
                 q("UPDATE drivers SET assigned_unit_id = NULL WHERE assigned_unit_id = ?", [$id]);
@@ -142,9 +147,11 @@ layout_start('Fleet Units', 'units.php');
       <a href="staff.php" class="btn ghost sm" style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #cbd5e1" title="Manage Departments, Sections & Personnel">
         <span>🏢</span> <span>Staff & Departments</span>
       </a>
-      <button class="btn" onclick="openUnitModal()" style="display:flex;align-items:center;gap:6px;background:#0284c7">
-        <span>➕</span> <span>New Unit</span>
-      </button>
+      <?php if (can('units', 'create')): ?>
+        <button class="btn" onclick="openUnitModal()" style="display:flex;align-items:center;gap:6px;background:#0284c7">
+          <span>➕</span> <span>New Unit</span>
+        </button>
+      <?php endif; ?>
       <a href="index.php" class="btn ghost sm" style="display:flex;align-items:center;gap:6px">
         <span>🛰️</span> <span>Live Monitoring</span>
       </a>
@@ -280,6 +287,12 @@ layout_start('Fleet Units', 'units.php');
               <div style="font-size:11px;font-family:monospace;color:#64748b;margin-top:2px">
                 IMEI: <?= h($u['unique_id'] ?: '35890' . sprintf('%010d', $u['id'] * 12345)) ?>
               </div>
+              <?php if (!empty($u['gprs_traffic_val'])): ?>
+                <div style="font-size:10.5px;color:#0369a1;margin-top:3px;display:flex;align-items:center;gap:3px;background:#f0f9ff;border:1px solid #bae6fd;padding:1px 6px;border-radius:4px;width:fit-content" title="Cellular GPRS/Network Data Consumed by App">
+                  <span>📶 Data:</span>
+                  <strong><?= $u['gprs_traffic_val'] >= 1024 ? round($u['gprs_traffic_val'] / 1024, 2) . ' MB' : $u['gprs_traffic_val'] . ' KB' ?></strong>
+                </div>
+              <?php endif; ?>
             </td>
             <td style="padding:10px 14px">
               <?php if (!empty($u['driver_name'])): ?>
@@ -312,31 +325,43 @@ layout_start('Fleet Units', 'units.php');
               <?= h($u['last_seen'] ?: 'Recent') ?>
             </td>
             <td style="padding:10px 14px;text-align:center">
-              <form method="post" style="display:inline;margin:0">
-                <?= csrf_field() ?>
-                <input type="hidden" name="act" value="toggle_active">
-                <input type="hidden" name="id" value="<?= $u['id'] ?>">
-                <button type="submit" style="background:none;border:none;cursor:pointer" title="Toggle active status">
-                  <?php if ($u['active']): ?>
-                    <span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">Active</span>
-                  <?php else: ?>
-                    <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">Disabled</span>
-                  <?php endif; ?>
-                </button>
-              </form>
+              <?php if (can('units', 'toggle')): ?>
+                <form method="post" style="display:inline;margin:0">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="act" value="toggle_active">
+                  <input type="hidden" name="id" value="<?= $u['id'] ?>">
+                  <button type="submit" style="background:none;border:none;cursor:pointer" title="Toggle active status">
+                    <?php if ($u['active']): ?>
+                      <span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">Active</span>
+                    <?php else: ?>
+                      <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">Disabled</span>
+                    <?php endif; ?>
+                  </button>
+                </form>
+              <?php else: ?>
+                <?php if ($u['active']): ?>
+                  <span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">Active</span>
+                <?php else: ?>
+                  <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">Disabled</span>
+                <?php endif; ?>
+              <?php endif; ?>
             </td>
             <td style="padding:10px 14px;text-align:right;white-space:nowrap">
-              <!-- Wialon Unit Properties Modal Button -->
-              <button class="btn sm" onclick="openPropertiesModal(<?= $u['id'] ?>)" style="background:#37474f;color:#fff;padding:4px 8px;font-size:11.5px;margin-right:4px" title="Unit Properties (13 Wialon Tabs)">
-                <span>🔧</span> Properties
-              </button>
-              <button class="btn ghost sm" onclick="editUnit(<?= htmlspecialchars(json_encode($u), ENT_QUOTES, 'UTF-8') ?>)" style="padding:4px 8px;font-size:11.5px">Edit</button>
-              <form method="post" style="display:inline;margin:0" onsubmit="return confirm('Delete unit <?= h($u['name']) ?>?')">
-                <?= csrf_field() ?>
-                <input type="hidden" name="act" value="delete_unit">
-                <input type="hidden" name="id" value="<?= $u['id'] ?>">
-                <button class="btn ghost sm red" style="padding:4px 8px;font-size:11.5px">Del</button>
-              </form>
+              <?php if (can('units', 'edit')): ?>
+                <!-- Wialon Unit Properties Modal Button -->
+                <button class="btn sm" onclick="openPropertiesModal(<?= $u['id'] ?>)" style="background:#37474f;color:#fff;padding:4px 8px;font-size:11.5px;margin-right:4px" title="Unit Properties (13 Wialon Tabs)">
+                  <span>🔧</span> Properties
+                </button>
+                <button class="btn ghost sm" onclick="editUnit(<?= htmlspecialchars(json_encode($u), ENT_QUOTES, 'UTF-8') ?>)" style="padding:4px 8px;font-size:11.5px">Edit</button>
+              <?php endif; ?>
+              <?php if (can('units', 'delete')): ?>
+                <form method="post" style="display:inline;margin:0" onsubmit="return confirm('Delete unit <?= h($u['name']) ?>?')">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="act" value="delete_unit">
+                  <input type="hidden" name="id" value="<?= $u['id'] ?>">
+                  <button class="btn ghost sm red" style="padding:4px 8px;font-size:11.5px">Del</button>
+                </form>
+              <?php endif; ?>
             </td>
           </tr>
         <?php endforeach; ?>

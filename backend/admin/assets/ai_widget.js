@@ -1,11 +1,23 @@
 /**
  * Track360 AI Analyst Floating Widget
- * Enterprise Telematics Intelligence powered by Google Gemini
+ * Enterprise Telematics Intelligence
  */
 (function() {
   if (document.getElementById('track360-ai-trigger')) return;
 
-  // 1. Inject Floating Button & Modal HTML
+  var WELCOME_HTML = `
+    <div class="ai-msg bot">
+      <strong>👋 Ayubowan! I am your Track360 AI Analyst.</strong><br>
+      You can ask me <em>any</em> ad-hoc question or custom telematics report for <strong>Today, Yesterday, This Week, or This Month</strong> in <strong>Singlish, Sinhala, or English</strong>.<br><br>
+      <em>Examples:</em><br>
+      • <em>"Me mase wadiyenma distance giya top 5 officers la kawda?"</em><br>
+      • <em>"Ada gaththa field photos tika pennanna"</em><br>
+      • <em>"Nimesh visit karapu plots saha photos monawada?"</em><br>
+      • <em>"Section 1 saha Section 2 athara me mase performance compare karanna"</em>
+    </div>
+  `;
+
+  // 1. Inject Floating Button, Modal HTML, and Photo Lightbox
   var container = document.createElement('div');
   container.innerHTML = `
     <div id="track360-ai-trigger" title="Ask Track360 AI Analyst for any report or telematics summary">
@@ -19,10 +31,14 @@
           <div class="avatar">✨</div>
           <div>
             <h4>Track360 AI Analyst</h4>
-            <div class="status"><span>●</span> Online · Gemini AI Intelligence</div>
+            <div class="status" id="ai-status-indicator">
+              <span id="ai-status-dot" style="color:#22c55e">●</span>
+              <span id="ai-status-text">Online</span>
+            </div>
           </div>
         </div>
         <div class="ctrl-btns">
+          <button class="ctrl-btn" id="ai-clear-btn" title="Clear Chat History">🗑️</button>
           <button class="ctrl-btn" id="ai-expand-btn" title="Expand / Contract">⤢</button>
           <button class="ctrl-btn" id="ai-close-btn" title="Close">✕</button>
         </div>
@@ -30,27 +46,31 @@
 
       <div class="ai-chips-bar">
         <button class="ai-chip" data-q="Me mase mulu distance eka saha officers lage monthly performance analysis 1k table ekak widiyata denna">📅 This Month's Performance</button>
+        <button class="ai-chip" data-q="Ada gaththa field photos tika table ekak widiyata pennanna">📸 Today's Field Photos</button>
         <button class="ai-chip" data-q="Ada dawase field duty summary 1k table ekak widiyata denna">🌾 Today's Duty Summary</button>
         <button class="ai-chip" data-q="Ada dawase wadiyenma distance giya top 5 officers la kawda?">🚗 Top Distance Today</button>
-        <button class="ai-chip" data-q="Me mase visit karapu plots saha field photos summary 1k denna">📸 Monthly Plot Visits</button>
+        <button class="ai-chip" data-q="Me mase visit karapu plots saha field photos summary 1k denna">🌾 Monthly Plot Visits</button>
         <button class="ai-chip" data-q="Me mase sections athara distance saha field visits compare karanna">📊 Compare Sections (Month)</button>
       </div>
 
       <div class="ai-messages-area" id="ai-messages">
-        <div class="ai-msg bot">
-          <strong>👋 Ayubowan! I am your Track360 AI Analyst.</strong><br>
-          You can ask me <em>any</em> ad-hoc question or custom telematics report for <strong>Today, Yesterday, This Week, or This Month</strong> in <strong>Singlish, Sinhala, or English</strong>.<br><br>
-          <em>Examples:</em><br>
-          • <em>"Me mase wadiyenma distance giya top 5 officers la kawda?"</em><br>
-          • <em>"Lasantha ada dawase visit karapu plots monawada?"</em><br>
-          • <em>"Section 1 saha Section 2 athara me mase performance compare karanna"</em>
-        </div>
+        ${WELCOME_HTML}
       </div>
 
       <form class="ai-input-bar" id="ai-form">
         <input type="text" id="ai-input" placeholder="Ask any question or request a report in Singlish..." autocomplete="off">
         <button type="submit" id="ai-send-btn">Ask AI</button>
       </form>
+    </div>
+
+    <!-- Image Lightbox Overlay -->
+    <div id="ai-lightbox-overlay">
+      <button id="ai-lightbox-close" title="Close">✕</button>
+      <img id="ai-lightbox-img" src="" alt="Full Preview">
+      <div id="ai-lightbox-bar">
+        <span id="ai-lightbox-title">Field Inspection Photo</span>
+        <a id="ai-lightbox-dl" class="ai-btn-sm" href="#" target="_blank" download style="text-decoration:none">📥 View / Download</a>
+      </div>
     </div>
   `;
   document.body.appendChild(container);
@@ -59,10 +79,89 @@
   var modal = document.getElementById('track360-ai-modal');
   var closeBtn = document.getElementById('ai-close-btn');
   var expandBtn = document.getElementById('ai-expand-btn');
+  var clearBtn = document.getElementById('ai-clear-btn');
   var form = document.getElementById('ai-form');
   var input = document.getElementById('ai-input');
   var messages = document.getElementById('ai-messages');
   var sendBtn = document.getElementById('ai-send-btn');
+
+  // Lightbox elements
+  var lbOverlay = document.getElementById('ai-lightbox-overlay');
+  var lbImg = document.getElementById('ai-lightbox-img');
+  var lbTitle = document.getElementById('ai-lightbox-title');
+  var lbDl = document.getElementById('ai-lightbox-dl');
+  var lbClose = document.getElementById('ai-lightbox-close');
+
+  // Online / Offline Status Checker
+  function updateOnlineStatus() {
+    var dot = document.getElementById('ai-status-dot');
+    var txt = document.getElementById('ai-status-text');
+    if (!dot || !txt) return;
+
+    if (!navigator.onLine) {
+      dot.style.color = '#ef4444';
+      txt.textContent = 'Offline';
+      txt.style.color = '#ef4444';
+      return;
+    }
+
+    // Show initial Online state immediately based on browser connectivity
+    dot.style.color = '#22c55e';
+    txt.textContent = 'Online';
+    txt.style.color = '#22c55e';
+
+    // Verify server endpoint reachability
+    fetch('ai_assistant.php?action=status_check', { method: 'GET', cache: 'no-store' })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.status === 'ok') {
+          dot.style.color = '#22c55e';
+          txt.textContent = 'Online';
+          txt.style.color = '#22c55e';
+        } else {
+          dot.style.color = '#f59e0b';
+          txt.textContent = 'Attention';
+          txt.style.color = '#f59e0b';
+        }
+      })
+      .catch(function() {
+        if (!navigator.onLine) {
+          dot.style.color = '#ef4444';
+          txt.textContent = 'Offline';
+          txt.style.color = '#ef4444';
+        }
+      });
+  }
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
+
+  // Chat History Management (localStorage)
+  function saveChatHistory() {
+    try {
+      localStorage.setItem('track360_ai_chat_v2', messages.innerHTML);
+    } catch(e) {}
+  }
+
+  function loadChatHistory() {
+    try {
+      var saved = localStorage.getItem('track360_ai_chat_v2');
+      if (saved && saved.trim() !== '') {
+        messages.innerHTML = saved;
+        messages.scrollTop = messages.scrollHeight;
+      }
+    } catch(e) {}
+  }
+  loadChatHistory();
+
+  // Clear Chat History
+  clearBtn.addEventListener('click', function() {
+    if (confirm('Clear chat history and start a fresh session?')) {
+      localStorage.removeItem('track360_ai_chat_v2');
+      messages.innerHTML = WELCOME_HTML;
+      input.value = '';
+    }
+  });
 
   // Toggle Modal
   trigger.addEventListener('click', function() {
@@ -71,6 +170,7 @@
     if (!isOpen) {
       input.focus();
       messages.scrollTop = messages.scrollHeight;
+      updateOnlineStatus();
     }
   });
 
@@ -82,6 +182,28 @@
     modal.classList.toggle('expanded');
     expandBtn.textContent = modal.classList.contains('expanded') ? '⤡' : '⤢';
   });
+
+  // Lightbox Close Handlers
+  function closeLightbox() {
+    lbOverlay.classList.remove('active');
+    lbImg.src = '';
+  }
+  lbClose.addEventListener('click', closeLightbox);
+  lbOverlay.addEventListener('click', function(e) {
+    if (e.target === lbOverlay) closeLightbox();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && lbOverlay.classList.contains('active')) {
+      closeLightbox();
+    }
+  });
+
+  window.openAILightbox = function(url, title) {
+    lbImg.src = url;
+    lbTitle.textContent = title || 'Field Inspection Photo';
+    lbDl.href = url;
+    lbOverlay.classList.add('active');
+  };
 
   // Suggestion Chips
   document.querySelectorAll('.ai-chip').forEach(function(chip) {
@@ -131,16 +253,18 @@
       sendBtn.disabled = false;
 
       if (data.status === 'success') {
-        appendBotResponse(data.answer, data.sql, data.data);
+        appendBotResponse(data.answer, data.data);
       } else {
         appendMessage('⚠️ ' + (data.message || 'Error communicating with AI engine.'), 'bot');
       }
+      saveChatHistory();
     })
     .catch(function(err) {
       var el = document.getElementById('ai-temp-thinking');
       if (el) el.remove();
       sendBtn.disabled = false;
       appendMessage('⚠️ Network or server error: ' + err.message, 'bot');
+      saveChatHistory();
     });
   }
 
@@ -150,9 +274,10 @@
     div.textContent = text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
+    saveChatHistory();
   }
 
-  function appendBotResponse(rawMarkdown, sql, queryData) {
+  function appendBotResponse(rawMarkdown, queryData) {
     var div = document.createElement('div');
     div.className = 'ai-msg bot';
 
@@ -189,9 +314,10 @@
     div.appendChild(actionBox);
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
+    saveChatHistory();
   }
 
-  // Simple Markdown to HTML formatter supporting Bold, Lists, Headers, and Tables
+  // Simple Markdown to HTML formatter supporting Bold, Lists, Headers, Tables & Photos
   function formatMarkdown(md) {
     if (!md) return '';
 
@@ -203,21 +329,21 @@
     function flushTable() {
       if (!inTable) return;
       if (tableRows.length > 0) {
-        var tHtml = '<table><thead><tr>';
+        var tHtml = '<div style="overflow-x:auto;margin:8px 0"><table><thead><tr>';
         var headers = tableRows[0];
         headers.forEach(function(h) {
-          tHtml += '<th>' + escapeHtml(h.trim()) + '</th>';
+          tHtml += '<th>' + renderCellContent(h.trim()) + '</th>';
         });
         tHtml += '</tr></thead><tbody>';
 
         for (var r = 1; r < tableRows.length; r++) {
           tHtml += '<tr>';
           tableRows[r].forEach(function(c) {
-            tHtml += '<td>' + escapeHtml(c.trim()) + '</td>';
+            tHtml += '<td>' + renderCellContent(c.trim()) + '</td>';
           });
           tHtml += '</tr>';
         }
-        tHtml += '</tbody></table>';
+        tHtml += '</tbody></table></div>';
         html.push(tHtml);
       }
       tableRows = [];
@@ -241,6 +367,22 @@
         flushTable();
       }
 
+      // Standalone Markdown Image: ![alt](url)
+      var imgMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imgMatch) {
+        var alt = escapeHtml(imgMatch[1]);
+        var url = escapeHtml(imgMatch[2]);
+        var cleanUrlJs = imgMatch[2].replace(/'/g, "\\'");
+        var cleanAltJs = imgMatch[1].replace(/'/g, "\\'");
+        html.push(`
+          <div class="ai-photo-card" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')">
+            <img src="${url}" alt="${alt}" class="ai-msg-photo" loading="lazy">
+            <div class="ai-photo-caption">📷 ${alt} <span style="font-size:10px;opacity:0.75;float:right">🔍 Zoom</span></div>
+          </div>
+        `);
+        continue;
+      }
+
       if (line.startsWith('### ')) {
         html.push('<h5 style="margin:10px 0 4px;color:#38bdf8">' + inlineFormat(line.slice(4)) + '</h5>');
       } else if (line.startsWith('## ') || line.startsWith('# ')) {
@@ -258,17 +400,42 @@
     return html.join('');
   }
 
+  function renderCellContent(str) {
+    // Check if cell contains markdown image
+    var imgPattern = /!\[(.*?)\]\((.*?)\)/g;
+    if (imgPattern.test(str)) {
+      return str.replace(/!\[(.*?)\]\((.*?)\)/g, function(m, alt, url) {
+        var cleanUrlJs = url.replace(/'/g, "\\'");
+        var cleanAltJs = alt.replace(/'/g, "\\'");
+        return `<span class="ai-thumb-wrap" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')" title="${escapeHtml(alt)}"><img src="${escapeHtml(url)}" class="ai-chat-thumb" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='📷'"/></span>`;
+      });
+    }
+    return inlineFormat(str);
+  }
+
   function inlineFormat(str) {
-    str = escapeHtml(str);
+    // Escape HTML first
+    var s = escapeHtml(str);
+
     // Bold: **text**
-    str = str.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
     // Code: `code`
-    str = str.replace(/`(.*?)`/g, '<code style="background:#0f172a;padding:1px 5px;border-radius:4px;font-family:monospace;color:#38bdf8">$1</code>');
-    return str;
+    s = s.replace(/`(.*?)`/g, '<code style="background:#0f172a;padding:1px 5px;border-radius:4px;font-family:monospace;color:#38bdf8">$1</code>');
+
+    // Inline image match if any
+    s = s.replace(/!\[(.*?)\]\((.*?)\)/g, function(m, alt, url) {
+      var cleanUrlJs = url.replace(/'/g, "\\'");
+      var cleanAltJs = alt.replace(/'/g, "\\'");
+      return `<span class="ai-thumb-wrap" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')" title="${alt}"><img src="${url}" class="ai-chat-thumb" loading="lazy"/></span>`;
+    });
+
+    return s;
   }
 
   function escapeHtml(str) {
-    return str
+    if (!str) return '';
+    return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');

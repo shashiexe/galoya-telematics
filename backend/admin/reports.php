@@ -3,7 +3,8 @@ require __DIR__ . '/_common.php';
 $me = require_admin();
 require_perm('reports', 'view');
 
-$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY name ASC")->fetchAll();
+$secScopeUsers = user_section_scope_sql('users');
+$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
 $geofences = q("SELECT id, name, code FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
 $departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
 $sections = q("SELECT s.id, s.department_id, s.name, s.code, d.name dept_name FROM sections s LEFT JOIN departments d ON d.id=s.department_id WHERE s.active=1 ORDER BY s.name ASC")->fetchAll();
@@ -60,7 +61,7 @@ $summary = [
 ];
 
 $unitFilterSql = $unit_id ? "AND id = " . (int)$unit_id : "";
-$activeUnits = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 $unitFilterSql ORDER BY name ASC")->fetchAll();
+$activeUnits = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers $unitFilterSql ORDER BY name ASC")->fetchAll();
 
 if ($report_type === 'staff_audit') {
     // -------------------------------------------------------------------------

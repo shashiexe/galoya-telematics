@@ -209,6 +209,13 @@ try {
     $results[] = ["✅ Database: Ensured field_photos activity & dual geofence columns exist", "color:#10b981"];
 } catch (Throwable $e) {}
 
+try {
+    set_setting('latest_app_version', '1.3.1');
+    set_setting('latest_app_build', '14');
+    set_setting('app_update_changelog', "• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Compact emergency SOS button with confirmation dialog\n• Interactive full-screen pinch-to-zoom photo gallery viewer");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.1 (Build 14)", "color:#38bdf8;font-weight:bold"];
+} catch (Throwable $e) {}
+
 // Departments, Sections, and Designations
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS `departments` (

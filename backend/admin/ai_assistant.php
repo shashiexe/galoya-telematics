@@ -15,43 +15,80 @@ $apiKey = trim((string)setting('gemini_api_key', ''));
 $model = trim((string)setting('gemini_model', 'gemini-3.8-flash'));
 if (!$model) $model = 'gemini-3.8-flash';
 
-if (!$apiKey) {
-    echo json_encode(['status' => 'error', 'message' => 'Gemini API Key is not configured. Please go to Settings to enter your Gemini API key.']);
-    exit;
-}
-
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'chat');
+
+/** Robust cURL wrapper for Google Gemini API with IPv4 resolve, SSL bypass, and detailed errors */
+function call_gemini_api(string $url, string $payload, int $timeout = 30): array {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Accept: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    if (defined('CURL_IPRESOLVE_V4')) {
+        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    }
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Track360/1.0');
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 12);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+    $res = curl_exec($ch);
+    $curlErr = curl_error($ch);
+    $curlErrno = curl_errno($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return [
+        'res' => $res,
+        'http' => $httpCode,
+        'err' => $curlErr,
+        'errno' => $curlErrno
+    ];
+}
 
 // 1. Action: Test Key Connectivity
 if ($action === 'test_key') {
     $testKey = trim((string)($_POST['api_key'] ?? $apiKey));
     $testModel = trim((string)($_POST['model'] ?? $model));
+    if (!$testKey) {
+        echo json_encode(['status' => 'error', 'message' => 'Please enter or save a Gemini API Key to test.']);
+        exit;
+    }
+
     $url = "https://generativelanguage.googleapis.com/v1beta/models/" . urlencode($testModel) . ":generateContent?key=" . urlencode($testKey);
-    
     $payload = json_encode([
         'contents' => [
             ['parts' => [['text' => 'Ping. Return only "OK"']]]
         ]
     ]);
-    
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    $res = curl_exec($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
+
+    $resp = call_gemini_api($url, $payload, 15);
+    $http = $resp['http'];
+    $res = $resp['res'];
+
     if ($http === 200) {
         echo json_encode(['status' => 'ok', 'message' => 'Gemini AI connection successful with ' . $testModel . '!']);
     } else {
-        $err = json_decode($res, true);
-        $msg = $err['error']['message'] ?? "HTTP $http error connecting to Google Gemini.";
-        echo json_encode(['status' => 'error', 'message' => $msg]);
+        $errMsg = '';
+        if ($res) {
+            $err = json_decode($res, true);
+            $errMsg = $err['error']['message'] ?? '';
+        }
+        if (!$errMsg) {
+            $errMsg = $resp['err'] ? "cURL Error ({$resp['errno']}): {$resp['err']}" : "HTTP $http error connecting to Google Gemini.";
+        }
+        echo json_encode(['status' => 'error', 'message' => $errMsg]);
     }
+    exit;
+}
+
+// Ensure API key is configured for Chat
+if (!$apiKey) {
+    echo json_encode(['status' => 'error', 'message' => 'Gemini API Key is not configured. Please go to Settings to enter your Gemini API key.']);
     exit;
 }
 
@@ -62,7 +99,7 @@ if ($action === 'chat') {
         echo json_encode(['status' => 'error', 'message' => 'Prompt cannot be empty.']);
         exit;
     }
-    
+
     // Check user section scope
     $sectionScopeSql = user_section_scope_sql('u');
     $accessibleSections = user_accessible_section_ids();
@@ -172,22 +209,16 @@ You MUST respond with a valid JSON object only with NO markdown fences:
         ]
     ]);
 
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 25);
-    $res = curl_exec($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $resp1 = call_gemini_api($url, $payload, 25);
+    $http = $resp1['http'];
+    $res = $resp1['res'];
 
     if ($http !== 200) {
         $err = json_decode($res, true);
+        $errMsg = $err['error']['message'] ?? ($resp1['err'] ?: "HTTP $http error connecting to Google Gemini.");
         echo json_encode([
             'status' => 'error',
-            'message' => 'Gemini API Error: ' . ($err['error']['message'] ?? "HTTP $http")
+            'message' => 'Gemini API Error: ' . $errMsg
         ]);
         exit;
     }
@@ -223,7 +254,6 @@ You MUST respond with a valid JSON object only with NO markdown fences:
             $queryResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $rowCount = count($queryResult);
         } catch (Throwable $e) {
-            // If query had a syntax error, inform user gracefully
             $queryResult = ["error" => $e->getMessage()];
         }
     }
@@ -256,15 +286,8 @@ INSTRUCTIONS FOR FINAL ANSWER:
         ]
     ]);
 
-    $ch2 = curl_init($url);
-    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch2, CURLOPT_POST, true);
-    curl_setopt($ch2, CURLOPT_POSTFIELDS, $payload2);
-    curl_setopt($ch2, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch2, CURLOPT_TIMEOUT, 30);
-    $res2 = curl_exec($ch2);
-    curl_close($ch2);
+    $resp2 = call_gemini_api($url, $payload2, 30);
+    $res2 = $resp2['res'];
 
     $geminiData2 = json_decode($res2, true);
     $finalAnswer = $geminiData2['candidates'][0]['content']['parts'][0]['text'] ?? ($step1['direct_answer'] ?? 'No response generated.');

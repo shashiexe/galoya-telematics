@@ -19,6 +19,7 @@ function ensure_web_user_columns(): void {
             @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45) NULL");
             @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'");
         }
+        @$pdo->exec("ALTER TABLE users ADD COLUMN section_ids VARCHAR(255) NULL AFTER section_id");
     } catch (Throwable $e) {}
 }
 
@@ -63,6 +64,58 @@ function can(string $module, string $action = 'view'): bool {
     if (empty($perms[$module])) return false;
     if ($perms[$module] === true || !empty($perms[$module]['*']) || !empty($perms[$module]['all'])) return true;
     return !empty($perms[$module][$action]);
+}
+
+/**
+ * Returns array of section IDs accessible to the current user, or NULL if global access.
+ */
+function user_accessible_section_ids(): ?array {
+    $u = admin();
+    if (!$u) return [];
+    if (($u['role'] ?? '') === 'admin') return null;
+
+    $rawIds = trim((string)($u['section_ids'] ?? ''));
+    if ($rawIds !== '') {
+        $parts = array_map('intval', explode(',', $rawIds));
+        $parts = array_values(array_filter($parts, fn($id) => $id > 0));
+        if (!empty($parts)) return $parts;
+    }
+
+    if (!empty($u['section_id'])) {
+        return [(int)$u['section_id']];
+    }
+
+    return null; // Global access
+}
+
+/**
+ * Returns assigned department ID if user is scoped to a specific department, or NULL if global.
+ */
+function user_accessible_department_id(): ?int {
+    $u = admin();
+    if (!$u) return null;
+    if (($u['role'] ?? '') === 'admin') return null;
+    return !empty($u['department_id']) ? (int)$u['department_id'] : null;
+}
+
+/**
+ * Returns SQL condition for filtering records by user's assigned sections/department.
+ * Example outputs: "users.section_id IN (1,2)", "users.department_id = 3", or "1=1"
+ */
+function user_section_scope_sql(string $alias = 'users'): string {
+    $secIds = user_accessible_section_ids();
+    if ($secIds !== null) {
+        if (empty($secIds)) return "1=0"; // Restricted but has no sections assigned
+        $in = implode(',', $secIds);
+        return "({$alias}.section_id IN ($in))";
+    }
+
+    $deptId = user_accessible_department_id();
+    if ($deptId !== null) {
+        return "({$alias}.department_id = $deptId)";
+    }
+
+    return "1=1";
 }
 
 function require_perm(string $module, string $action = 'view'): void {

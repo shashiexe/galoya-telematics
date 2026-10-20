@@ -111,13 +111,15 @@ if (isset($_GET['feed'])) {
     header('Content-Type: application/json');
     $off = (int)$CONFIG['offline_after_min'];
     
-    // Fetch units with telematics data
+    // Fetch units with telematics data filtered by assigned section scope
+    $secScope = user_section_scope_sql('users');
     $units = q("SELECT id, name, code, phone, role, unit_type, device_type, unique_id, sensors_json, properties_json, on_duty, active,
+                       department_id, section_id,
                        last_lat lat, last_lng lng, last_battery battery, speed, ignition, motion_state, sos_active, last_seen,
                        TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago,
                        (SELECT name FROM drivers WHERE assigned_unit_id=users.id LIMIT 1) driver_name,
                        (SELECT COUNT(*) FROM tasks WHERE assigned_to=users.id AND status='in_progress') active_tasks
-                FROM users WHERE role='staff' AND active=1 
+                FROM users WHERE role='staff' AND active=1 AND $secScope
                 ORDER BY sos_active DESC, (motion_state='moving') DESC, on_duty DESC, name ASC")->fetchAll();
 
     foreach ($units as &$u) {
@@ -133,8 +135,9 @@ if (isset($_GET['feed'])) {
     // Live telematics trails: Start clean on page load, accumulate only during active live monitoring session
     $trails = [];
 
-    // Fetch active SOS alerts
-    $sos_alerts = q("SELECT s.*, u.name, u.phone FROM sos_alerts s JOIN users u ON u.id=s.user_id WHERE s.status='active' ORDER BY s.id DESC LIMIT 5")->fetchAll();
+    // Fetch active SOS alerts filtered by scope
+    $sosScope = user_section_scope_sql('u');
+    $sos_alerts = q("SELECT s.*, u.name, u.phone FROM sos_alerts s JOIN users u ON u.id=s.user_id WHERE s.status='active' AND $sosScope ORDER BY s.id DESC LIMIT 5")->fetchAll();
 
     echo json_encode([
         'units' => $units,
@@ -412,7 +415,9 @@ layout_start('Monitoring', 'index.php', true);
     <!-- Wialon Toolbar (Matching User Screenshots 2 & 3) -->
     <div class="w-wialon-unit-toolbar">
       <div style="display:flex;align-items:center;gap:4px">
-        <button type="button" class="w-wb-btn primary" onclick="openAddUnitModal()" title="Add Unit / Register Device">➕</button>
+        <?php if (can('units', 'create')): ?>
+          <button type="button" class="w-wb-btn primary" onclick="openAddUnitModal()" title="Add Unit / Register Device">➕</button>
+        <?php endif; ?>
         <button type="button" class="w-wb-btn" onclick="refreshFeedNow()" id="btn-refresh" title="Refresh telematics feed">↻</button>
         <button type="button" class="w-wb-btn" onclick="toggleGroupView()" id="btn-group-toggle" title="Toggle Category Groups / Flat View">☷</button>
         <button type="button" class="w-wb-btn" onclick="toggleSortAZ()" id="btn-sort-az" title="Sort Alphabetically (A-Z)">A↓</button>
@@ -425,8 +430,12 @@ layout_start('Monitoring', 'index.php', true);
         <button type="button" class="w-wb-action-btn" id="btn-sort-motion" onclick="sortByMotion()" title="Sort by Motion (Moving first)">➔</button>
         <button type="button" class="w-wb-action-btn active-sort" id="btn-sort-satellite" onclick="sortByOnlineStatus()" title="Sort Online Units to Top">📡</button>
         <button type="button" class="w-wb-action-btn" id="btn-sort-sensor" onclick="sortBySensors()" title="Sort by Battery / Sensors">🖧</button>
-        <button type="button" class="w-wb-action-btn" onclick="openUnitPropertiesModal(currentSelectedUnitId || 2)" title="Unit Properties">🔧</button>
-        <button type="button" class="w-wb-action-btn" onclick="openReportsForUnit()" title="Quick Reports">📋</button>
+        <?php if (can('units', 'edit')): ?>
+          <button type="button" class="w-wb-action-btn" onclick="openUnitPropertiesModal(currentSelectedUnitId || 2)" title="Unit Properties">🔧</button>
+        <?php endif; ?>
+        <?php if (can('reports', 'view')): ?>
+          <button type="button" class="w-wb-action-btn" onclick="openReportsForUnit()" title="Quick Reports">📋</button>
+        <?php endif; ?>
       </div>
     </div>
 
@@ -1072,6 +1081,10 @@ layout_start('Monitoring', 'index.php', true);
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  const CAN_CREATE_UNIT = <?= can('units', 'create') ? 'true' : 'false' ?>;
+  const CAN_EDIT_UNIT   = <?= can('units', 'edit') ? 'true' : 'false' ?>;
+  const CAN_DELETE_UNIT = <?= can('units', 'delete') ? 'true' : 'false' ?>;
+
   const mapElement = document.getElementById('map');
   const defaultCenter = <?= json_encode($CONFIG['map_center']) ?>;
   const defaultZoom = <?= (int)$CONFIG['map_zoom'] ?>;
@@ -1251,7 +1264,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return `
         <tr class="w-unit-row ${isMoving ? 'is-moving' : ''}" data-id="${u.id}" 
             onmouseenter="showUnitHoverCardById(${u.id}, event)" onmouseleave="hideUnitHoverCard()"
-            ondblclick="openUnitPropertiesModal(${u.id})">
+            ${CAN_EDIT_UNIT ? `ondblclick="openUnitPropertiesModal(${u.id})"` : ''}>
           <td style="text-align:center;padding:5px 2px" onclick="event.stopPropagation()">
             <input type="checkbox" class="chk-unit" data-id="${u.id}" ${isChecked ? 'checked' : ''} onchange="toggleUnitCheckbox(${u.id}, this.checked)">
           </td>
@@ -1269,8 +1282,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td style="text-align:right;font-size:11px;padding:5px 4px">${batHtml}</td>
           <td style="text-align:center;white-space:nowrap;padding:4px 2px" onclick="event.stopPropagation()">
             <button type="button" class="w-unit-act-btn solo" onclick="soloUnit(${u.id}, event)" title="Solo Focus: Show ONLY this vehicle on map">👁️</button>
-            <button type="button" class="w-unit-act-btn prop" onclick="openUnitPropertiesModal(${u.id})" title="Unit Properties">🔧</button>
-            <button type="button" class="w-unit-act-btn del" onclick="deleteUnitQuick(${u.id}, '${u.name}', event)" title="Delete Device">🗑️</button>
+            ${CAN_EDIT_UNIT ? `<button type="button" class="w-unit-act-btn prop" onclick="openUnitPropertiesModal(${u.id})" title="Unit Properties">🔧</button>` : ''}
+            ${CAN_DELETE_UNIT ? `<button type="button" class="w-unit-act-btn del" onclick="deleteUnitQuick(${u.id}, '${u.name.replace(/'/g, "\\'")}', event)" title="Delete Device">🗑️</button>` : ''}
           </td>
         </tr>
       `;

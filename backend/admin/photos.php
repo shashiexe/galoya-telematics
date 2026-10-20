@@ -1,6 +1,32 @@
 <?php
 require __DIR__ . '/_common.php';
 require_admin();
+require_perm('photos', 'view');
+
+// Handle Photo Deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act'] === 'delete_photo') {
+    check_csrf();
+    require_perm('photos', 'delete');
+    $photoId = (int)($_POST['id'] ?? 0);
+    $photoType = $_POST['photo_type'] ?? 'field';
+
+    if ($photoId > 0) {
+        $table = ($photoType === 'task') ? 'task_photos' : 'field_photos';
+        $row = q("SELECT file_path FROM $table WHERE id = ?", [$photoId])->fetch();
+        if ($row) {
+            q("DELETE FROM $table WHERE id = ?", [$photoId]);
+            $uploadDir = __DIR__ . '/../' . ($CONFIG['upload_url'] ?? 'uploads');
+            $filePath = $uploadDir . '/' . $row['file_path'];
+            if (file_exists($filePath) && is_file($filePath)) {
+                @unlink($filePath);
+            }
+            flash("Photo permanently removed.");
+        }
+    }
+    $qs = http_build_query(array_intersect_key($_GET, array_flip(['user', 'type', 'from', 'to'])));
+    header('Location: photos.php' . ($qs ? "?$qs" : ''));
+    exit;
+}
 
 // Fetch all units for filter dropdown
 $staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
@@ -211,14 +237,25 @@ layout_start('Photos & Field Media', 'photos.php');
             </div>
 
             <!-- Card Actions -->
-            <div style="display:flex;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">
-              <a href="download_photo.php?file=<?= urlencode($p['file_path']) ?>" class="w-icon-btn primary" style="flex:1;justify-content:center;font-size:11.5px;padding:6px;border-radius:4px" title="Download High Resolution Photo">
+            <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;align-items:center">
+              <a href="download_photo.php?file=<?= urlencode($p['file_path']) ?>" class="w-icon-btn primary" style="flex:1;justify-content:center;font-size:11px;padding:6px;border-radius:4px" title="Download High Resolution Photo">
                 ⬇️ Download
               </a>
               <?php if ($hasCoords): ?>
-                <a href="history.php?user=<?= $p['user_id'] ?>&from=<?= urlencode(date('Y-m-d 00:00:00', strtotime($p['taken_at']))) ?>&to=<?= urlencode(date('Y-m-d 23:59:59', strtotime($p['taken_at']))) ?>" class="w-icon-btn" style="flex:1;justify-content:center;font-size:11.5px;padding:6px;border-radius:4px" title="View location on route track">
-                  ↝ View Track
+                <a href="history.php?user=<?= $p['user_id'] ?>&from=<?= urlencode(date('Y-m-d 00:00:00', strtotime($p['taken_at']))) ?>&to=<?= urlencode(date('Y-m-d 23:59:59', strtotime($p['taken_at']))) ?>" class="w-icon-btn" style="flex:1;justify-content:center;font-size:11px;padding:6px;border-radius:4px" title="View location on route track">
+                  ↝ Track
                 </a>
+              <?php endif; ?>
+              <?php if (can('photos', 'delete')): ?>
+                <form method="post" style="display:inline;margin:0" onsubmit="return confirm('Permanently delete this photo taken by <?= h(addslashes($p['user_name'])) ?> on <?= h($p['taken_at']) ?>?');">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="act" value="delete_photo">
+                  <input type="hidden" name="id" value="<?= $p['id'] ?>">
+                  <input type="hidden" name="photo_type" value="<?= $p['photo_type'] ?>">
+                  <button type="submit" class="w-icon-btn" style="color:#dc2626;background:#fef2f2;border-color:#fecaca;padding:6px 10px;font-size:11px;border-radius:4px" title="Permanently Delete Photo">
+                    🗑️
+                  </button>
+                </form>
               <?php endif; ?>
             </div>
           </div>

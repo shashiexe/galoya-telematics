@@ -44,32 +44,34 @@ if (isset($_GET['test_report'])) {
 
 if (isset($_GET['test_gemini_server'])) {
     $k = setting('gemini_api_key');
-    echo "<h3>Testing Gemini from Server CLI:</h3><pre>";
-    echo "Key in DB: " . ($k ? "SET (length: " . strlen($k) . ")" : "EMPTY") . "\n";
-    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" . urlencode($k);
+    echo "<h3>Testing Gemini Models from Server:</h3><pre>";
+    $candidates = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'];
     $payload = json_encode(['contents' => [['parts' => [['text' => 'Ping. Return only OK']]]]]);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    if (defined('CURL_IPRESOLVE_V4')) {
-        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+
+    foreach ($candidates as $cand) {
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/" . urlencode($cand) . ":generateContent?key=" . urlencode($k);
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        if (defined('CURL_IPRESOLVE_V4')) curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 Track360');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $res = curl_exec($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        echo "Model: $cand => HTTP $http\n";
+        if ($http === 200) {
+            $parsed = json_decode($res, true);
+            echo "   Success: " . trim($parsed['candidates'][0]['content']['parts'][0]['text'] ?? 'OK') . "\n";
+        } else {
+            $parsed = json_decode($res, true);
+            echo "   Error: " . ($parsed['error']['message'] ?? substr($res, 0, 100)) . "\n";
+        }
     }
-    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 Track360');
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-    $res = curl_exec($ch);
-    $err = curl_error($ch);
-    $errno = curl_errno($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    echo "HTTP Code: $http\n";
-    echo "cURL Errno: $errno\n";
-    echo "cURL Error: $err\n";
-    echo "Response:\n" . htmlspecialchars($res) . "\n";
     echo "</pre>";
     exit;
 }

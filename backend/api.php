@@ -74,10 +74,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.3.2');
-        $latestBuild = (int)setting('latest_app_build', 15);
+        $latestVersion = setting('latest_app_version', '1.3.3');
+        $latestBuild = (int)setting('latest_app_build', 16);
         $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
-        $changelog = setting('app_update_changelog', "• Emergency SOS / Push Panic Button: Instant direct transmission & offline sync\n• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Full-screen pinch-to-zoom field photo gallery viewer");
+        $changelog = setting('app_update_changelog', "• Anti-Drift: Stabilized GPS under solar panels & metal roofs (eliminates false walking/moving alerts)\n• Enhanced stationary anchor (< 25m locked to 0 km/h)\n• Instant Emergency SOS Panic Button\n• Full-screen pinch-to-zoom field photo gallery");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
@@ -239,17 +239,17 @@ try {
         if ($latest) {
             $spd = (float)($latest['speed'] ?? 0);
 
-            // Stationary Anchor Check: Prevent indoor GPS drift / Doppler noise from faking motion
+            // Stationary Anchor Check: Prevent indoor/roof GPS drift (solar panels, multipath) from faking motion
             if (!empty($u['last_lat']) && !empty($u['last_lng'])) {
                 $dLat = deg2rad($latest['lat'] - (float)$u['last_lat']);
                 $dLon = deg2rad($latest['lng'] - (float)$u['last_lng']);
                 $a = sin($dLat / 2) ** 2 + cos(deg2rad((float)$u['last_lat'])) * cos(deg2rad($latest['lat'])) * sin($dLon / 2) ** 2;
                 $distMeters = 6371000 * 2 * atan2(sqrt($a), sqrt(1 - $a));
-                if ($distMeters < 15.0) {
+                if ($distMeters < 25.0) {
                     $spd = 0.0;
                 }
             }
-            if ($spd < 3.0) {
+            if ($spd < 4.0) {
                 $spd = 0.0;
             }
 

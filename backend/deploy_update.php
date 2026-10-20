@@ -51,11 +51,12 @@ if (isset($_GET['test_ai'])) {
     if ($testRole === 'manager' || $testRole === 'supervisor' || $testRole === 'staff') {
         $testSup = q("SELECT id, name, role FROM users WHERE phone='demo_supervisor' LIMIT 1")->fetch();
         if (!$testSup) {
-            @q("INSERT INTO users (name, phone, role, web_access, unit_type, section_id, active) VALUES ('Demo Field Supervisor', 'demo_supervisor', 'supervisor', 1, 'staff', 1, 1)");
+            @q("INSERT INTO users (name, code, phone, password_hash, role, web_access, permissions_json, unit_type, section_id, active) 
+                VALUES ('Demo Field Supervisor', 'SUP-DEMO', 'demo_supervisor', 'test_hash', 'supervisor', 1, '{\"reports\":{\"view\":true}}', 'staff', 1, 1)");
             $testSup = q("SELECT id, name, role FROM users WHERE phone='demo_supervisor' LIMIT 1")->fetch();
         }
-        $_SESSION['admin_id'] = (int)$testSup['id'];
-        $_SESSION['admin_user'] = $testSup;
+        $_SESSION['admin_id'] = (int)($testSup['id'] ?? 1);
+        $_SESSION['admin_user'] = $testSup ?: ['id' => 1, 'name' => 'Demo Field Supervisor', 'role' => 'supervisor'];
     } else {
         $_SESSION['admin_id'] = 1;
         $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];

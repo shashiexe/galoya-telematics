@@ -375,10 +375,10 @@ if ($action === 'chat') {
     if ($isSuperAdmin) {
         try {
             $totalGeofences = (int)q("SELECT COUNT(*) FROM geofences")->fetchColumn();
-            $geofenceSectors = q("SELECT COALESCE(gg.name, 'General / Ungrouped') as sector, COUNT(g.id) as plot_count 
+            $geofenceSectors = q("SELECT COALESCE(NULLIF(g.group_name, ''), 'General / Outgrower') as sector, COUNT(g.id) as plot_count 
                                   FROM geofences g 
-                                  LEFT JOIN geofence_groups gg ON gg.id=g.group_id 
-                                  GROUP BY gg.name ORDER BY plot_count DESC")->fetchAll();
+                                  WHERE g.active=1 
+                                  GROUP BY sector ORDER BY plot_count DESC LIMIT 20")->fetchAll();
             $totalLocations = (int)q("SELECT COUNT(*) FROM locations")->fetchColumn();
             $totalPhotosAllTime = (int)q("SELECT COUNT(*) FROM field_photos")->fetchColumn();
             $totalSosAllTime = (int)q("SELECT COUNT(*) FROM sos_alerts")->fetchColumn();

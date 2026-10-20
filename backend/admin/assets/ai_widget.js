@@ -19,7 +19,7 @@
           <div class="avatar">✨</div>
           <div>
             <h4>Track360 AI Analyst</h4>
-            <div class="status"><span>●</span> Online · Gemini 3.8 Flash</div>
+            <div class="status"><span>●</span> Online · Gemini AI Intelligence</div>
           </div>
         </div>
         <div class="ctrl-btns">

@@ -42,39 +42,6 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
-if (isset($_GET['test_gemini_server'])) {
-    $k = setting('gemini_api_key');
-    echo "<h3>Testing Gemini Models from Server:</h3><pre>";
-    $candidates = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'];
-    $payload = json_encode(['contents' => [['parts' => [['text' => 'Ping. Return only OK']]]]]);
-
-    foreach ($candidates as $cand) {
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/" . urlencode($cand) . ":generateContent?key=" . urlencode($k);
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        if (defined('CURL_IPRESOLVE_V4')) curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 Track360');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        $res = curl_exec($ch);
-        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        echo "Model: $cand => HTTP $http\n";
-        if ($http === 200) {
-            $parsed = json_decode($res, true);
-            echo "   Success: " . trim($parsed['candidates'][0]['content']['parts'][0]['text'] ?? 'OK') . "\n";
-        } else {
-            $parsed = json_decode($res, true);
-            echo "   Error: " . ($parsed['error']['message'] ?? substr($res, 0, 100)) . "\n";
-        }
-    }
-    echo "</pre>";
-    exit;
-}
 
 
 
@@ -266,8 +233,8 @@ try {
         $defKey = base64_decode('QVEuQWI4Uk42SWZ4dExkVEVBRWFRSFFTRHcxaUZ6d2hDSUp2VFlhLV9MbEY3UWc0aTVJQQ==');
         set_setting('gemini_api_key', $defKey);
     }
-    if (!setting('gemini_model')) {
-        set_setting('gemini_model', 'gemini-3.8-flash');
+    if (!setting('gemini_model') || setting('gemini_model') === 'gemini-3.8-flash') {
+        set_setting('gemini_model', 'gemini-flash-latest');
     }
     $results[] = ["✨ AI Analyst: Configured Gemini Enterprise Engine & API key", "color:#a855f7;font-weight:bold"];
 } catch (Throwable $e) {}

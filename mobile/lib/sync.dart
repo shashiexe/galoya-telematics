@@ -97,6 +97,15 @@ class Sync {
       try {
         if (q['kind'] == 'duty') {
           await Api.post('duty', payload);
+        } else if (q['kind'] == 'sos') {
+          await Api.post('sos', payload);
+        } else if (q['kind'] == 'status_change' || q['kind'] == 'status' || q['kind'] == 'note') {
+          await Api.post('duty', {
+            'status': 'on',
+            'event_type': q['kind'],
+            'note': payload['status'] ?? payload['message'] ?? '',
+            't': payload['t'] ?? DateTime.now().millisecondsSinceEpoch,
+          });
         } else if (q['kind'] == 'photo' || q['kind'] == 'field_photo') {
           final f = File(q['file'] as String);
           if (!await f.exists()) { await LocalDb.dequeue(id); continue; }

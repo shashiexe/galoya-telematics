@@ -74,10 +74,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.3.1');
-        $latestBuild = (int)setting('latest_app_build', 14);
+        $latestVersion = setting('latest_app_version', '1.3.2');
+        $latestBuild = (int)setting('latest_app_build', 15);
         $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
-        $changelog = setting('app_update_changelog', "• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Compact emergency SOS button with confirmation dialog\n• Interactive full-screen pinch-to-zoom photo gallery viewer");
+        $changelog = setting('app_update_changelog', "• Emergency SOS / Push Panic Button: Instant direct transmission & offline sync\n• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Full-screen pinch-to-zoom field photo gallery viewer");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
@@ -456,15 +456,13 @@ try {
     }
 
     case 'sos': {
-        // body: {lat, lng, battery}
-        $u = null;
-        try {
-            $u = auth_user();
-        } catch (Throwable $e) {
+        // body: {lat, lng, battery, unit_id?, user_id?}
+        $u = get_auth_user();
+        if (!$u) {
             $b = body();
-            $simId = (int)($b['unit_id'] ?? ($_GET['unit_id'] ?? 0));
+            $simId = (int)($b['unit_id'] ?? ($_GET['unit_id'] ?? ($b['user_id'] ?? ($_GET['user_id'] ?? 0))));
             if ($simId > 0) {
-                $u = q('SELECT * FROM users WHERE id=? AND role="staff" AND active=1', [$simId])->fetch();
+                $u = q('SELECT * FROM users WHERE id=? AND active=1', [$simId])->fetch();
             }
         }
         if (!$u) fail('Unauthorized', 401);
@@ -474,10 +472,17 @@ try {
         $lng = (float)($b['lng'] ?? $u['last_lng'] ?? 81.6575);
         $bat = isset($b['battery']) ? (int)$b['battery'] : null;
 
-        q("INSERT INTO sos_alerts (user_id, lat, lng, battery, status) VALUES (?,?,?,?,'active')",
-          [$u['id'], $lat, $lng, $bat]);
-        q("UPDATE users SET sos_active=1, last_lat=?, last_lng=?, last_seen=NOW(), on_duty=1 WHERE id=?",
-          [$lat, $lng, $u['id']]);
+        try {
+            q("INSERT INTO sos_alerts (user_id, lat, lng, battery, status) VALUES (?,?,?,?,'active')",
+              [$u['id'], $lat, $lng, $bat]);
+        } catch (Throwable $e) {
+            error_log("SOS alert insert error: " . $e->getMessage());
+        }
+
+        try {
+            q("UPDATE users SET sos_active=1, last_lat=?, last_lng=?, last_seen=NOW(), on_duty=1 WHERE id=?",
+              [$lat, $lng, $u['id']]);
+        } catch (Throwable $e) {}
 
         // Add to notifications table for real-time alarm center
         try {
@@ -486,7 +491,12 @@ try {
               [$u['id'], "Emergency alarm triggered from mobile app on " . $u['name'], $lat, $lng]);
         } catch (Throwable $e) {}
 
-        out(['ok' => true, 'message' => 'EMERGENCY SOS transmitted to Control Room']);
+        out([
+            'ok' => true,
+            'message' => 'EMERGENCY SOS transmitted to Control Room',
+            'unit_id' => (int)$u['id'],
+            'unit_name' => $u['name']
+        ]);
     }
 
     case 'operation_mode': {

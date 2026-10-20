@@ -371,8 +371,9 @@
       var imgMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
       if (imgMatch) {
         var alt = escapeHtml(imgMatch[1]);
-        var url = escapeHtml(imgMatch[2]);
-        var cleanUrlJs = imgMatch[2].replace(/'/g, "\\'");
+        var rawUrl = imgMatch[2].replace(/\\/g, '/');
+        var url = escapeHtml(rawUrl);
+        var cleanUrlJs = rawUrl.replace(/'/g, "\\'");
         var cleanAltJs = imgMatch[1].replace(/'/g, "\\'");
         html.push(`
           <div class="ai-photo-card" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')">
@@ -405,9 +406,10 @@
     var imgPattern = /!\[(.*?)\]\((.*?)\)/g;
     if (imgPattern.test(str)) {
       return str.replace(/!\[(.*?)\]\((.*?)\)/g, function(m, alt, url) {
-        var cleanUrlJs = url.replace(/'/g, "\\'");
+        var rawUrl = url.replace(/\\/g, '/');
+        var cleanUrlJs = rawUrl.replace(/'/g, "\\'");
         var cleanAltJs = alt.replace(/'/g, "\\'");
-        return `<span class="ai-thumb-wrap" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')" title="${escapeHtml(alt)}"><img src="${escapeHtml(url)}" class="ai-chat-thumb" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='📷'"/></span>`;
+        return `<span class="ai-thumb-wrap" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')" title="${escapeHtml(alt)}"><img src="${escapeHtml(rawUrl)}" class="ai-chat-thumb" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='📷'"/></span>`;
       });
     }
     return inlineFormat(str);
@@ -425,9 +427,10 @@
 
     // Inline image match if any
     s = s.replace(/!\[(.*?)\]\((.*?)\)/g, function(m, alt, url) {
-      var cleanUrlJs = url.replace(/'/g, "\\'");
+      var rawUrl = url.replace(/\\/g, '/');
+      var cleanUrlJs = rawUrl.replace(/'/g, "\\'");
       var cleanAltJs = alt.replace(/'/g, "\\'");
-      return `<span class="ai-thumb-wrap" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')" title="${alt}"><img src="${url}" class="ai-chat-thumb" loading="lazy"/></span>`;
+      return `<span class="ai-thumb-wrap" onclick="openAILightbox('${cleanUrlJs}', '${cleanAltJs}')" title="${alt}"><img src="${rawUrl}" class="ai-chat-thumb" loading="lazy"/></span>`;
     });
 
     return s;

@@ -57,6 +57,7 @@ $filesToUpdate = [
     'admin/unit_properties.php' => 'backend/admin/unit_properties.php',
     'admin/units.php' => 'backend/admin/units.php',
     'admin/staff.php' => 'backend/admin/staff.php',
+    'admin/users.php' => 'backend/admin/users.php',
     'admin/tasks.php' => 'backend/admin/tasks.php',
     'admin/dashboard.php' => 'backend/admin/dashboard.php',
     'admin/assets/app.js' => 'backend/admin/assets/app.js',
@@ -213,10 +214,21 @@ try {
 } catch (Throwable $e) {}
 
 try {
-    set_setting('latest_app_version', '1.3.3');
-    set_setting('latest_app_build', '16');
-    set_setting('app_update_changelog', "• Anti-Drift: Stabilized GPS under solar panels & metal roofs (eliminates false walking/moving alerts)\n• Enhanced stationary anchor (< 25m locked to 0 km/h)\n• Instant Emergency SOS Panic Button\n• Full-screen pinch-to-zoom field photo gallery");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.3 (Build 16)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.4');
+    set_setting('latest_app_build', '17');
+    set_setting('app_update_changelog', "• Mobile Data Usage Monitor: Track today, this month, and all-time cellular bandwidth\n• Employer Telematics Oversight: Real-time data consumption sync to web dashboard\n• Web User Management: Role-Based Access Control (RBAC) with form-wise & button-wise restriction matrix\n• Anti-Drift: Stabilized GPS under solar panels & metal roofs\n• Instant Emergency SOS Panic Button");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.4 (Build 17)", "color:#38bdf8;font-weight:bold"];
+} catch (Throwable $e) {}
+
+// Web Users RBAC & Granular Permissions Migrations
+try {
+    @$pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN web_access TINYINT(1) NOT NULL DEFAULT 0 AFTER role");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN permissions_json LONGTEXT NULL");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME NULL");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45) NULL");
+    @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'");
+    $results[] = ["✅ Database: Ensured web users RBAC and permissions columns exist", "color:#10b981"];
 } catch (Throwable $e) {}
 
 // Emergency SOS & Real-time Notifications Tables

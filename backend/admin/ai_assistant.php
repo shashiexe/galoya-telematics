@@ -130,7 +130,7 @@ if ($action === 'chat') {
     $todayEnd = date('Y-m-d 23:59:59');
 
     // 1. Fetch active staff / units
-    $units = q("SELECT u.id, u.name, u.phone, u.role, u.unit_type, u.on_duty, u.battery, u.speed, u.last_seen, 
+    $units = q("SELECT u.id, u.name, u.phone, u.role, u.unit_type, u.on_duty, u.last_battery as battery, u.speed, u.last_seen, 
                        s.name as section_name, d.name as dept_name 
                 FROM users u 
                 LEFT JOIN sections s ON s.id=u.section_id 
@@ -203,7 +203,7 @@ if ($action === 'chat') {
     // 5. Fetch recent tasks
     $recentTasks = q("SELECT t.id, u.name as officer, t.title, t.status, t.due_date 
                       FROM tasks t 
-                      JOIN users u ON u.id=t.user_id 
+                      JOIN users u ON u.id=t.assigned_to 
                       WHERE $secScopeU 
                       ORDER BY t.created_at DESC LIMIT 10")->fetchAll();
 

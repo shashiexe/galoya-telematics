@@ -96,7 +96,7 @@ $sql = "SELECT u.*,
         LEFT JOIN departments dept ON dept.id = u.department_id
         LEFT JOIN sections sec ON sec.id = u.section_id
         LEFT JOIN drivers d ON d.assigned_unit_id = u.id
-        WHERE u.role = 'staff'";
+        WHERE u.role = 'staff' AND " . user_section_scope_sql('u');
 $params = [];
 
 if ($search !== '') {

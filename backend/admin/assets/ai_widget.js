@@ -44,7 +44,7 @@
         </div>
       </div>
 
-      <div class="ai-chips-bar">
+      <div class="ai-chips-bar" id="ai-chips-bar">
         <button class="ai-chip" data-q="Me mase mulu distance eka saha officers lage monthly performance analysis 1k table ekak widiyata denna">📅 This Month's Performance</button>
         <button class="ai-chip" data-q="Ada gaththa field photos tika table ekak widiyata pennanna">📸 Today's Field Photos</button>
         <button class="ai-chip" data-q="Ada dawase field duty summary 1k table ekak widiyata denna">🌾 Today's Duty Summary</button>
@@ -118,6 +118,25 @@
           dot.style.color = '#22c55e';
           txt.textContent = 'Online';
           txt.style.color = '#22c55e';
+
+          // If user is Super Admin, dynamically present Database & System Summary chip
+          if (data.is_super_admin && !document.getElementById('ai-chip-db')) {
+            var chipsBar = document.getElementById('ai-chips-bar');
+            if (chipsBar) {
+              var dbChip = document.createElement('button');
+              dbChip.className = 'ai-chip';
+              dbChip.id = 'ai-chip-db';
+              dbChip.setAttribute('data-q', 'Mulu database eke table summary eka saha system infrastructure report 1k table ekak widiyata denna');
+              dbChip.innerHTML = '🗄️ Full Database & System Summary';
+              dbChip.style.borderColor = '#8b5cf6';
+              dbChip.style.color = '#c084fc';
+              dbChip.addEventListener('click', function() {
+                input.value = dbChip.getAttribute('data-q');
+                submitQuestion(input.value);
+              });
+              chipsBar.insertBefore(dbChip, chipsBar.firstChild);
+            }
+          }
         } else {
           dot.style.color = '#f59e0b';
           txt.textContent = 'Attention';

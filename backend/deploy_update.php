@@ -210,10 +210,43 @@ try {
 } catch (Throwable $e) {}
 
 try {
-    set_setting('latest_app_version', '1.3.1');
-    set_setting('latest_app_build', '14');
-    set_setting('app_update_changelog', "• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Compact emergency SOS button with confirmation dialog\n• Interactive full-screen pinch-to-zoom photo gallery viewer");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.1 (Build 14)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.2');
+    set_setting('latest_app_build', '15');
+    set_setting('app_update_changelog', "• Emergency SOS / Push Panic Button: Instant direct transmission & offline sync\n• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Full-screen pinch-to-zoom field photo gallery viewer");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.2 (Build 15)", "color:#38bdf8;font-weight:bold"];
+} catch (Throwable $e) {}
+
+// Emergency SOS & Real-time Notifications Tables
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `sos_alerts` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `user_id` int(11) NOT NULL,
+      `lat` decimal(10,7) NOT NULL,
+      `lng` decimal(10,7) NOT NULL,
+      `battery` int(11) DEFAULT NULL,
+      `status` enum('active','resolved') NOT NULL DEFAULT 'active',
+      `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+      PRIMARY KEY (`id`),
+      KEY `user_id` (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `notifications` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `unit_id` int(11) NOT NULL,
+      `type` varchar(50) NOT NULL,
+      `title` varchar(150) NOT NULL,
+      `message` text NOT NULL,
+      `lat` decimal(10,7) DEFAULT NULL,
+      `lng` decimal(10,7) DEFAULT NULL,
+      `is_read` tinyint(1) NOT NULL DEFAULT 0,
+      `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+      PRIMARY KEY (`id`),
+      KEY `unit_id` (`unit_id`),
+      KEY `type` (`type`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    try { $pdo->exec("ALTER TABLE `users` ADD COLUMN `sos_active` tinyint(1) NOT NULL DEFAULT 0 AFTER `motion_state`"); } catch (Throwable $e) {}
+    $results[] = ["✅ Database: Ensured sos_alerts and notifications tables exist", "color:#10b981"];
 } catch (Throwable $e) {}
 
 // Departments, Sections, and Designations

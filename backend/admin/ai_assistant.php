@@ -427,8 +427,12 @@ CRITICAL PERIOD-AWARE INSTRUCTIONS:
         'status' => 'success',
         'answer' => $aiRes['text'],
         'model' => $aiRes['model'],
-        'row_count' => count($unitTelemetryToday),
-        'data' => $unitTelemetryToday
+        'row_count' => count($todayOfficerRankings),
+        'data' => [
+            'today' => $todayOfficerRankings,
+            'monthly' => $monthlyOfficerRankings,
+            'weekly' => $weeklyOfficerRankings
+        ]
     ]);
     exit;
 }

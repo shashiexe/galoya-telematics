@@ -309,7 +309,7 @@ if ($action === 'chat') {
             $sectionAggregation[$sec]['photos_this_month']++;
         }
         $plt = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot'))));
-        $pUrl = photo_url($ph['file_path']);
+        $pUrl = str_replace('\\', '/', photo_url($ph['file_path']));
 
         $formattedPhotos[] = [
             'id' => (int)$ph['id'],

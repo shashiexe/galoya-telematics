@@ -229,8 +229,8 @@ void _serviceMain(ServiceInstance service) async {
 
   final locationSettings = AndroidSettings(
     accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 0, // 0 = allow stationary updates without requiring 3m displacement
-    intervalDuration: const Duration(seconds: 1), // poll hardware stream every 1s
+    distanceFilter: 3, // Hardware-level micro-jitter suppression for indoor/roof stability
+    intervalDuration: const Duration(seconds: 2), // poll hardware stream every 2s
     foregroundNotificationConfig: const ForegroundNotificationConfig(
       notificationText: "Tracking vehicle & field operations 24/7",
       notificationTitle: "Galoya Telematics – GPS Active",
@@ -303,8 +303,9 @@ void _serviceMain(ServiceInstance service) async {
       final double headingDelta = (pos.heading - lastHeading).abs();
       final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
       final double elapsedSec = (now - lastTime) / 1000.0;
-      // Vehicle motion: either hardware speed sensor OR physical GPS displacement >= 12m
-      final bool isMoving = pos.speed > 0.8 || dist >= 12.0;
+      // Vehicle / Person motion: Requires both hardware speed >= 1.2 m/s (4.3 km/h) AND displacement >= 20m
+      // This prevents solar panels, metal roofs, and indoor multipath reflection from faking movement!
+      final bool isMoving = pos.speed >= 1.2 && dist >= 20.0;
 
       if (isMoving) {
         // If vehicle was parked, log parking_end upon motion resumption!
@@ -332,12 +333,12 @@ void _serviceMain(ServiceInstance service) async {
         }
 
         // MOVING RULES (Follow roads accurately & capture curves):
-        // A) Cornering / Turn: Heading changed >= 20 deg and moved >= 8m
-        if (normalizedAngle >= 20.0 && dist >= 8.0) {
+        // A) Cornering / Turn: Heading changed >= 20 deg and moved >= 10m
+        if (normalizedAngle >= 20.0 && dist >= 10.0) {
           shouldRecord = true;
         }
-        // B) Distance trigger: Moved >= 15 meters along road
-        else if (dist >= 15.0) {
+        // B) Distance trigger: Moved >= 20 meters along road
+        else if (dist >= 20.0) {
           shouldRecord = true;
         }
         // C) Max time elapsed: Interval reached (e.g. 15s)
@@ -369,9 +370,9 @@ void _serviceMain(ServiceInstance service) async {
           } catch (_) {}
         }
 
-        // Filter out small random GPS drifts under 16 meters!
-        if (dist >= 16.0) {
-          shouldRecord = true; // genuine motion resumed
+        // Filter out indoor / solar panel GPS bounce under 25 meters!
+        if (dist >= 25.0) {
+          shouldRecord = true; // genuine physical motion resumed
         } else if (elapsedSec >= 60.0) {
           shouldRecord = true; // 60-second stationary heartbeat
         }
@@ -383,10 +384,10 @@ void _serviceMain(ServiceInstance service) async {
           ? Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude)
           : 999.0;
       final double elapsed = lastTime > 0 ? ((now - lastTime) / 1000.0) : 1.0;
-      final bool isGenuineMotion = pos.speed > 0.8 || distFromLast >= 12.0;
-      final double computedKmh = elapsed > 0 ? ((distFromLast / elapsed) * 3.6) : 0.0;
+      final bool isGenuineMotion = pos.speed >= 1.2 && distFromLast >= 22.0;
+      final double computedKmh = (elapsed > 0 && distFromLast >= 22.0) ? ((distFromLast / elapsed) * 3.6) : 0.0;
       final double actualSpeedKmh = isGenuineMotion 
-          ? (pos.speed > 0.5 ? pos.speed * 3.6 : (computedKmh > 3.0 ? computedKmh : 0.0))
+          ? (pos.speed >= 1.2 ? pos.speed * 3.6 : (computedKmh >= 4.0 ? computedKmh : 0.0))
           : 0.0;
 
       lastLat = pos.latitude;

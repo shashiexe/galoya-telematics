@@ -62,19 +62,19 @@ layout_start('Settings', 'settings.php');
       </div>
     </div>
 
-    <label>Google Gemini API Key</label>
-    <div style="position:relative;display:flex;align-items:center">
-      <input type="password" id="gemini_key_input" name="gemini_api_key" value="<?= h($geminiKey) ?>" style="padding-right:40px;font-family:monospace;font-size:12px" placeholder="Enter AIzaSy... or AQ... key">
-      <button type="button" onclick="toggleKeyVis()" style="position:absolute;right:8px;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px" title="Show/Hide Key">👁️</button>
+    <label style="color:#e2e8f0;font-weight:600;font-size:13px;display:block;margin-bottom:6px">Google Gemini API Key</label>
+    <div style="position:relative;display:flex;align-items:center;margin-bottom:14px">
+      <input type="password" id="gemini_key_input" name="gemini_api_key" value="<?= h($geminiKey) ?>" style="background:#1e293b;color:#f8fafc;border:1px solid #475569;border-radius:8px;padding:9px 40px 9px 12px;font-family:monospace;font-size:13px;width:100%;box-sizing:border-box" placeholder="Enter AIzaSy... or AQ... key">
+      <button type="button" onclick="toggleKeyVis()" style="position:absolute;right:10px;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:15px" title="Show/Hide Key">👁️</button>
     </div>
 
-    <label style="margin-top:12px">Gemini Model Architecture</label>
-    <select name="gemini_model" id="gemini_model_select">
+    <label style="color:#e2e8f0;font-weight:600;font-size:13px;display:block;margin-bottom:6px">Gemini Model Architecture</label>
+    <select name="gemini_model" id="gemini_model_select" style="background:#1e293b;color:#f8fafc;border:1px solid #475569;border-radius:8px;padding:9px 12px;font-size:13px;width:100%;box-sizing:border-box;margin-bottom:16px">
       <option value="gemini-3.8-flash" <?= $geminiModel === 'gemini-3.8-flash' ? 'selected' : '' ?>>⚡ Gemini 3.8 Flash (Recommended · Ultra Fast & Accurate)</option>
       <option value="gemini-3.1-pro-preview" <?= $geminiModel === 'gemini-3.1-pro-preview' ? 'selected' : '' ?>>🧠 Gemini 3.1 Pro (Deep Analytical Reasoning)</option>
     </select>
 
-    <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
+    <div style="display:flex;gap:10px;align-items:center">
       <?php if (can('settings', 'save')): ?>
         <button class="btn" style="background:#2563eb">Save AI Config</button>
       <?php endif; ?>

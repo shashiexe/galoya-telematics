@@ -42,6 +42,25 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
+if (isset($_GET['test_chat'])) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_name('stafftrack_admin');
+        @session_start();
+    }
+    $_SESSION['admin_id'] = 1;
+    $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+    $_POST['action'] = 'chat';
+    $_POST['prompt'] = 'top distance filde officer kawda?';
+    
+    echo "<h3>Testing admin/ai_assistant.php chat execution:</h3><pre>";
+    $t0 = microtime(true);
+    include __DIR__ . '/admin/ai_assistant.php';
+    $t1 = microtime(true);
+    echo "\nTotal execution time: " . round($t1 - $t0, 2) . " s\n";
+    echo "</pre>";
+    exit;
+}
+
 
 
 

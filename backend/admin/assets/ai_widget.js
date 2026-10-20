@@ -29,21 +29,21 @@
       </div>
 
       <div class="ai-chips-bar">
+        <button class="ai-chip" data-q="Me mase mulu distance eka saha officers lage monthly performance analysis 1k table ekak widiyata denna">📅 This Month's Performance</button>
         <button class="ai-chip" data-q="Ada dawase field duty summary 1k table ekak widiyata denna">🌾 Today's Duty Summary</button>
         <button class="ai-chip" data-q="Ada dawase wadiyenma distance giya top 5 officers la kawda?">🚗 Top Distance Today</button>
-        <button class="ai-chip" data-q="Anthimata gaththa field visit photos saha ewaye plots monawada?">📸 Recent Plot Photos</button>
-        <button class="ai-chip" data-q="Me sathiye trigger una SOS alerts monawada? status kohomada?">⚠️ SOS Alerts History</button>
-        <button class="ai-chip" data-q="Section 1 saha Section 2 athara adha dawase active officers la compare karanna">📊 Compare Sections</button>
+        <button class="ai-chip" data-q="Me mase visit karapu plots saha field photos summary 1k denna">📸 Monthly Plot Visits</button>
+        <button class="ai-chip" data-q="Me mase sections athara distance saha field visits compare karanna">📊 Compare Sections (Month)</button>
       </div>
 
       <div class="ai-messages-area" id="ai-messages">
         <div class="ai-msg bot">
           <strong>👋 Ayubowan! I am your Track360 AI Analyst.</strong><br>
-          You can ask me <em>any</em> ad-hoc question or custom telematics report in <strong>Singlish, Sinhala, or English</strong>.<br><br>
+          You can ask me <em>any</em> ad-hoc question or custom telematics report for <strong>Today, Yesterday, This Week, or This Month</strong> in <strong>Singlish, Sinhala, or English</strong>.<br><br>
           <em>Examples:</em><br>
+          • <em>"Me mase wadiyenma distance giya top 5 officers la kawda?"</em><br>
           • <em>"Lasantha ada dawase visit karapu plots monawada?"</em><br>
-          • <em>"Section 1 eke paya 6kata wada wada karapu aya kawda?"</em><br>
-          • <em>"Giya sathiye wadiyenma battery drop una phones monawada?"</em>
+          • <em>"Section 1 saha Section 2 athara me mase performance compare karanna"</em>
         </div>
       </div>
 

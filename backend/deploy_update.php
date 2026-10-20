@@ -385,6 +385,30 @@ try {
     $results[] = ["✅ Ensured `users.unit_type` supports all roles (VARCHAR 50)", "color:#10b981"];
 } catch (Throwable $e) {}
 
+// Field Photos Deletion Audit Log Table
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `photo_delete_logs` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `photo_id` INT NULL,
+        `photo_type` VARCHAR(32) DEFAULT 'field',
+        `file_path` VARCHAR(255) NULL,
+        `officer_name` VARCHAR(128) NULL,
+        `officer_code` VARCHAR(64) NULL,
+        `plot_name` VARCHAR(128) NULL,
+        `taken_at` DATETIME NULL,
+        `note` TEXT NULL,
+        `deleted_by_name` VARCHAR(128) NOT NULL,
+        `deleted_by_id` INT NOT NULL,
+        `deleted_at` DATETIME NOT NULL,
+        `ip_address` VARCHAR(64) NULL,
+        `reason` VARCHAR(255) NULL,
+        KEY `idx_photo_id` (`photo_id`),
+        KEY `idx_deleted_at` (`deleted_at`),
+        KEY `idx_deleted_by` (`deleted_by_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    $results[] = ["✅ Database: Ensured photo_delete_logs audit trail table exists", "color:#10b981"];
+} catch (Throwable $e) {}
+
 // Speed telemetry points are recorded directly in km/h by mobile app and Teltonika GPS
 
 // Check Geofences Count & Auto-Seed if needed

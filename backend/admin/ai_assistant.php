@@ -12,8 +12,8 @@ if (!can('reports', 'view') && !is_super_admin()) {
 header('Content-Type: application/json; charset=utf-8');
 
 $apiKey = trim((string)setting('gemini_api_key', ''));
-$model = trim((string)setting('gemini_model', 'gemini-3.8-flash'));
-if (!$model) $model = 'gemini-3.8-flash';
+$model = trim((string)setting('gemini_model', 'gemini-flash-latest'));
+if (!$model || $model === 'gemini-3.8-flash') $model = 'gemini-flash-latest';
 
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'chat');
 

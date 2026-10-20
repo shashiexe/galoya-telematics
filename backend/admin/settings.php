@@ -28,7 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $iv = (int)setting('location_interval', 60);
 $geminiKey = (string)setting('gemini_api_key', '');
-$geminiModel = (string)setting('gemini_model', 'gemini-3.8-flash');
+$geminiModel = (string)setting('gemini_model', 'gemini-flash-latest');
+if (!$geminiModel || $geminiModel === 'gemini-3.8-flash') $geminiModel = 'gemini-flash-latest';
 
 layout_start('Settings', 'settings.php');
 ?>
@@ -70,7 +71,8 @@ layout_start('Settings', 'settings.php');
 
     <label style="color:#e2e8f0;font-weight:600;font-size:13px;display:block;margin-bottom:6px">Gemini Model Architecture</label>
     <select name="gemini_model" id="gemini_model_select" style="background:#1e293b;color:#f8fafc;border:1px solid #475569;border-radius:8px;padding:9px 12px;font-size:13px;width:100%;box-sizing:border-box;margin-bottom:16px">
-      <option value="gemini-3.8-flash" <?= $geminiModel === 'gemini-3.8-flash' ? 'selected' : '' ?>>⚡ Gemini 3.8 Flash (Recommended · Ultra Fast & Accurate)</option>
+      <option value="gemini-flash-latest" <?= $geminiModel === 'gemini-flash-latest' ? 'selected' : '' ?>>⚡ Gemini Flash Latest (Recommended · Fast, Reliable & Live)</option>
+      <option value="gemini-3.5-flash" <?= $geminiModel === 'gemini-3.5-flash' ? 'selected' : '' ?>>🌾 Gemini 3.5 Flash (Stable Telematics Engine)</option>
       <option value="gemini-3.1-pro-preview" <?= $geminiModel === 'gemini-3.1-pro-preview' ? 'selected' : '' ?>>🧠 Gemini 3.1 Pro (Deep Analytical Reasoning)</option>
     </select>
 

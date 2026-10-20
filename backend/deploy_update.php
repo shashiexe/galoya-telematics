@@ -49,14 +49,13 @@ if (isset($_GET['test_ai'])) {
     }
     $testRole = $_GET['test_role'] ?? 'admin';
     if ($testRole === 'manager' || $testRole === 'supervisor' || $testRole === 'staff') {
-        $nonAdmin = q("SELECT id, name, role FROM users WHERE role != 'admin' AND (web_access=1 OR role='staff') LIMIT 1")->fetch();
-        if ($nonAdmin) {
-            $_SESSION['admin_id'] = (int)$nonAdmin['id'];
-            $_SESSION['admin_user'] = $nonAdmin;
-        } else {
-            $_SESSION['admin_id'] = 22;
-            $_SESSION['admin_user'] = ['id' => 22, 'name' => 'Field Officer', 'role' => 'staff'];
+        $testSup = q("SELECT id, name, role FROM users WHERE phone='demo_supervisor' LIMIT 1")->fetch();
+        if (!$testSup) {
+            @q("INSERT INTO users (name, phone, role, web_access, unit_type, section_id, active) VALUES ('Demo Field Supervisor', 'demo_supervisor', 'supervisor', 1, 'staff', 1, 1)");
+            $testSup = q("SELECT id, name, role FROM users WHERE phone='demo_supervisor' LIMIT 1")->fetch();
         }
+        $_SESSION['admin_id'] = (int)$testSup['id'];
+        $_SESSION['admin_user'] = $testSup;
     } else {
         $_SESSION['admin_id'] = 1;
         $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];

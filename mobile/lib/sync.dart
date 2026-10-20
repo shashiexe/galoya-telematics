@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'config.dart';
+import 'data_usage.dart';
 import 'db.dart';
 
 /// Effective GPS interval (seconds): staff's own choice if allowed, else server value.
@@ -79,11 +80,14 @@ class Sync {
     while (true) {
       final rows = await LocalDb.points(batch);
       if (rows.isEmpty) return;
+      final stats = await DataUsage.getStats();
+      final totalKb = ((stats['total_bytes'] as int) / 1024).round();
       await Api.post('locations', {
         'points': rows.map((r) => {
               'lat': r['lat'], 'lng': r['lng'], 'accuracy': r['accuracy'],
               'speed': r['speed'], 'battery': r['battery'], 't': r['t'],
             }).toList(),
+        'data_traffic_kb': totalKb,
       });
       await LocalDb.deletePointsUpTo(rows.last['id'] as int);
       if (rows.length < batch) return;

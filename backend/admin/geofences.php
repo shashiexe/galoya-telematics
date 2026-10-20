@@ -76,12 +76,14 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'single_gf') {
 // Handle POST: Create or Update Group / Zone
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_group') {
     check_csrf();
+    $groupId = (int)($_POST['group_id'] ?? 0);
+    require_perm('geofences', $groupId > 0 ? 'edit' : 'create');
+
     $cat = trim($_POST['category'] ?? 'Plantation');
     $name = trim($_POST['name'] ?? '');
     $code = trim($_POST['code'] ?? '');
     $color = trim($_POST['color'] ?? '#10b981');
     $desc = trim($_POST['description'] ?? '');
-    $groupId = (int)($_POST['group_id'] ?? 0);
 
     if ($name) {
         if ($groupId > 0) {
@@ -110,6 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Handle POST: Delete Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_group') {
     check_csrf();
+    require_perm('geofences', 'delete');
     $groupId = (int)($_POST['group_id'] ?? 0);
     $gName = q("SELECT name FROM geofence_groups WHERE id=?", [$groupId])->fetchColumn();
     if ($gName) {
@@ -129,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Handle POST: Create Single Geofence
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_geofence') {
     check_csrf();
+    require_perm('geofences', 'create');
     $name = trim($_POST['name'] ?? '');
     $code = trim($_POST['code'] ?? $name);
     $cat = trim($_POST['category'] ?? 'Plantation');
@@ -202,6 +206,7 @@ function parse_kml_to_geofences(string $kmlContent, string $fallbackName = 'Sect
 // Handle bulk KML / KMZ import
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'import_kml') {
     check_csrf();
+    require_perm('geofences', 'create');
     $cat = trim($_POST['category'] ?? 'Plantation');
     $targetGroup = trim($_POST['target_group'] ?? '');
     $customColor = trim($_POST['color'] ?? '');
@@ -273,6 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Handle delete single geofence
 if (isset($_GET['delete'])) {
     check_csrf();
+    require_perm('geofences', 'delete');
     q("DELETE FROM geofences WHERE id=?", [(int)$_GET['delete']]);
     flash('Geofence deleted.');
     header('Location: geofences.php');
@@ -694,12 +700,14 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
 
     <!-- Top Action Toolbar -->
     <div class="w-gf-toolbar">
-      <button type="button" class="btn-wialon-blue" id="btn-toolbar-new" onclick="handleToolbarNew()">
-        + New
-      </button>
-      <button type="button" class="btn-wialon-light" onclick="openKmlModal()" title="Bulk Upload Google Earth KML / KMZ files">
-        📥 Import KML
-      </button>
+      <?php if (can('geofences', 'create')): ?>
+        <button type="button" class="btn-wialon-blue" id="btn-toolbar-new" onclick="handleToolbarNew()">
+          + New
+        </button>
+        <button type="button" class="btn-wialon-light" onclick="openKmlModal()" title="Bulk Upload Google Earth KML / KMZ files">
+          📥 Import KML
+        </button>
+      <?php endif; ?>
       <button type="button" class="btn-wialon-light" onclick="toggleSortOrder()" title="Sort A-Z">
         A↓
       </button>
@@ -766,7 +774,9 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
               <div class="w-actions-cell">
                 <span title="Units inside" style="font-size:11px;color:#64748b;display:inline-flex;align-items:center;gap:2px">🚍 0</span>
                 <button type="button" class="w-act-btn" onclick="zoomToSingleGf(<?= $g['id'] ?>)" title="View on map">🔍</button>
-                <a href="geofences.php?delete=<?= $g['id'] ?>&csrf=<?= csrf() ?>" onclick="return confirm('Delete geofence <?= h($g['name']) ?>?')" class="w-act-btn del" title="Delete">✕</a>
+                <?php if (can('geofences', 'delete')): ?>
+                  <a href="geofences.php?delete=<?= $g['id'] ?>&csrf=<?= csrf() ?>" onclick="return confirm('Delete geofence <?= h($g['name']) ?>?')" class="w-act-btn del" title="Delete">✕</a>
+                <?php endif; ?>
               </div>
             </div>
           </div>
@@ -813,9 +823,15 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
               </div>
 
               <div class="w-actions-cell">
-                <button type="button" class="w-act-btn" onclick="openKmlModalForGroup('<?= h(addslashes($gr['name'])) ?>', '<?= h($gr['category']) ?>')" title="Import KML into this zone">📥</button>
-                <button type="button" class="w-act-btn" onclick="openEditGroupModal(<?= htmlspecialchars(json_encode($gr)) ?>)" title="Zone Properties & Color">⚙</button>
-                <button type="button" class="w-act-btn del" onclick="confirmDeleteGroup(<?= $gr['id'] ?>, '<?= h(addslashes($gr['name'])) ?>')" title="Delete Zone">✕</button>
+                <?php if (can('geofences', 'create')): ?>
+                  <button type="button" class="w-act-btn" onclick="openKmlModalForGroup('<?= h(addslashes($gr['name'])) ?>', '<?= h($gr['category']) ?>')" title="Import KML into this zone">📥</button>
+                <?php endif; ?>
+                <?php if (can('geofences', 'edit')): ?>
+                  <button type="button" class="w-act-btn" onclick="openEditGroupModal(<?= htmlspecialchars(json_encode($gr)) ?>)" title="Zone Properties & Color">⚙</button>
+                <?php endif; ?>
+                <?php if (can('geofences', 'delete')): ?>
+                  <button type="button" class="w-act-btn del" onclick="confirmDeleteGroup(<?= $gr['id'] ?>, '<?= h(addslashes($gr['name'])) ?>')" title="Delete Zone">✕</button>
+                <?php endif; ?>
               </div>
             </div>
 

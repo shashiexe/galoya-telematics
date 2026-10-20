@@ -77,6 +77,17 @@ function gemini_generate_content(string $apiKey, array $models, array $payload, 
     return ['success' => false, 'error' => $lastErr];
 }
 
+// 0. Action: Quick Online Status Check
+if ($action === 'status_check') {
+    echo json_encode([
+        'status' => 'ok',
+        'online' => true,
+        'ai_ready' => !empty($apiKey),
+        'model' => $model
+    ]);
+    exit;
+}
+
 // 1. Action: Test Key Connectivity
 if ($action === 'test_key') {
     $testKey = trim((string)($_POST['api_key'] ?? $apiKey));
@@ -281,7 +292,9 @@ if ($action === 'chat') {
     usort($weeklyOfficerRankings, fn($a, $b) => $b['week_distance_km'] <=> $a['week_distance_km']);
 
     // 3. Fetch field visit photos for this month
-    $photos = q("SELECT p.id, u.name as officer, s.name as section, p.geofence_name as plot, p.activity_type, p.note, p.taken_at 
+    $photos = q("SELECT p.id, p.user_id, p.file_path, u.name as officer, s.name as section, 
+                        p.selected_geofence, p.auto_geofence, p.geofence_name, 
+                        p.activity_type, p.note, p.taken_at, p.lat, p.lng 
                  FROM field_photos p 
                  JOIN users u ON u.id=p.user_id 
                  LEFT JOIN sections s ON s.id=u.section_id 
@@ -289,12 +302,28 @@ if ($action === 'chat') {
                  ORDER BY p.taken_at DESC", [$monthStart])->fetchAll();
 
     $distinctPlotsMonth = [];
+    $formattedPhotos = [];
     foreach ($photos as $ph) {
         $sec = $ph['section'] ?: 'General';
         if (isset($sectionAggregation[$sec])) {
             $sectionAggregation[$sec]['photos_this_month']++;
         }
-        $plt = trim((string)$ph['plot']);
+        $plt = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot'))));
+        $pUrl = photo_url($ph['file_path']);
+
+        $formattedPhotos[] = [
+            'id' => (int)$ph['id'],
+            'officer' => $ph['officer'],
+            'section' => $sec,
+            'plot' => $plt,
+            'activity_type' => $ph['activity_type'] ?: 'Field Visit',
+            'note' => $ph['note'] ?: '',
+            'taken_at' => $ph['taken_at'],
+            'time' => date('H:i', strtotime($ph['taken_at'])),
+            'date' => substr($ph['taken_at'], 0, 10),
+            'photo_url' => $pUrl
+        ];
+
         if ($plt) {
             if (!isset($distinctPlotsMonth[$plt])) {
                 $distinctPlotsMonth[$plt] = [
@@ -302,7 +331,8 @@ if ($action === 'chat') {
                     'visit_count' => 0,
                     'officers' => [],
                     'activities' => [],
-                    'latest_date' => $ph['taken_at']
+                    'latest_date' => $ph['taken_at'],
+                    'sample_photo_url' => $pUrl
                 ];
             }
             $distinctPlotsMonth[$plt]['visit_count']++;
@@ -355,7 +385,8 @@ if ($action === 'chat') {
         'ranked_officers_past_7_days' => $weeklyOfficerRankings,
         'section_performance_this_month' => array_values($sectionAggregation),
         'plots_inspected_this_month' => array_values($distinctPlotsMonth),
-        'recent_field_photos' => array_slice($photos, 0, 20),
+        'today_field_photos' => array_values(array_filter($formattedPhotos, fn($p) => $p['date'] === date('Y-m-d'))),
+        'latest_field_photos' => array_slice($formattedPhotos, 0, 25),
         'emergency_sos_alerts' => $sosAlerts,
         'assigned_tasks' => $recentTasks
     ];
@@ -389,8 +420,15 @@ CRITICAL PERIOD-AWARE INSTRUCTIONS:
 4. THIS WEEK / PAST 7 DAYS ('me sathiya', 'this week', 'last 7 days'):
    - Use `ranked_officers_past_7_days`.
 
-5. PLOTS & FIELD VISITS:
-   - Use `plots_inspected_this_month` and `recent_field_photos` to name specific plots, officer names, and activity types (Land Prep, Field Visit, Cane Inspection).
+5. PHOTOS & FIELD VISITS ('photos', 'photos pennanna', 'ada gaththa photos', 'plot photos', etc.):
+   - When the user asks to see photos, or asks what photos were taken:
+   - You MUST display the actual images using Markdown Image format:
+     `![Plot Name - Officer (Time)](photo_url)`
+   - Always put them inside a clean Markdown Table:
+     | Photo | Plot | Officer | Activity | Time | Note |
+     | ![{plot} - {officer}]({photo_url}) | **{plot}** | {officer} | {activity_type} | {time} | {note} |
+   - Use the exact `photo_url` provided in `latest_field_photos` or `today_field_photos`.
+   - If user asks for photos of a specific officer (e.g. Nimesh, Viraj), filter from `latest_field_photos` and show that officer's photos!
 
 6. GENERAL OR COMPARISON QUESTIONS:
    - If user asks a general question, synthesize both today's active status and this month's overall achievements.

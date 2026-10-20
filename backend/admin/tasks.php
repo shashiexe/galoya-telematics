@@ -55,7 +55,7 @@ $departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY
 $sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY name ASC")->fetchAll();
 
 // CSV export / filters
-$where = ['1=1']; 
+$where = [user_section_scope_sql('u')]; 
 $p = [];
 if (!empty($_GET['status'])) { $where[] = 't.status=?'; $p[] = $_GET['status']; }
 if (!empty($_GET['user'])) { $where[] = 't.assigned_to=?'; $p[] = (int)$_GET['user']; }
@@ -89,12 +89,13 @@ if (isset($_GET['csv'])) {
     exit;
 }
 
+$secScopeU = user_section_scope_sql('u');
 $staff = q("SELECT u.id, u.name, u.code, u.department_id, u.section_id, u.designation,
                    d.name dept_name, s.name sec_name 
             FROM users u 
             LEFT JOIN departments d ON d.id=u.department_id 
             LEFT JOIN sections s ON s.id=u.section_id 
-            WHERE u.role='staff' AND u.active=1 
+            WHERE u.role='staff' AND u.active=1 AND $secScopeU
             ORDER BY u.name")->fetchAll();
 
 layout_start('Tasks & Assignments', 'tasks.php', true);

@@ -42,54 +42,6 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
-if (isset($_GET['test_chat'])) {
-    $k = setting('gemini_api_key');
-    echo "<h3>Testing Chat Call Directly:</h3><pre>";
-    $prompt = "top distance filde officer kawda?";
-    $sys = "You are Track360 AI Analyst for GalOya Plantations. Given table `users` with columns `id, name, speed, battery, last_seen`. Write a SQL query or answer directly. Return JSON: {\"sql\": \"SELECT ...\"}";
-    
-    foreach (['gemini-flash-latest', 'gemini-3.5-flash'] as $m) {
-        foreach ([true, false] as $withJsonMime) {
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/" . urlencode($m) . ":generateContent?key=" . urlencode($k);
-            $genConfig = ['temperature' => 0.1];
-            if ($withJsonMime) $genConfig['responseMimeType'] = 'application/json';
-            
-            $payload = json_encode([
-                'contents' => [
-                    ['role' => 'user', 'parts' => [['text' => "$sys\n\nQuestion: $prompt"]]]
-                ],
-                'generationConfig' => $genConfig
-            ]);
-            
-            $t0 = microtime(true);
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            if (defined('CURL_IPRESOLVE_V4')) curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 Track360');
-            curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-            $res = curl_exec($ch);
-            $err = curl_error($ch);
-            $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            $elapsed = round(microtime(true) - $t0, 2);
-            
-            echo "Model: $m | JSON Mime: " . ($withJsonMime ? "YES" : "NO") . " => HTTP $http in {$elapsed}s\n";
-            if ($http === 200) {
-                $p = json_decode($res, true);
-                echo "   Text: " . substr(trim($p['candidates'][0]['content']['parts'][0]['text'] ?? ''), 0, 150) . "\n\n";
-            } else {
-                echo "   Error: $err | " . substr($res, 0, 100) . "\n\n";
-            }
-        }
-    }
-    echo "</pre>";
-    exit;
-}
 
 
 
@@ -282,10 +234,8 @@ try {
         $defKey = base64_decode('QVEuQWI4Uk42SWZ4dExkVEVBRWFRSFFTRHcxaUZ6d2hDSUp2VFlhLV9MbEY3UWc0aTVJQQ==');
         set_setting('gemini_api_key', $defKey);
     }
-    if (!setting('gemini_model') || setting('gemini_model') === 'gemini-3.8-flash') {
-        set_setting('gemini_model', 'gemini-flash-latest');
-    }
-    $results[] = ["✨ AI Analyst: Configured Gemini Enterprise Engine & API key", "color:#a855f7;font-weight:bold"];
+    set_setting('gemini_model', 'gemini-3.5-flash');
+    $results[] = ["✨ AI Analyst: Configured Gemini 3.5 Flash Enterprise Engine & API key", "color:#a855f7;font-weight:bold"];
 } catch (Throwable $e) {}
 
 // Web Users RBAC & Granular Permissions Migrations

@@ -85,7 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
 // -----------------------------------------------------------------------------
 // Parameters & Filter Setup
 // -----------------------------------------------------------------------------
-$staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
+$secScopeUsers = user_section_scope_sql('users');
+$staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
 
 $uid = isset($_GET['user']) && $_GET['user'] !== '' ? (int)$_GET['user'] : null;
 $from_dt = $_GET['from'] ?? date('Y-m-d 00:00:00', strtotime('-7 days'));
@@ -118,7 +119,8 @@ try {
     $auditLogs = q("SELECT * FROM photo_delete_logs ORDER BY id DESC LIMIT 50")->fetchAll();
 } catch (Throwable $e) {}
 
-// Build queries for field_photos and task_photos
+// Build queries for field_photos and task_photos scoped by assigned section
+$secScopeU = user_section_scope_sql('u');
 $params1 = [$from_dt, $to_dt];
 $params2 = [$from_dt, $to_dt];
 
@@ -132,7 +134,7 @@ $sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geo
          JOIN users u ON u.id = fp.user_id
          LEFT JOIN departments d ON d.id = u.department_id
          LEFT JOIN sections s ON s.id = u.section_id
-         WHERE fp.taken_at BETWEEN ? AND ?";
+         WHERE fp.taken_at BETWEEN ? AND ? AND $secScopeU";
 
 $sql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng, 
                 CONCAT('Task #', tp.task_id, ' (', tp.type, ')', IF(t.title IS NOT NULL, CONCAT(' - ', t.title), '')) as note, 
@@ -147,7 +149,7 @@ $sql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng,
          LEFT JOIN departments d ON d.id = u.department_id
          LEFT JOIN sections s ON s.id = u.section_id
          LEFT JOIN tasks t ON t.id = tp.task_id
-         WHERE tp.taken_at BETWEEN ? AND ?";
+         WHERE tp.taken_at BETWEEN ? AND ? AND $secScopeU";
 
 if ($uid) {
     $sql1 .= " AND fp.user_id = ?";

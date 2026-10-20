@@ -42,6 +42,38 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
+if (isset($_GET['test_gemini_server'])) {
+    $k = setting('gemini_api_key');
+    echo "<h3>Testing Gemini from Server CLI:</h3><pre>";
+    echo "Key in DB: " . ($k ? "SET (length: " . strlen($k) . ")" : "EMPTY") . "\n";
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" . urlencode($k);
+    $payload = json_encode(['contents' => [['parts' => [['text' => 'Ping. Return only OK']]]]]);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    if (defined('CURL_IPRESOLVE_V4')) {
+        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    }
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 Track360');
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    $res = curl_exec($ch);
+    $err = curl_error($ch);
+    $errno = curl_errno($ch);
+    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    echo "HTTP Code: $http\n";
+    echo "cURL Errno: $errno\n";
+    echo "cURL Error: $err\n";
+    echo "Response:\n" . htmlspecialchars($res) . "\n";
+    echo "</pre>";
+    exit;
+}
+
 
 
 $filesToUpdate = [

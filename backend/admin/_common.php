@@ -40,6 +40,12 @@ function is_admin(): bool {
     return $u && ($u['role'] ?? '') === 'admin';
 }
 
+function is_super_admin(): bool {
+    $u = admin();
+    if (!$u) return false;
+    return ($u['role'] ?? '') === 'admin';
+}
+
 function user_permissions(): array {
     $u = admin();
     if (!$u) return [];

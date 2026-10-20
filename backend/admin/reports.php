@@ -173,7 +173,8 @@ if ($report_type === 'staff_audit') {
             'location' => $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot')),
             'details' => $ph['note'] ?: 'Field documentation',
             'battery' => '—',
-            'remarks' => 'Auto: ' . ($ph['auto_geofence'] ?: '—') . ' | Confirmed: ' . ($ph['selected_geofence'] ?: '—')
+            'remarks' => 'Auto: ' . ($ph['auto_geofence'] ?: '—') . ' | Confirmed: ' . ($ph['selected_geofence'] ?: '—'),
+            'file_path' => $ph['file_path'] ?? ''
         ];
     }
 
@@ -324,9 +325,105 @@ if ($report_type === 'staff_audit') {
             'location' => $t['location'],
             'details' => $t['details'],
             'battery' => $t['battery'],
-            'remarks' => $t['remarks']
+            'remarks' => $t['remarks'],
+            'file_path' => $t['file_path'] ?? ''
         ];
     }
+
+    // Calculate Executive Audit Summary for Selected Staff
+    $firstOnTime = null;
+    $lastOffTime = null;
+    foreach ($dutyRows as $dl) {
+        $et = $dl['event_type'] ?: ($dl['status'] === 'on' ? 'tracking_on' : 'tracking_off');
+        if (($et === 'tracking_on' || $dl['status'] === 'on') && !$firstOnTime) {
+            $firstOnTime = $dl['at'];
+        }
+        if ($et === 'tracking_off' || $dl['status'] === 'off') {
+            $lastOffTime = $dl['at'];
+        }
+    }
+
+    // Fallbacks if formal tracking_on/off wasn't explicitly logged in duty_logs
+    if (!$firstOnTime && !empty($pts)) {
+        $firstOnTime = $pts[0]['recorded_at'];
+    }
+    if (!$firstOnTime && !empty($dutyRows)) {
+        $firstOnTime = $dutyRows[0]['at'];
+    }
+
+    $isCurrentlyActive = false;
+    if (!empty($pts)) {
+        $latestPingTime = end($pts)['recorded_at'];
+        if (!$lastOffTime) {
+            if (time() - strtotime($latestPingTime) <= 2700) {
+                $isCurrentlyActive = true;
+            } else {
+                $lastOffTime = $latestPingTime;
+            }
+        }
+    }
+
+    $dutyDurStr = '—';
+    if ($firstOnTime) {
+        $endTs = $lastOffTime ? strtotime($lastOffTime) : time();
+        $diffSec = max(0, $endTs - strtotime($firstOnTime));
+        $dH = floor($diffSec / 3600);
+        $dM = round(($diffSec % 3600) / 60);
+        $dutyDurStr = ($dH > 0 ? "{$dH}h " : "") . "{$dM}m";
+    }
+
+    // Field Visit Time Window & Plots
+    $firstVisitTime = null;
+    $lastVisitTime = null;
+    $plotsVisited = [];
+    if (!empty($photos)) {
+        $firstVisitTime = $photos[0]['taken_at'];
+        $lastVisitTime = end($photos)['taken_at'];
+        foreach ($photos as $ph) {
+            $pName = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
+            if ($pName !== '') $plotsVisited[$pName] = true;
+        }
+    }
+
+    $visitWindowStr = 'No visits logged';
+    if ($firstVisitTime && $lastVisitTime) {
+        $vSec = max(0, strtotime($lastVisitTime) - strtotime($firstVisitTime));
+        $vH = floor($vSec / 3600);
+        $vM = round(($vSec % 3600) / 60);
+        $vDur = ($vH > 0 ? "{$vH}h " : "") . "{$vM}m";
+        if (date('h:i A', strtotime($firstVisitTime)) === date('h:i A', strtotime($lastVisitTime))) {
+            $visitWindowStr = date('h:i A', strtotime($firstVisitTime));
+        } else {
+            $visitWindowStr = date('h:i A', strtotime($firstVisitTime)) . ' – ' . date('h:i A', strtotime($lastVisitTime)) . " ({$vDur})";
+        }
+    }
+
+    // Battery levels
+    $battStart = null;
+    $battEnd = null;
+    if (!empty($pts)) {
+        foreach ($pts as $p) {
+            if (isset($p['battery']) && $p['battery'] !== null && $p['battery'] !== '') {
+                if ($battStart === null) $battStart = (int)$p['battery'];
+                $battEnd = (int)$p['battery'];
+            }
+        }
+    }
+
+    $staffAuditSummary = [
+        'first_on' => $firstOnTime,
+        'last_off' => $lastOffTime,
+        'is_active' => $isCurrentlyActive,
+        'duty_duration' => $dutyDurStr,
+        'first_visit' => $firstVisitTime,
+        'last_visit' => $lastVisitTime,
+        'visit_window' => $visitWindowStr,
+        'plots_visited' => array_keys($plotsVisited),
+        'photo_count' => count($photos),
+        'photos' => $photos,
+        'batt_start' => $battStart,
+        'batt_end' => $battEnd
+    ];
 
     $summary['total_mileage'] = round($totalKm, 1);
     $summary['max_speed'] = round($maxSpd, 1);
@@ -750,47 +847,47 @@ layout_start('Reports & Tracking Audit', 'reports.php');
   </form>
 </div>
 
-<!-- Summary Stat Cards -->
-<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;margin-bottom:16px">
+<!-- Compact Single-Line KPI Summary Strip -->
+<div class="card" style="margin-bottom:12px;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03)">
   <?php if ($report_type === 'field_visits'): ?>
-    <div class="card" style="padding:14px;border-left:4px solid #0284c7">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Total Plot Visits</div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['total_visits'] ?> <span style="font-size:14px;color:#64748b">visits</span></div>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🌾 Total Plot Visits:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $summary['total_visits'] ?></span>
     </div>
-    <div class="card" style="padding:14px;border-left:4px solid #16a34a">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Distinct Plots Visited</div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['distinct_plots'] ?> <span style="font-size:14px;color:#64748b">plots</span></div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">📍 Distinct Plots:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= $summary['distinct_plots'] ?></span>
     </div>
-    <div class="card" style="padding:14px;border-left:4px solid #f59e0b">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Active Field Officers</div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['active_officers'] ?> <span style="font-size:14px;color:#64748b">staff</span></div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">👨‍🌾 Active Officers:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 10px;border-radius:12px"><?= $summary['active_officers'] ?></span>
     </div>
-    <div class="card" style="padding:14px;border-left:4px solid #9333ea">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Observations Logged</div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= $summary['total_notes'] ?> <span style="font-size:14px;color:#64748b">notes</span></div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">📝 Observations:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#9333ea;background:#faf5ff;border:1px solid #e9d5ff;padding:2px 10px;border-radius:12px"><?= $summary['total_notes'] ?></span>
     </div>
   <?php else: ?>
-    <div class="card" style="padding:14px;border-left:4px solid #0284c7">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">
-        <?= $report_type === 'staff_audit' ? 'Total Distance' : 'Distance Tracked' ?>
-      </div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= round($summary['total_mileage'], 1) ?> <span style="font-size:14px;color:#64748b">km</span></div>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🛣️ <?= $report_type === 'staff_audit' ? 'Total Distance' : 'Distance Tracked' ?>:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= round($summary['total_mileage'], 1) ?> km</span>
     </div>
-    <div class="card" style="padding:14px;border-left:4px solid #16a34a">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Activities & Events</div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= count($report_rows) ?></div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">⚡ Activities & Events:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= count($report_rows) ?></span>
     </div>
-    <div class="card" style="padding:14px;border-left:4px solid #f59e0b">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">Operating Time</div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px"><?= round($summary['total_hours'], 1) ?> <span style="font-size:14px;color:#64748b">hrs</span></div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">⏱️ Operating Time:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 10px;border-radius:12px"><?= round($summary['total_hours'], 1) ?> hrs</span>
     </div>
-    <div class="card" style="padding:14px;border-left:4px solid #9333ea">
-      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">
-        <?= $report_type === 'staff_audit' ? 'Max Speed' : 'Fleet Utilization' ?>
-      </div>
-      <div style="font-size:24px;font-weight:800;color:#0f172a;margin-top:4px">
-        <?= $report_type === 'staff_audit' ? round($summary['max_speed'], 1) . ' km/h' : count($report_rows) . ' Secs' ?>
-      </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🚀 <?= $report_type === 'staff_audit' ? 'Max Speed' : 'Fleet Utilization' ?>:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#9333ea;background:#faf5ff;border:1px solid #e9d5ff;padding:2px 10px;border-radius:12px"><?= $report_type === 'staff_audit' ? round($summary['max_speed'], 1) . ' km/h' : count($report_rows) . ' Secs' ?></span>
     </div>
   <?php endif; ?>
 </div>
@@ -879,6 +976,127 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </tbody>
     </table>
   </div>
+</div>
+<?php endif; ?>
+
+<?php if ($report_type === 'staff_audit' && !empty($staffAuditSummary)): ?>
+<!-- Staff Audit Executive Duty & Field Visit Summary Card -->
+<div class="card" style="padding:14px 18px;margin-bottom:14px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px">
+  <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div>
+      <span style="font-size:11px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:0.5px">👨‍🌾 Officer Duty & Field Inspection Audit Summary</span>
+      <h3 style="margin:2px 0 0 0;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:8px">
+        <?= h($staffUser['name'] ?? 'Staff Member') ?>
+        <?php if (!empty($staffUser['code'])): ?>
+          <span style="font-size:12px;color:#64748b;font-weight:normal">(Code: <code><?= h($staffUser['code']) ?></code>)</span>
+        <?php endif; ?>
+        <?php if (!empty($staffUser['sec_name'])): ?>
+          <span style="font-size:12px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-weight:600"><?= h($staffUser['sec_name']) ?></span>
+        <?php endif; ?>
+      </h3>
+    </div>
+    <div style="font-size:12px;color:#64748b">
+      Audit Date: <strong><?= date('Y-m-d', strtotime($date_from)) ?></strong>
+    </div>
+  </div>
+
+  <!-- 4-Box Key Duty Metrics -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:12px">
+    <!-- Box 1: On Time -->
+    <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #16a34a">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">🟢 Tracking ON (Duty Start)</div>
+      <div style="font-size:16px;font-weight:800;color:#166534;margin-top:2px">
+        <?= $staffAuditSummary['first_on'] ? date('h:i:s A', strtotime($staffAuditSummary['first_on'])) : '—' ?>
+      </div>
+      <div style="font-size:10.5px;color:#94a3b8">
+        <?= $staffAuditSummary['first_on'] ? date('Y-m-d', strtotime($staffAuditSummary['first_on'])) : 'No duty start record' ?>
+      </div>
+    </div>
+
+    <!-- Box 2: Off Time -->
+    <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #dc2626">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">🔴 Tracking OFF (Duty End)</div>
+      <div style="font-size:16px;font-weight:800;color:#991b1b;margin-top:2px">
+        <?php if ($staffAuditSummary['is_active']): ?>
+          <span style="color:#16a34a">🟢 Active On Duty</span>
+        <?php elseif ($staffAuditSummary['last_off']): ?>
+          <?= date('h:i:s A', strtotime($staffAuditSummary['last_off'])) ?>
+        <?php else: ?>
+          —
+        <?php endif; ?>
+      </div>
+      <div style="font-size:10.5px;color:#94a3b8">
+        <?= $staffAuditSummary['last_off'] ? date('Y-m-d', strtotime($staffAuditSummary['last_off'])) : ($staffAuditSummary['is_active'] ? 'Live connection' : '—') ?>
+      </div>
+    </div>
+
+    <!-- Box 3: Total Duty Time -->
+    <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #0284c7">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">⏱️ Shift / Work Duration</div>
+      <div style="font-size:16px;font-weight:800;color:#0369a1;margin-top:2px">
+        <?= $staffAuditSummary['duty_duration'] ?>
+      </div>
+      <div style="font-size:10.5px;color:#94a3b8">Total active shift time</div>
+    </div>
+
+    <!-- Box 4: Field Visit Period -->
+    <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #8b5cf6">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">🌾 Field Visit Window</div>
+      <div style="font-size:14px;font-weight:800;color:#6d28d9;margin-top:2px">
+        <?= $staffAuditSummary['visit_window'] ?>
+      </div>
+      <div style="font-size:10.5px;color:#94a3b8">
+        <?= $staffAuditSummary['photo_count'] ?> Inspection Photo(s) taken
+      </div>
+    </div>
+  </div>
+
+  <!-- Plots Visited and Device Info -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:8px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11.5px;font-weight:700;color:#475569">📍 Plots Inspected:</span>
+      <?php if (!empty($staffAuditSummary['plots_visited'])): ?>
+        <?php foreach ($staffAuditSummary['plots_visited'] as $plotName): ?>
+          <span style="background:#f0fdf4;border:1px solid #86efac;color:#166534;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:4px">
+            🌾 <?= h($plotName) ?>
+          </span>
+        <?php endforeach; ?>
+      <?php else: ?>
+        <span style="font-size:11.5px;color:#94a3b8;font-style:italic">No plot geofence tags recorded today</span>
+      <?php endif; ?>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:11.5px;color:#64748b">
+      <?php if ($staffAuditSummary['batt_start'] !== null && $staffAuditSummary['batt_end'] !== null): ?>
+        <span>🔋 Battery: <strong><?= $staffAuditSummary['batt_start'] ?>% ➔ <?= $staffAuditSummary['batt_end'] ?>%</strong> (<?= $staffAuditSummary['batt_end'] - $staffAuditSummary['batt_start'] ?>%)</span>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- Photo Evidence Strip if photos exist -->
+  <?php if (!empty($staffAuditSummary['photos'])): ?>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1">
+      <div style="font-size:11.5px;font-weight:700;color:#475569;margin-bottom:6px">
+        📷 Field Visit Photos Analyzed (<?= count($staffAuditSummary['photos']) ?>):
+      </div>
+      <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px">
+        <?php foreach ($staffAuditSummary['photos'] as $ph): 
+          $pPlot = $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot'));
+        ?>
+          <div style="position:relative;flex-shrink:0;text-align:center;background:#fff;border:1px solid #cbd5e1;padding:4px;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.05)">
+            <a href="javascript:void(0)" onclick="openLightbox('download_photo.php?file=<?= urlencode($ph['file_path']) ?>', '<?= h(addslashes($staffUser['name'] ?? 'Staff')) ?> | <?= h(addslashes($pPlot)) ?> (<?= h(date('h:i A', strtotime($ph['taken_at']))) ?>)')" title="Click to enlarge photo">
+              <img src="download_photo.php?file=<?= urlencode($ph['file_path']) ?>" style="width:68px;height:68px;object-fit:cover;border-radius:4px;display:block">
+            </a>
+            <div style="font-size:10.5px;font-weight:700;color:#166534;margin-top:3px;max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= h($pPlot) ?>">
+              <?= h($pPlot) ?>
+            </div>
+            <div style="font-size:9.5px;color:#64748b">
+              <?= date('h:i A', strtotime($ph['taken_at'])) ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  <?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -1056,7 +1274,19 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                   <?php endif; ?>
                 </td>
                 <td style="padding:10px 14px;font-size:12px;color:#334155"><?= h($row['location'] ?? '—') ?></td>
-                <td style="padding:10px 14px;color:#0f172a"><?= h($row['details'] ?? '—') ?></td>
+                <td style="padding:10px 14px;color:#0f172a">
+                  <?= h($row['details'] ?? '—') ?>
+                  <?php if (!empty($row['file_path'])): ?>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+                      <a href="javascript:void(0)" onclick="openLightbox('download_photo.php?file=<?= urlencode($row['file_path']) ?>', '<?= h(addslashes($sName)) ?> | <?= h(addslashes($row['location'] ?? '')) ?> (<?= h($row['time']) ?>)')" title="Click to view photo">
+                        <img src="download_photo.php?file=<?= urlencode($row['file_path']) ?>" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+                      </a>
+                      <a href="javascript:void(0)" onclick="openLightbox('download_photo.php?file=<?= urlencode($row['file_path']) ?>', '<?= h(addslashes($sName)) ?> | <?= h(addslashes($row['location'] ?? '')) ?> (<?= h($row['time']) ?>)')" style="font-size:11px;color:#0284c7;font-weight:700;text-decoration:none">
+                        🔍 View Photo
+                      </a>
+                    </div>
+                  <?php endif; ?>
+                </td>
                 <td style="padding:10px 14px;text-align:center;font-weight:700;color:#0284c7"><?= h($row['battery'] ?? '—') ?></td>
                 <td style="padding:10px 14px;font-size:11.5px;color:#64748b"><?= h($row['remarks'] ?? '—') ?></td>
 

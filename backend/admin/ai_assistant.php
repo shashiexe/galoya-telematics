@@ -79,11 +79,15 @@ function gemini_generate_content(string $apiKey, array $models, array $payload, 
 
 // 0. Action: Quick Online Status Check
 if ($action === 'status_check') {
+    $u = admin();
     echo json_encode([
         'status' => 'ok',
         'online' => true,
         'ai_ready' => !empty($apiKey),
-        'model' => $model
+        'model' => $model,
+        'is_super_admin' => is_super_admin(),
+        'user_name' => $u['name'] ?? 'User',
+        'user_role' => $u['role'] ?? 'staff'
     ]);
     exit;
 }
@@ -127,12 +131,19 @@ if ($action === 'chat') {
         exit;
     }
 
-    // Check user section scope
+    // Check user identity & section scope
+    $currentUser = admin();
+    $isSuperAdmin = is_super_admin();
+    $currentUserName = $currentUser['name'] ?? 'Authorized User';
+    $currentUserRole = $currentUser['role'] ?? 'staff';
+
     $secScopeU = user_section_scope_sql('u');
     $accessibleSections = user_accessible_section_ids();
-    $scopeDesc = $accessibleSections === null 
-        ? "Super Admin / Global Access (All divisions and sections)" 
-        : "Restricted to Section IDs: (" . implode(', ', $accessibleSections) . ")";
+    $scopeDesc = $isSuperAdmin 
+        ? "Super Administrator / Full Global System Access (All database tables, system infrastructure, and plantation divisions)" 
+        : ($accessibleSections === null 
+            ? "Global Field Telematics Access (All divisions and sections)" 
+            : "Restricted to Section IDs: (" . implode(', ', $accessibleSections) . ")");
 
     // -------------------------------------------------------------------------
     // INSTANT MULTI-PERIOD TELEMATICS ENGINE (Today, Yesterday, Week, & Month)
@@ -359,10 +370,80 @@ if ($action === 'chat') {
                       WHERE $secScopeU AND t.created_at >= ? 
                       ORDER BY t.created_at DESC LIMIT 15", [$monthStart])->fetchAll();
 
+    // 6. Comprehensive Database & System Infrastructure (SUPER ADMIN EXCLUSIVE)
+    $systemInfrastructure = null;
+    if ($isSuperAdmin) {
+        try {
+            $totalGeofences = (int)q("SELECT COUNT(*) FROM geofences")->fetchColumn();
+            $geofenceSectors = q("SELECT COALESCE(gg.name, 'General / Ungrouped') as sector, COUNT(g.id) as plot_count 
+                                  FROM geofences g 
+                                  LEFT JOIN geofence_groups gg ON gg.id=g.group_id 
+                                  GROUP BY gg.name ORDER BY plot_count DESC")->fetchAll();
+            $totalLocations = (int)q("SELECT COUNT(*) FROM locations")->fetchColumn();
+            $totalPhotosAllTime = (int)q("SELECT COUNT(*) FROM field_photos")->fetchColumn();
+            $totalSosAllTime = (int)q("SELECT COUNT(*) FROM sos_alerts")->fetchColumn();
+            $totalTasksAllTime = (int)q("SELECT COUNT(*) FROM tasks")->fetchColumn();
+            $totalUsersAllTime = (int)q("SELECT COUNT(*) FROM users")->fetchColumn();
+
+            $usersByRole = q("SELECT role, COUNT(*) as total_accounts, 
+                                     SUM(CASE WHEN active=1 THEN 1 ELSE 0 END) as active_accounts,
+                                     SUM(CASE WHEN web_access=1 THEN 1 ELSE 0 END) as web_access_accounts
+                              FROM users GROUP BY role")->fetchAll();
+
+            $webAccounts = q("SELECT id, name, phone as username, role, active, last_login_at, last_login_ip 
+                              FROM users 
+                              WHERE role='admin' OR web_access=1 
+                              ORDER BY role ASC, name ASC")->fetchAll();
+
+            $photoDeleteAudit = q("SELECT l.id, u.name as deleted_by, l.photo_id, l.reason, l.deleted_at 
+                                   FROM photo_delete_logs l 
+                                   LEFT JOIN users u ON u.id=l.deleted_by 
+                                   ORDER BY l.deleted_at DESC LIMIT 15")->fetchAll();
+
+            $deptsStructure = q("SELECT d.name as department, s.name as section 
+                                 FROM sections s 
+                                 JOIN departments d ON d.id=s.department_id 
+                                 ORDER BY d.name ASC, s.name ASC")->fetchAll();
+
+            $systemInfrastructure = [
+                'authorized_super_admin' => $currentUserName,
+                'system_health' => 'All Services Operational (Live)',
+                'database_table_record_counts' => [
+                    'geofences_plots_total' => $totalGeofences,
+                    'telemetry_gps_points_total' => $totalLocations,
+                    'field_photos_total' => $totalPhotosAllTime,
+                    'users_registered_total' => $totalUsersAllTime,
+                    'sos_alerts_total' => $totalSosAllTime,
+                    'tasks_total' => $totalTasksAllTime,
+                    'active_field_staff' => count($units)
+                ],
+                'geofence_sectors_breakdown' => $geofenceSectors,
+                'user_accounts_by_role' => $usersByRole,
+                'web_admin_users' => $webAccounts,
+                'photo_deletion_audit_trail' => $photoDeleteAudit,
+                'company_departments_and_sections' => $deptsStructure,
+                'system_telemetry_settings' => [
+                    'mobile_app_version' => (string)setting('app_version', '1.3.4'),
+                    'mobile_app_build' => (string)setting('app_build_number', '17'),
+                    'ai_engine_model' => $model,
+                    'tracking_interval_seconds' => (int)setting('tracking_interval', 10),
+                    'geofence_matching_engine' => 'High-Precision Point-in-Polygon (Ray Casting) + True Boundary Distance',
+                    'server_php_version' => PHP_VERSION,
+                    'server_time' => date('Y-m-d H:i:s')
+                ]
+            ];
+        } catch (Throwable $e) {
+            $systemInfrastructure = ['error' => 'Database query error: ' . $e->getMessage()];
+        }
+    }
+
     // Multi-Period Context Package for Gemini
     $liveContext = [
         'current_time_sl' => date('Y-m-d H:i:s'),
         'current_month' => date('F Y'),
+        'user_name' => $currentUserName,
+        'user_role' => $currentUserRole,
+        'is_super_admin' => $isSuperAdmin,
         'user_scope' => $scopeDesc,
         'monthly_overview' => [
             'period' => date('F 01, Y') . ' to ' . date('F d, Y'),
@@ -388,8 +469,38 @@ if ($action === 'chat') {
         'today_field_photos' => array_values(array_filter($formattedPhotos, fn($p) => $p['date'] === date('Y-m-d'))),
         'latest_field_photos' => array_slice($formattedPhotos, 0, 25),
         'emergency_sos_alerts' => $sosAlerts,
-        'assigned_tasks' => $recentTasks
+        'assigned_tasks' => $recentTasks,
+        'system_infrastructure_and_database' => $systemInfrastructure
     ];
+
+    $roleAccessRule = $isSuperAdmin ? "
+SECURITY & PERMISSION LEVEL: VERIFIED SUPER ADMINISTRATOR ($currentUserName)
+- You have UNRESTRICTED PERMISSION to analyze and report on the ENTIRE DATABASE and SYSTEM INFRASTRUCTURE:
+  1. Complete Database Analysis:
+     - Exact record counts of all database tables (5,036 geofence plots, total GPS coordinates, total field photos, user accounts, SOS alerts, tasks).
+     - Geofence sectors breakdown (plot counts in each sector).
+     - User accounts by role (admins, managers, supervisors, field staff) and web access users.
+     - Photo deletion audit logs (`photo_deletion_audit_trail` - who deleted photos and reasons).
+     - Company organizational hierarchy (departments and sections).
+     - System & telemetry configuration (mobile APK version v1.3.4 Build 17, tracking intervals, AI model, server status).
+  2. Plantation-Wide Field Telematics:
+     - All sections, all officers, plot visits, distance rankings, and field photos.
+- When Super Admin asks about the database, table statistics, server settings, user roles, or audit trails, give clear, comprehensive technical and executive reports with Markdown Tables." : "
+SECURITY & PERMISSION LEVEL: FIELD / OPERATIONS USER ($currentUserName, Role: $currentUserRole)
+CRITICAL ACCESS RESTRICTION:
+- This user is NOT a Super Administrator.
+- You are ONLY PERMITTED to analyze and provide FIELD DETAILS:
+  - Field Officers' movement, distance rankings, duty hours, battery, and online/offline status.
+  - Plots visited and agricultural field activities.
+  - Field inspection photos taken by officers.
+  - Field tasks assigned to officers.
+  - Section comparisons within the field scope.
+- STRICT SECURITY RULE - SYSTEM DETAILS ARE FORBIDDEN:
+  - If this user asks for system configurations, database internals, table counts, server settings, admin accounts, API keys, or audit logs:
+  - You MUST POLITELY REFUSE in Sinhala Singlish (or English).
+  - Explicit response: State clearly that:
+    'Mema system / infrastructure thorathuru laba gatha hakke Super Administrator warunta pamanai. Obata field officers, plots, geofences, photos ho duty wisthara sambandhawa onama tharathurak laba diya haka.'
+  - Immediately offer to provide any field-level information (today's officer attendance, distance, plot visits, or field photos) instead.";
 
     // Single-turn super prompt with complete Multi-Period Telematics awareness:
     $systemInstruction = "You are Track360 AI Analyst for GalOya Plantations (Hingurana, Sri Lanka).
@@ -398,10 +509,12 @@ Current Local Time: " . date('Y-m-d H:i:s') . ".
 Current Month: " . date('F Y') . ".
 User access scope: $scopeDesc.
 
-LIVE REAL-TIME TELEMATICS MULTI-PERIOD DATASET:
+$roleAccessRule
+
+LIVE REAL-TIME TELEMATICS & DATABASE DATASET:
 " . json_encode($liveContext, JSON_PRETTY_PRINT) . "
 
-CRITICAL PERIOD-AWARE INSTRUCTIONS:
+CRITICAL PERIOD-AWARE & REPORTING INSTRUCTIONS:
 1. THIS MONTH ('me mase', 'this month', 'current month', 'monthly analysis', 'October mase', 'mase summary', etc.):
    - Use `monthly_overview`, `ranked_officers_this_month`, `section_performance_this_month`, and `plots_inspected_this_month`!
    - State clearly that this is the comprehensive report for THIS MONTH (" . date('F Y') . ").
@@ -430,8 +543,11 @@ CRITICAL PERIOD-AWARE INSTRUCTIONS:
    - Use the exact `photo_url` provided in `latest_field_photos` or `today_field_photos`.
    - If user asks for photos of a specific officer (e.g. Nimesh, Viraj), filter from `latest_field_photos` and show that officer's photos!
 
-6. GENERAL OR COMPARISON QUESTIONS:
-   - If user asks a general question, synthesize both today's active status and this month's overall achievements.
+6. DATABASE & SYSTEM OVERVIEW (For Super Admin inquiries like 'database', 'system summary', 'mulu database eka', 'geofences kiyak thiyenawada', 'admin accounts', 'audit logs'):
+   - If user is Super Admin: Present a comprehensive database and infrastructure summary with tables:
+     | Component / Table | Total Records | Details |
+     Detail total geofences (5,036), sectors breakdown, total GPS records, field photos, user roles, APK version, and audit trails.
+   - If user is NOT Super Admin: Follow the critical access restriction and politely decline.
 
 7. Language & Tone:
    - Reply naturally in professional Sinhala Singlish (or English if the user asked in English).

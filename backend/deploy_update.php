@@ -225,10 +225,11 @@ try {
     @$pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
     @$pdo->exec("ALTER TABLE users ADD COLUMN web_access TINYINT(1) NOT NULL DEFAULT 0 AFTER role");
     @$pdo->exec("ALTER TABLE users ADD COLUMN permissions_json LONGTEXT NULL");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN section_ids VARCHAR(255) NULL AFTER section_id");
     @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME NULL");
     @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45) NULL");
     @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'");
-    $results[] = ["✅ Database: Ensured web users RBAC and permissions columns exist", "color:#10b981"];
+    $results[] = ["✅ Database: Ensured web users RBAC, permissions and multi-section scoping columns exist", "color:#10b981"];
 } catch (Throwable $e) {}
 
 // Emergency SOS & Real-time Notifications Tables

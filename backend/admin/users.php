@@ -449,7 +449,7 @@ layout_start('Web User Management', 'users.php');
                 'reports'       => ['📋 Telematics Reports', ['view' => 'Run Reports', 'export' => 'Export CSV/Excel']],
                 'drivers'       => ['👨‍✈️ Driver Management', ['view' => 'View Drivers', 'create' => 'Add Driver', 'edit' => 'Edit Driver', 'delete' => 'Delete Driver']],
                 'history'       => ['↝ Tracks & Playback', ['view' => 'Play Tracks', 'export' => 'Export KML']],
-                'photos'        => ['📷 Field Photos Gallery', ['view' => 'View Photos', 'download' => 'Download Photos']],
+                'photos'        => ['📷 Field Photos Gallery', ['view' => 'View Photos', 'delete' => 'Delete Photos', 'download' => 'Download Photos']],
                 'messages'      => ['💬 Staff Messages', ['view' => 'Read Messages', 'send' => 'Send Message']],
                 'notifications' => ['🔔 Alarms & SOS Alerts', ['view' => 'View Alarms', 'resolve' => 'Clear / Resolve SOS']],
                 'staff'         => ['👥 Mobile Staff Directory', ['view' => 'View Staff', 'create' => 'Add Staff', 'edit' => 'Edit Staff', 'delete' => 'Delete Staff']],

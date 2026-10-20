@@ -8,6 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($act === 'save') {
             $id = (int)($_POST['id'] ?? 0);
+            require_perm('staff', $id > 0 ? 'edit' : 'create');
             $name = trim($_POST['name']); 
             $phone = trim($_POST['phone']);
             $role = ($_POST['role'] ?? 'staff') === 'admin' ? 'admin' : 'staff';
@@ -36,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('Staff member added successfully');
             }
         } elseif ($act === 'toggle') {
+            require_perm('staff', 'edit');
             $id = (int)$_POST['id'];
             if ($id !== (int)$me['id']) {
                 q('UPDATE users SET active=1-active WHERE id=?', [$id]);
@@ -43,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             flash('Status changed');
         } elseif ($act === 'add_dept') {
+            require_perm('staff', 'edit');
             $dName = trim($_POST['dept_name'] ?? '');
             $dCode = trim($_POST['dept_code'] ?? '');
             if ($dName) {
@@ -50,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash("Department '$dName' created");
             }
         } elseif ($act === 'add_sec') {
+            require_perm('staff', 'edit');
             $sName = trim($_POST['sec_name'] ?? '');
             $sCode = trim($_POST['sec_code'] ?? '');
             $dId = !empty($_POST['sec_dept_id']) ? (int)$_POST['sec_dept_id'] : null;
@@ -58,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash("Section '$sName' created");
             }
         } elseif ($act === 'add_desig') {
+            require_perm('staff', 'edit');
             $desName = trim($_POST['desig_name'] ?? '');
             $desCode = trim($_POST['desig_code'] ?? '');
             if ($desName) {
@@ -65,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash("Designation '$desName' created");
             }
         } elseif ($act === 'del_master') {
+            require_perm('staff', 'delete');
             $type = $_POST['type'] ?? '';
             $itemId = (int)($_POST['item_id'] ?? 0);
             if ($type === 'dept' && $itemId) {
@@ -95,10 +101,10 @@ $designations = q("SELECT * FROM designations WHERE active=1 ORDER BY name ASC")
 
 $edit = isset($_GET['edit']) ? q('SELECT * FROM users WHERE id=?', [(int)$_GET['edit']])->fetch() : null;
 
-// Filter staff list
+// Filter staff list by user section scope
 $filterDept = (int)($_GET['dept'] ?? 0);
 $filterSec = (int)($_GET['sec'] ?? 0);
-$where = ["1=1"];
+$where = [user_section_scope_sql('u')];
 $params = [];
 if ($filterDept) { $where[] = "u.department_id=?"; $params[] = $filterDept; }
 if ($filterSec) { $where[] = "u.section_id=?"; $params[] = $filterSec; }
@@ -140,9 +146,11 @@ layout_start('Staff & Organization Management', 'staff.php');
     </form>
   </div>
 
-  <button class="btn ghost sm" onclick="document.getElementById('org-modal').style.display='flex'">
-    🏢 Manage Departments & Sections
-  </button>
+  <?php if (can('staff', 'edit')): ?>
+    <button class="btn ghost sm" onclick="document.getElementById('org-modal').style.display='flex'">
+      🏢 Manage Departments & Sections
+    </button>
+  <?php endif; ?>
 </div>
 
 <div class="grid" style="grid-template-columns:1fr 360px;align-items:start;gap:18px">
@@ -204,10 +212,14 @@ layout_start('Staff & Organization Management', 'staff.php');
               <span style="color:#10b981;font-weight:600"><?= (int)$u['done'] ?> Done</span>
             </td>
             <td style="padding:10px 14px;text-align:right;white-space:nowrap">
-              <a class="btn ghost sm" href="?edit=<?= $u['id'] ?>">Edit</a>
-              <?php if ($u['id'] != $me['id']): ?>
-              <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="toggle"><input type="hidden" name="id" value="<?= $u['id'] ?>">
-                <button class="btn sm <?= $u['active'] ? 'red' : '' ?>" style="padding:3px 8px;font-size:11px"><?= $u['active'] ? 'Disable' : 'Enable' ?></button></form>
+              <?php if (can('staff', 'edit')): ?>
+                <a class="btn ghost sm" href="?edit=<?= $u['id'] ?>">Edit</a>
+                <?php if ($u['id'] != $me['id']): ?>
+                <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="toggle"><input type="hidden" name="id" value="<?= $u['id'] ?>">
+                  <button class="btn sm <?= $u['active'] ? 'red' : '' ?>" style="padding:3px 8px;font-size:11px"><?= $u['active'] ? 'Disable' : 'Enable' ?></button></form>
+                <?php endif; ?>
+              <?php else: ?>
+                <span style="color:#94a3b8;font-size:11px">—</span>
               <?php endif; ?>
             </td>
           </tr>
@@ -221,60 +233,68 @@ layout_start('Staff & Organization Management', 'staff.php');
   </div>
 
   <!-- Add / Edit Staff Form -->
-  <form method="post" class="card" id="staff-form" style="padding:18px">
-    <h3 style="margin:0 0 14px 0;font-size:15px;color:#1e293b"><?= $edit ? 'Edit Staff / User' : 'Add New Staff Member' ?></h3>
-    <?= csrf_field() ?>
-    <input type="hidden" name="act" value="save">
-    <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
+  <?php if (($edit && can('staff', 'edit')) || (!$edit && can('staff', 'create'))): ?>
+    <form method="post" class="card" id="staff-form" style="padding:18px">
+      <h3 style="margin:0 0 14px 0;font-size:15px;color:#1e293b"><?= $edit ? 'Edit Staff / User' : 'Add New Staff Member' ?></h3>
+      <?= csrf_field() ?>
+      <input type="hidden" name="act" value="save">
+      <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Full Name *</label>
-    <input name="name" required value="<?= h($edit['name'] ?? '') ?>" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Full Name *</label>
+      <input name="name" required value="<?= h($edit['name'] ?? '') ?>" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Phone / Login Mobile *</label>
-    <input name="phone" required value="<?= h($edit['phone'] ?? '') ?>" placeholder="077xxxxxxx" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Phone / Login Mobile *</label>
+      <input name="phone" required value="<?= h($edit['phone'] ?? '') ?>" placeholder="077xxxxxxx" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Department</label>
-    <select name="department_id" id="user-dept" onchange="filterSectionsByDept()" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-      <option value="">Select Department...</option>
-      <?php foreach ($departments as $d): ?>
-        <option value="<?= $d['id'] ?>" <?= ((int)($edit['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?> (<?= h($d['code'] ?: 'Dept') ?>)</option>
-      <?php endforeach; ?>
-    </select>
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Department</label>
+      <select name="department_id" id="user-dept" onchange="filterSectionsByDept()" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        <option value="">Select Department...</option>
+        <?php foreach ($departments as $d): ?>
+          <option value="<?= $d['id'] ?>" <?= ((int)($edit['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?> (<?= h($d['code'] ?: 'Dept') ?>)</option>
+        <?php endforeach; ?>
+      </select>
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Section</label>
-    <select name="section_id" id="user-sec" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-      <option value="">Select Section...</option>
-      <?php foreach ($sections as $s): ?>
-        <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= ((int)($edit['section_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
-          <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
-        </option>
-      <?php endforeach; ?>
-    </select>
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Section</label>
+      <select name="section_id" id="user-sec" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        <option value="">Select Section...</option>
+        <?php foreach ($sections as $s): ?>
+          <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= ((int)($edit['section_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
+            <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Designation / Role</label>
-    <select name="designation_id" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-      <option value="">Select Designation...</option>
-      <?php foreach ($designations as $ds): ?>
-        <option value="<?= $ds['id'] ?>" <?= ((int)($edit['designation_id'] ?? 0) === (int)$ds['id']) ? 'selected' : '' ?>><?= h($ds['name']) ?></option>
-      <?php endforeach; ?>
-    </select>
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Designation / Role</label>
+      <select name="designation_id" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        <option value="">Select Designation...</option>
+        <?php foreach ($designations as $ds): ?>
+          <option value="<?= $ds['id'] ?>" <?= ((int)($edit['designation_id'] ?? 0) === (int)$ds['id']) ? 'selected' : '' ?>><?= h($ds['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">System Access Role</label>
-    <select name="role" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-      <option value="staff" <?= ($edit['role'] ?? '') === 'staff' ? 'selected' : '' ?>>Staff (Mobile App User)</option>
-      <option value="admin" <?= ($edit['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin (Web Control Room)</option>
-    </select>
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">System Access Role</label>
+      <select name="role" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+        <option value="staff" <?= ($edit['role'] ?? '') === 'staff' ? 'selected' : '' ?>>Staff (Mobile App User)</option>
+        <option value="admin" <?= ($edit['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin (Web Control Room)</option>
+      </select>
 
-    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
-      Password <?= $edit ? '<span style="font-weight:normal;color:#94a3b8">(leave blank to keep unchanged)</span>' : '*' ?>
-    </label>
-    <input name="password" type="password" <?= $edit ? '' : 'required' ?> placeholder="••••••••" style="width:100%;margin-bottom:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
+        Password <?= $edit ? '<span style="font-weight:normal;color:#94a3b8">(leave blank to keep unchanged)</span>' : '*' ?>
+      </label>
+      <input name="password" type="password" <?= $edit ? '' : 'required' ?> placeholder="••••••••" style="width:100%;margin-bottom:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
 
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1" id="save-staff"><?= $edit ? 'Save Changes' : 'Create User' ?></button>
-      <?php if ($edit): ?><a class="btn ghost" href="staff.php">Cancel</a><?php endif; ?>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="flex:1" id="save-staff"><?= $edit ? 'Save Changes' : 'Create User' ?></button>
+        <?php if ($edit): ?><a class="btn ghost" href="staff.php">Cancel</a><?php endif; ?>
+      </div>
+    </form>
+  <?php else: ?>
+    <div class="card" style="padding:28px 20px;text-align:center;color:#64748b;font-size:12px">
+      <div style="font-size:32px;margin-bottom:8px">🛡️</div>
+      <strong style="color:#1e293b;font-size:13.5px;display:block">Staff Management Restricted</strong>
+      <div style="margin-top:6px;line-height:1.5">You have read-only permissions for staff directory.<br>Please contact an Administrator to modify personnel profiles.</div>
     </div>
-  </form>
+  <?php endif; ?>
 </div>
 
 <!-- Modal: Master Management (Departments, Sections, Designations) -->

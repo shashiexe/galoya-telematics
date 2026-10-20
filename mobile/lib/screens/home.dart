@@ -1050,10 +1050,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (ctx) {
-          return FadeTransition(
-            opacity: anim,
-            child: Scaffold(
-              backgroundColor: Colors.transparent,
+            return Scaffold(
+              backgroundColor: const Color(0xff0b0f19),
               body: SafeArea(
                 child: Stack(
                   children: [

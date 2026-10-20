@@ -234,8 +234,8 @@ try {
         $defKey = base64_decode('QVEuQWI4Uk42SWZ4dExkVEVBRWFRSFFTRHcxaUZ6d2hDSUp2VFlhLV9MbEY3UWc0aTVJQQ==');
         set_setting('gemini_api_key', $defKey);
     }
-    set_setting('gemini_model', 'gemini-3.5-flash');
-    $results[] = ["✨ AI Analyst: Configured Gemini 3.5 Flash Enterprise Engine & API key", "color:#a855f7;font-weight:bold"];
+    set_setting('gemini_model', 'gemini-3.1-flash-lite');
+    $results[] = ["✨ AI Analyst: Configured Gemini 3.1 Flash-Lite Engine (<1s response) & API key", "color:#a855f7;font-weight:bold"];
 } catch (Throwable $e) {}
 
 // Web Users RBAC & Granular Permissions Migrations

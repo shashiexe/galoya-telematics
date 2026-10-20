@@ -42,9 +42,32 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
+if (isset($_GET['test_ai'])) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_name('stafftrack_admin');
+        @session_start();
+    }
+    $_SESSION['admin_id'] = 1;
+    $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+    $_POST['action'] = 'chat';
+    $_POST['prompt'] = $_GET['prompt'] ?? 'Ada dawase wadiyenma distance giya top 5 officers la kawda?';
 
-
-
+    echo "<h3>Testing admin/ai_assistant.php execution:</h3><pre>";
+    try {
+        ob_start();
+        include __DIR__ . '/admin/ai_assistant.php';
+        $out = ob_get_clean();
+        echo "SUCCESS! AI Response Output:\n\n";
+        echo htmlspecialchars($out);
+    } catch (Throwable $e) {
+        if (ob_get_level() > 0) ob_end_clean();
+        echo "CAUGHT EXCEPTION: " . $e->getMessage() . "\n";
+        echo "File: " . $e->getFile() . " Line: " . $e->getLine() . "\n";
+        echo "Trace:\n" . $e->getTraceAsString() . "\n";
+    }
+    echo "</pre>";
+    exit;
+}
 
 $filesToUpdate = [
     'bootstrap.php' => 'backend/bootstrap.php',

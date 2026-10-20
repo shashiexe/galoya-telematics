@@ -113,6 +113,12 @@ if ($action === 'save') {
     $consumption_rate = (float)($input['consumption_rate'] ?? 10);
     $speed_limit = (int)($input['speed_limit'] ?? 60);
 
+    if (!can('units', 'edit')) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Permission denied: You do not have permission to edit fleet units']);
+        exit;
+    }
+
     $sensors_json = is_string($input['sensors_json'] ?? null) 
         ? $input['sensors_json'] 
         : json_encode($input['sensors'] ?? []);
@@ -142,6 +148,11 @@ if ($action === 'save') {
 }
 
 if ($action === 'create') {
+    if (!can('units', 'create')) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Permission denied: You do not have permission to register new fleet units']);
+        exit;
+    }
     $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
     $name = trim($input['name'] ?? '');
     if (empty($name)) {
@@ -174,6 +185,11 @@ if ($action === 'create') {
 }
 
 if ($action === 'delete') {
+    if (!can('units', 'delete')) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Permission denied: You do not have permission to delete fleet units']);
+        exit;
+    }
     $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
     $id = (int)($input['id'] ?? ($_GET['id'] ?? 0));
     if ($id > 0) {

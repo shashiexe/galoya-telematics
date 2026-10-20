@@ -74,10 +74,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.2.0');
-        $latestBuild = (int)setting('latest_app_build', 12);
+        $latestVersion = setting('latest_app_version', '1.3.1');
+        $latestBuild = (int)setting('latest_app_build', 14);
         $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
-        $changelog = setting('app_update_changelog', "• Today field photos auto-load in gallery\n• Field Officer profile & security updates\n• Created by GOPL IT");
+        $changelog = setting('app_update_changelog', "• Top bar cleaned up: Removed GOPL IT badge for spacious layout\n• Prominent Exit / Logout button\n• Compact emergency SOS button with confirmation dialog\n• Interactive full-screen pinch-to-zoom photo gallery viewer");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
@@ -425,6 +425,11 @@ try {
                          WHERE DATE(taken_at)=?
                          ORDER BY id DESC LIMIT 100", [$date])->fetchAll();
         }
+        foreach ($photos as &$p) {
+            if (isset($p['lat']) && $p['lat'] !== null && $p['lat'] !== '') $p['lat'] = (float)$p['lat'];
+            if (isset($p['lng']) && $p['lng'] !== null && $p['lng'] !== '') $p['lng'] = (float)$p['lng'];
+        }
+        unset($p);
         out(['ok' => true, 'date' => $date, 'photos' => $photos, 'count' => count($photos)]);
     }
 

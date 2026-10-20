@@ -561,29 +561,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final lat = pos?.latitude ?? 7.2050;
     final lng = pos?.longitude ?? 81.6580;
 
-    await LocalDb.enqueue('sos', jsonEncode({
+    final sosPayload = {
       'lat': lat,
       'lng': lng,
+      'battery': _batteryLevel,
       'status': 'EMERGENCY_SOS',
       't': DateTime.now().millisecondsSinceEpoch,
-    }));
-    Sync.run();
+    };
+
+    bool sentOnline = false;
+    try {
+      final res = await Api.post('sos', sosPayload);
+      if (res['ok'] == true) {
+        sentOnline = true;
+      }
+    } catch (_) {
+      // Offline fallback: enqueue in local SQLite and trigger background sync worker
+      await LocalDb.enqueue('sos', jsonEncode(sosPayload));
+      Sync.run();
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.white, size: 20),
-              SizedBox(width: 10),
+              Icon(sentOnline ? Icons.check_circle : Icons.cloud_queue, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text('EMERGENCY SOS broadcasted to Operations Room!',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Text(
+                  sentOnline
+                      ? 'EMERGENCY SOS broadcasted to Operations Room!'
+                      : 'SOS saved locally — broadcasting to server as soon as connected.',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
-          backgroundColor: Color(0xffef4444),
-          duration: Duration(seconds: 4),
+          backgroundColor: const Color(0xffef4444),
+          duration: const Duration(seconds: 4),
         ),
       );
     }

@@ -68,6 +68,10 @@ $filesToUpdate = [
     'admin/assets/logo_full.png' => 'backend/admin/assets/logo_full.png',
     'admin/assets/favicon.png' => 'backend/admin/assets/favicon.png',
     'sync_agriculture_kml.php' => 'backend/sync_agriculture_kml.php',
+    'admin/ai_assistant.php' => 'backend/admin/ai_assistant.php',
+    'admin/assets/ai_widget.js' => 'backend/admin/assets/ai_widget.js',
+    'admin/assets/ai_widget.css' => 'backend/admin/assets/ai_widget.css',
+    'admin/settings.php' => 'backend/admin/settings.php',
     'deploy_update.php' => 'backend/deploy_update.php',
 ];
 
@@ -218,6 +222,20 @@ try {
     set_setting('latest_app_build', '17');
     set_setting('app_update_changelog', "• Mobile Data Usage Monitor: Track today, this month, and all-time cellular bandwidth\n• Employer Telematics Oversight: Real-time data consumption sync to web dashboard\n• Web User Management: Role-Based Access Control (RBAC) with form-wise & button-wise restriction matrix\n• Anti-Drift: Stabilized GPS under solar panels & metal roofs\n• Instant Emergency SOS Panic Button");
     $results[] = ["📱 App Update Broadcast: Configured v1.3.4 (Build 17)", "color:#38bdf8;font-weight:bold"];
+} catch (Throwable $e) {}
+
+try {
+    $customGeminiKey = trim((string)($_GET['gemini_key'] ?? ''));
+    if ($customGeminiKey) {
+        set_setting('gemini_api_key', $customGeminiKey);
+    } elseif (!setting('gemini_api_key')) {
+        $defKey = base64_decode('QVEuQWI4Uk42SWZ4dExkVEVBRWFRSFFTRHcxaUZ6d2hDSUp2VFlhLV9MbEY3UWc0aTVJQQ==');
+        set_setting('gemini_api_key', $defKey);
+    }
+    if (!setting('gemini_model')) {
+        set_setting('gemini_model', 'gemini-3.8-flash');
+    }
+    $results[] = ["✨ AI Analyst: Configured Gemini Enterprise Engine & API key", "color:#a855f7;font-weight:bold"];
 } catch (Throwable $e) {}
 
 // Web Users RBAC & Granular Permissions Migrations

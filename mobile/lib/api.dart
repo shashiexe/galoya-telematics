@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'data_usage.dart';
 import 'vault.dart';
 
 /// SSL override to trust galoya.lk server certificates on all Android versions
@@ -43,7 +44,11 @@ class Api {
     return AuthVault.getToken();
   }
 
-  static Future<Map<String, dynamic>> _handle(http.Response r) async {
+  static Future<Map<String, dynamic>> _handle(http.Response r, [int sentBytes = 0]) async {
+    // Record network/cellular data consumption
+    final receivedBytes = r.bodyBytes.length + 200;
+    DataUsage.addBytes(sent: sentBytes > 0 ? sentBytes : 350, received: receivedBytes);
+
     Map<String, dynamic> j;
     try {
       j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -67,20 +72,22 @@ class Api {
     final sendBody = Map<String, dynamic>.from(body);
     if (t != null) sendBody['token'] = t;
     final tokenQuery = (t != null && t.isNotEmpty) ? '&token=${Uri.encodeComponent(t)}' : '';
+    final encoded = jsonEncode(sendBody);
+    final sentBytes = utf8.encode(encoded).length + 350;
 
     try {
       final r = await http
-          .post(Uri.parse('$kApiUrl?action=$action$tokenQuery'), headers: headers, body: jsonEncode(sendBody))
+          .post(Uri.parse('$kApiUrl?action=$action$tokenQuery'), headers: headers, body: encoded)
           .timeout(const Duration(seconds: 25));
-      return _handle(r);
+      return _handle(r, sentBytes);
     } catch (e) {
       if (e is ApiException) rethrow;
       // Fallback to HTTP if HTTPS handshake or connection failed
       try {
         final rHttp = await http
-            .post(Uri.parse('$kApiUrlHttp?action=$action$tokenQuery'), headers: headers, body: jsonEncode(sendBody))
+            .post(Uri.parse('$kApiUrlHttp?action=$action$tokenQuery'), headers: headers, body: encoded)
             .timeout(const Duration(seconds: 25));
-        return _handle(rHttp);
+        return _handle(rHttp, sentBytes);
       } catch (_) {}
       rethrow;
     }
@@ -97,12 +104,13 @@ class Api {
     if (params != null && params.isNotEmpty) {
       queryString += '&' + params.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&');
     }
+    const sentBytes = 350;
 
     try {
       final r = await http
           .get(Uri.parse('$kApiUrl?action=$action$queryString'), headers: headers)
           .timeout(const Duration(seconds: 25));
-      return _handle(r);
+      return _handle(r, sentBytes);
     } catch (e) {
       if (e is ApiException) rethrow;
       // Fallback to HTTP
@@ -110,7 +118,7 @@ class Api {
         final rHttp = await http
             .get(Uri.parse('$kApiUrlHttp?action=$action$queryString'), headers: headers)
             .timeout(const Duration(seconds: 25));
-        return _handle(rHttp);
+        return _handle(rHttp, sentBytes);
       } catch (_) {}
       rethrow;
     }
@@ -122,6 +130,7 @@ class Api {
     if (t != null) {
       fMap['token'] = t;
     }
+    final sentBytes = (file.existsSync() ? file.lengthSync() : 0) + 600;
 
     Future<http.Response> sendTo(String url) async {
       final req = http.MultipartRequest('POST', Uri.parse(url))
@@ -134,12 +143,12 @@ class Api {
 
     try {
       final r = await sendTo('$kApiUrl?action=$action');
-      return _handle(r);
+      return _handle(r, sentBytes);
     } catch (e) {
       if (e is ApiException) rethrow;
       try {
         final rHttp = await sendTo('$kApiUrlHttp?action=$action');
-        return _handle(rHttp);
+        return _handle(rHttp, sentBytes);
       } catch (_) {}
       rethrow;
     }

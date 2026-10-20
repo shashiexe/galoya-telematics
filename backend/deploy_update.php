@@ -47,8 +47,20 @@ if (isset($_GET['test_ai'])) {
         session_name('stafftrack_admin');
         @session_start();
     }
-    $_SESSION['admin_id'] = 1;
-    $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+    $testRole = $_GET['test_role'] ?? 'admin';
+    if ($testRole === 'manager' || $testRole === 'supervisor' || $testRole === 'staff') {
+        $nonAdmin = q("SELECT id, name, role FROM users WHERE role != 'admin' AND (web_access=1 OR role='staff') LIMIT 1")->fetch();
+        if ($nonAdmin) {
+            $_SESSION['admin_id'] = (int)$nonAdmin['id'];
+            $_SESSION['admin_user'] = $nonAdmin;
+        } else {
+            $_SESSION['admin_id'] = 22;
+            $_SESSION['admin_user'] = ['id' => 22, 'name' => 'Field Officer', 'role' => 'staff'];
+        }
+    } else {
+        $_SESSION['admin_id'] = 1;
+        $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+    }
     $_POST['action'] = 'chat';
     $_POST['prompt'] = $_GET['prompt'] ?? 'Ada dawase wadiyenma distance giya top 5 officers la kawda?';
 

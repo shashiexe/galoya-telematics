@@ -1,16 +1,47 @@
 <?php
 require __DIR__ . '/_common.php';
 $err = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+// Brute-force rate limiting
+$lockoutTime = 300; // 5 minutes
+$maxAttempts = 5;
+$attempts = (int)($_SESSION['login_attempts'] ?? 0);
+$lastAttemptTime = (int)($_SESSION['last_login_attempt'] ?? 0);
+
+if ($attempts >= $maxAttempts && (time() - $lastAttemptTime) < $lockoutTime) {
+    $remaining = ceil(($lockoutTime - (time() - $lastAttemptTime)) / 60);
+    $err = "Too many failed login attempts. For security, please wait $remaining minute(s) before trying again.";
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    ensure_web_user_columns();
     $login = trim($_POST['phone'] ?? $_POST['user'] ?? '');
-    $u = q("SELECT * FROM users WHERE (phone=? OR name=?) AND role='admin' AND active=1", [$login, $login])->fetch();
-    if ($u && password_verify($_POST['password'] ?? '', $u['password_hash'])) {
+    $pwd = $_POST['password'] ?? '';
+
+    $u = q("SELECT * FROM users WHERE (phone=? OR name=?) AND active=1 AND (role='admin' OR web_access=1)", [$login, $login])->fetch();
+
+    if ($u && password_verify($pwd, $u['password_hash'])) {
         session_regenerate_id(true);
         $_SESSION['admin_id'] = $u['id'];
+        $_SESSION['admin_user'] = ['id' => $u['id'], 'name' => $u['name'], 'role' => $u['role']];
+        $_SESSION['admin_perms'] = !empty($u['permissions_json']) ? json_decode($u['permissions_json'], true) : [];
+        unset($_SESSION['login_attempts'], $_SESSION['last_login_attempt']);
+
+        try {
+            q("UPDATE users SET last_seen=NOW(), last_login_at=NOW(), last_login_ip=? WHERE id=?", 
+              [$_SERVER['REMOTE_ADDR'] ?? '', $u['id']]);
+        } catch (Throwable $e) {}
+
         header('Location: dashboard.php'); 
         exit;
     }
-    $err = 'Invalid user credentials. Please check username and password.';
+
+    $_SESSION['login_attempts'] = $attempts + 1;
+    $_SESSION['last_login_attempt'] = time();
+    $remainingAttempts = max(0, $maxAttempts - ($attempts + 1));
+    if ($remainingAttempts > 0) {
+        $err = "Invalid credentials. Please check your username and password. ($remainingAttempts attempt(s) remaining)";
+    } else {
+        $err = "Account locked for 5 minutes due to multiple failed login attempts.";
+    }
 }
 ?><!doctype html>
 <html lang="en">

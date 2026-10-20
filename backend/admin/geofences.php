@@ -5,6 +5,7 @@ error_reporting(E_ALL);
 
 require __DIR__ . '/_common.php';
 require_admin();
+require_perm('geofences', 'view');
 
 $pdo = db();
 

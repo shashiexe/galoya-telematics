@@ -1,8 +1,11 @@
 <?php
 require __DIR__ . '/_common.php';
 require_admin();
+require_perm('settings', 'view');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
+    require_perm('settings', 'save');
     $iv = max(10, min(3600, (int)$_POST['location_interval']));
     set_setting('location_interval', (string)$iv);
     set_setting('allow_staff_change_interval', isset($_POST['allow']) ? '1' : '0');
@@ -28,6 +31,8 @@ layout_start('Settings', 'settings.php');
   <h3>Maintenance</h3>
   <label>Delete GPS history older than (days, min 30) — leave blank to skip</label><input type="number" name="purge_days" min="30" placeholder="e.g. 180">
   <p class="mut" style="font-size:13px">Map provider: <b><?= h($CONFIG['map_provider']) ?></b> — change <code>map_provider</code> and <code>google_maps_key</code> in config.php to switch to Google Maps.</p>
-  <button class="btn" id="save-settings">Save settings</button>
+  <?php if (can('settings', 'save')): ?>
+    <button class="btn" id="save-settings">Save settings</button>
+  <?php endif; ?>
 </form>
 <?php layout_end();

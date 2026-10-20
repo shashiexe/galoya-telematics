@@ -4,15 +4,98 @@ require_once __DIR__ . '/../bootstrap.php';
 session_name('stafftrack_admin');
 session_start();
 
+function ensure_web_user_columns(): void {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $pdo = db();
+        $cols = $pdo->query("SHOW COLUMNS FROM users LIKE 'web_access'")->fetchAll();
+        if (empty($cols)) {
+            @$pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
+            @$pdo->exec("ALTER TABLE users ADD COLUMN web_access TINYINT(1) NOT NULL DEFAULT 0 AFTER role");
+            @$pdo->exec("ALTER TABLE users ADD COLUMN permissions_json LONGTEXT NULL");
+            @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME NULL");
+            @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45) NULL");
+            @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'");
+        }
+    } catch (Throwable $e) {}
+}
+
 function admin(): ?array {
     if (empty($_SESSION['admin_id'])) return null;
-    return q("SELECT * FROM users WHERE id=? AND role='admin' AND active=1", [$_SESSION['admin_id']])->fetch() ?: null;
+    ensure_web_user_columns();
+    return q("SELECT * FROM users WHERE id=? AND active=1 AND (role='admin' OR web_access=1)", [$_SESSION['admin_id']])->fetch() ?: null;
 }
 
 function require_admin(): array {
     $a = admin();
     if (!$a) { header('Location: login.php'); exit; }
     return $a;
+}
+
+function is_admin(): bool {
+    $u = admin();
+    return $u && ($u['role'] ?? '') === 'admin';
+}
+
+function user_permissions(): array {
+    $u = admin();
+    if (!$u) return [];
+    if (($u['role'] ?? '') === 'admin') return ['*' => true];
+
+    if (isset($_SESSION['admin_perms']) && is_array($_SESSION['admin_perms'])) {
+        return $_SESSION['admin_perms'];
+    }
+
+    $perms = !empty($u['permissions_json']) ? json_decode($u['permissions_json'], true) : [];
+    $_SESSION['admin_perms'] = is_array($perms) ? $perms : [];
+    return $_SESSION['admin_perms'];
+}
+
+function can(string $module, string $action = 'view'): bool {
+    $u = admin();
+    if (!$u) return false;
+    if (($u['role'] ?? '') === 'admin') return true;
+
+    $perms = user_permissions();
+    if (!empty($perms['*'])) return true;
+    if (empty($perms[$module])) return false;
+    if ($perms[$module] === true || !empty($perms[$module]['*']) || !empty($perms[$module]['all'])) return true;
+    return !empty($perms[$module][$action]);
+}
+
+function require_perm(string $module, string $action = 'view'): void {
+    if (!can($module, $action)) {
+        http_response_code(403);
+        ?>
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>403 Access Restricted · GalOya Track360</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 90vh; background: #0f172a; color: #f8fafc; margin: 0; }
+            .box { background: #1e293b; padding: 40px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); max-width: 440px; text-align: center; border: 1px solid #334155; }
+            .badge { display: inline-block; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); color: #f87171; border-radius: 6px; font-weight: 700; font-size: 11px; margin-bottom: 12px; }
+            h2 { margin: 0 0 10px; color: #f87171; font-size: 20px; }
+            p { color: #94a3b8; font-size: 13.5px; line-height: 1.6; margin-bottom: 24px; }
+            .btn { display: inline-block; padding: 10px 24px; background: #10b981; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <div style="font-size: 48px; margin-bottom: 12px">🛡️</div>
+            <div class="badge">PERMISSION RESTRICTED</div>
+            <h2>Access Restricted</h2>
+            <p>Your user account does not have permission to access <strong><?= htmlspecialchars(strtoupper($module)) ?> (<?= htmlspecialchars($action) ?>)</strong>.<br>Please contact a GalOya Super Administrator to request permission.</p>
+            <a href="dashboard.php" class="btn">Return to Dashboard</a>
+          </div>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
 }
 
 function csrf(): string {
@@ -74,21 +157,22 @@ function layout_start(string $title, string $active, bool $map = false): void {
         $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND on_duty=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)", [$off_min])->fetchColumn();
     } catch (Throwable $e) {}
 
-    // Full Telematics Nav (Direct 1-Click Access — No hidden dropdowns)
+    // Full Telematics Nav with Granular RBAC Permission Filtering
     $nav_items = [
-        'index.php'         => ['Monitoring', '🛰️'],
-        'dashboard.php'     => ['Dashboard', '📊'],
-        'history.php'       => ['Tracks', '↝'],
-        'photos.php'        => ['Photos', '📷'],
-        'units.php'         => ['Fleet', '🚜'],
-        'geofences.php'     => ['Geofences', '⬡'],
-        'reports.php'       => ['Reports', '📋'],
-        'staff.php'         => ['Staff', '👥'],
-        'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null],
-        'messages.php'      => ['Messages', '💬'],
-        'drivers.php'       => ['Drivers', '👨‍✈️'],
-        'notifications.php' => ['Alarms', '🔔', $unread_notifs > 0 ? $unread_notifs : null],
-        'settings.php'      => ['Settings', '⚙️'],
+        'index.php'         => ['Monitoring', '🛰️', null, 'monitoring'],
+        'dashboard.php'     => ['Dashboard', '📊', null, 'dashboard'],
+        'history.php'       => ['Tracks', '↝', null, 'history'],
+        'photos.php'        => ['Photos', '📷', null, 'photos'],
+        'units.php'         => ['Fleet', '🚜', null, 'units'],
+        'geofences.php'     => ['Geofences', '⬡', null, 'geofences'],
+        'reports.php'       => ['Reports', '📋', null, 'reports'],
+        'tasks.php'         => ['Tasks', '✓', $task_count > 0 ? $task_count : null, 'tasks'],
+        'drivers.php'       => ['Drivers', '👨‍✈️', null, 'drivers'],
+        'messages.php'      => ['Messages', '💬', null, 'messages'],
+        'notifications.php' => ['Alarms', '🔔', $unread_notifs > 0 ? $unread_notifs : null, 'notifications'],
+        'staff.php'         => ['Staff', '👥', null, 'staff'],
+        'users.php'         => ['Users', '👤', null, 'users'],
+        'settings.php'      => ['Settings', '⚙️', null, 'settings'],
     ];
     ?><!doctype html>
 <html lang="en">
@@ -118,6 +202,8 @@ function layout_start(string $title, string $active, bool $map = false): void {
 
     <nav class="w-nav">
       <?php foreach ($nav_items as $file => $item): 
+        $module = $item[3] ?? '';
+        if ($module && !can($module, 'view')) continue;
         $label = $item[0];
         $icon  = $item[1];
         $badge = $item[2] ?? null;
@@ -136,9 +222,10 @@ function layout_start(string $title, string $active, bool $map = false): void {
     <div class="w-user">
       <a href="../Galoya-Telematics.apk" download class="w-tab" style="background:#059669;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px" title="Download Official Galoya Telematics Android APK">📥 APK</a>
       <a href="../app/" target="_blank" class="w-tab" style="background:#0284c7;color:#fff;border-radius:4px;padding:3px 8px;height:26px;margin-right:6px;font-weight:700;font-size:11px" title="Test Mobile Phone App on Laptop">📱 App</a>
-      <div class="user-badge" style="padding:2px 8px;font-size:11px">
+      <div class="user-badge" style="padding:2px 8px;font-size:11px" title="Role: <?= h(ucfirst($a['role'] ?? 'user')) ?>">
         <span>👤</span>
         <span><?= h($a['name'] ?? 'galoyap.admin') ?></span>
+        <span style="font-size:9.5px;opacity:0.85;background:rgba(255,255,255,0.22);padding:1px 5px;border-radius:3px;margin-left:4px"><?= strtoupper($a['role'] ?? 'USER') ?></span>
       </div>
       <a href="logout.php" class="logout-link" style="padding:2px 8px;font-size:11px">Logout</a>
     </div>

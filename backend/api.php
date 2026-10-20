@@ -259,6 +259,8 @@ try {
             $b = body();
             $devModel = trim($b['device_model'] ?? ($b['phone_model'] ?? ''));
             $devId = trim($b['unique_id'] ?? ($b['imei'] ?? ($b['device_id'] ?? '')));
+            $trafficKb = isset($b['data_traffic_kb']) ? (int)$b['data_traffic_kb'] : null;
+
             if ($devModel && $devId) {
                 q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=?, unique_id=? WHERE id=?',
                   [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devModel, $devId, $u['id']]);
@@ -271,6 +273,10 @@ try {
             } else {
                 q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1 WHERE id=?',
                   [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $u['id']]);
+            }
+
+            if ($trafficKb !== null && $trafficKb >= 0) {
+                q('UPDATE users SET gprs_traffic_val=? WHERE id=?', [$trafficKb, $u['id']]);
             }
         }
         db()->commit();

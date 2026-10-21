@@ -78,6 +78,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     ]));
   }
 
+  Future<void> _openGoogleMapsNavigation(double lat, double lng, String label) async {
+    final googleNavUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+    final webMapsUri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    try {
+      if (await canLaunchUrl(googleNavUri)) {
+        await launchUrl(googleNavUri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(webMapsUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      try {
+        await launchUrl(webMapsUri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open navigation: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = t['status'] as String;
@@ -92,16 +114,77 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           const SizedBox(height: 8),
           Text(t['description'], style: const TextStyle(color: AppColors.mut, fontSize: 15)),
         ],
+
         if ((t['address'] ?? '').toString().isNotEmpty || t['lat'] != null) ...[
           const SizedBox(height: 12),
-          Card(child: ListTile(
-            leading: const Icon(Icons.place, color: AppColors.pri),
-            title: Text(t['address'] ?? 'Task location'),
-            trailing: t['lat'] != null ? const Icon(Icons.directions) : null,
-            onTap: t['lat'] == null ? null : () => launchUrl(
-                Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${t['lat']},${t['lng']}'),
-                mode: LaunchMode.externalApplication),
-          )),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            color: const Color(0xff1e293b),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff0284c7).withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.place, color: Color(0xff38bdf8), size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (t['geofence_name'] != null && (t['geofence_name'] as String).isNotEmpty) ...[
+                              Text(
+                                '🌾 ${t['geofence_name']} ${t['geofence_code'] != null ? '(${t['geofence_code']})' : ''}',
+                                style: const TextStyle(color: Color(0xff34d399), fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                            ],
+                            Text(
+                              t['address'] ?? 'Task Field Location',
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (t['lat'] != null && t['lng'] != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xff059669),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.navigation, size: 18),
+                        label: const Text(
+                          'Google Maps Directions ↗',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () {
+                          final lat = (t['lat'] as num).toDouble();
+                          final lng = (t['lng'] as num).toDouble();
+                          _openGoogleMapsNavigation(lat, lng, t['title'] ?? 'Task Location');
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ],
         const SizedBox(height: 20),
         Row(children: [

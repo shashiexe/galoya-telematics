@@ -515,26 +515,45 @@ try {
 
     case 'tasks': {
         $u = auth_user();
+        $date = trim($_GET['date'] ?? ($_POST['date'] ?? ''));
+        $history = !empty($_GET['history']) || !empty($_POST['history']);
         $rows = [];
+
+        $where = ["t.assigned_to = ?"];
+        $params = [$u['id']];
+
+        if (!empty($date) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $where[] = "(DATE(t.due_date) = ? OR DATE(t.completed_at) = ? OR DATE(t.created_at) = ?)";
+            $params[] = $date;
+            $params[] = $date;
+            $params[] = $date;
+        } elseif ($history) {
+            $where[] = "t.status IN ('done', 'cancelled')";
+        } else {
+            $where[] = "(t.status IN ('pending','in_progress') OR t.completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY))";
+        }
+
+        $whereSql = implode(' AND ', $where);
+
         try {
             $rows = q("SELECT t.*, s.name section_name, d.name department_name,
+                         gf.name geofence_name, gf.code geofence_code, gf.coordinates geofence_coords,
                          (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) before_photo,
                          (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) after_photo
                        FROM tasks t 
                        LEFT JOIN sections s ON s.id=t.section_id
                        LEFT JOIN departments d ON d.id=t.department_id
-                       WHERE t.assigned_to=? AND
-                         (t.status IN ('pending','in_progress') OR t.completed_at >= DATE_SUB(NOW(), INTERVAL 3 DAY))
+                       LEFT JOIN geofences gf ON gf.id=t.geofence_id
+                       WHERE $whereSql
                        ORDER BY FIELD(t.status,'in_progress','pending','done','cancelled'), t.due_date IS NULL, t.due_date, t.id DESC",
-                      [$u['id']])->fetchAll();
+                      $params)->fetchAll();
         } catch (Throwable $e) {
             $rows = q("SELECT t.*, 
                          (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) before_photo,
                          (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) after_photo
-                       FROM tasks t WHERE t.assigned_to=? AND
-                         (t.status IN ('pending','in_progress') OR t.completed_at >= DATE_SUB(NOW(), INTERVAL 3 DAY))
+                       FROM tasks t WHERE $whereSql
                        ORDER BY FIELD(t.status,'in_progress','pending','done','cancelled'), t.due_date IS NULL, t.due_date, t.id DESC",
-                      [$u['id']])->fetchAll();
+                      $params)->fetchAll();
         }
         foreach ($rows as &$r) {
             $r['id'] = (int)$r['id'];

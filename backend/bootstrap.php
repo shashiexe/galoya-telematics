@@ -266,7 +266,9 @@ try {
             (5, 2, 'Central Workshop & Garage', 'GARAGE'),
             (6, 2, 'Haulage / Transport Yard', 'HAUL'),
             (7, 3, 'Factory Complex & Yard', 'MILL-YD'),
-            (8, 4, 'Main Canal Division', 'CANAL')");
+            (8, 4, 'Main Canal Division', 'CANAL'),
+            (9, 3, 'Milling', 'MILL-SEC'),
+            (10, 3, 'Boiler', 'BLR')");
 
         q("INSERT IGNORE INTO `designations` (`id`, `name`, `code`) VALUES 
             (1, 'Field Officer', 'FO'),

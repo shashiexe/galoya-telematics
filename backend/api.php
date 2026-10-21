@@ -54,7 +54,7 @@ function auth_user(): array {
 
 function app_config(): array {
     $latestVersion = setting('latest_app_version', '1.3.5');
-    $latestBuild = (int)setting('latest_app_build', 19);
+    $latestBuild = (int)setting('latest_app_build', 20);
     return [
         'location_interval' => (int)setting('location_interval', 60),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
@@ -75,7 +75,7 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.3.5');
-        $latestBuild = (int)setting('latest_app_build', 19);
+        $latestBuild = (int)setting('latest_app_build', 20);
         $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
         $changelog = setting('app_update_changelog', "• Green boundary plantation plot identification\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Enhanced 24/7 background tracking");
         $forceUpdate = setting('app_force_update', '0') === '1';
@@ -335,7 +335,7 @@ try {
     }
 
     case 'geofences_nearby': {
-        // High-precision nearest geofence query with point-in-polygon ray-casting and boundary segment distance
+        // High-precision nearest geofence query with spatial pre-filtering, point-in-polygon ray-casting and boundary segment distance
         auth_user();
         $lat = isset($_GET['lat']) ? (float)$_GET['lat'] : (isset($_POST['lat']) ? (float)$_POST['lat'] : null);
         $lng = isset($_GET['lng']) ? (float)$_GET['lng'] : (isset($_POST['lng']) ? (float)$_POST['lng'] : null);
@@ -348,20 +348,54 @@ try {
         $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1")->fetchAll();
         $results = [];
 
+        // 2-Phase scan: Phase 1 fast spatial bbox filter (< 0.04 deg ~ 4.4km), expands if few results
+        $candidates = [];
         foreach ($rows as $r) {
-            $coords = json_decode($r['coordinates'] ?? '[]', true);
+            if (empty($r['coordinates'])) continue;
+            $coords = json_decode($r['coordinates'], true);
             if (!is_array($coords) || count($coords) < 3) continue;
 
+            $cLat0 = (float)$coords[0][0];
+            $cLng0 = (float)$coords[0][1];
+            if (abs($cLat0 - $lat) <= 0.045 && abs($cLng0 - $lng) <= 0.045) {
+                $candidates[] = [$r, $coords];
+            }
+        }
+
+        // Expand if needed
+        if (count($candidates) < 5) {
+            $candidates = [];
+            foreach ($rows as $r) {
+                if (empty($r['coordinates'])) continue;
+                $coords = json_decode($r['coordinates'], true);
+                if (!is_array($coords) || count($coords) < 3) continue;
+
+                $cLat0 = (float)$coords[0][0];
+                $cLng0 = (float)$coords[0][1];
+                if (abs($cLat0 - $lat) <= 0.15 && abs($cLng0 - $lng) <= 0.15) {
+                    $candidates[] = [$r, $coords];
+                }
+            }
+        }
+
+        foreach ($candidates as $cand) {
+            $r = $cand[0];
+            $coords = $cand[1];
             $inside = false;
             $n = count($coords);
+
+            // Ray-casting point in polygon
             for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
                 $xi = (float)$coords[$i][0]; $yi = (float)$coords[$i][1];
                 $xj = (float)$coords[$j][0]; $yj = (float)$coords[$j][1];
+                $diffY = $yj - $yi;
+                if (abs($diffY) < 1e-10) $diffY = ($diffY < 0 ? -1e-10 : 1e-10);
                 $intersect = (($yi > $lng) !== ($yj > $lng)) &&
-                             ($lat < ($xj - xi) * ($lng - $yi) / (($yj - $yi) ?: 0.00000001) + $xi);
+                             ($lat < ($xj - xi) * ($lng - $yi) / $diffY + $xi);
                 if ($intersect) $inside = !$inside;
             }
 
+            // Min distance to polygon boundary segments
             $minEdgeDist = INF;
             for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
                 $aLat = (float)$coords[$j][0]; $aLng = (float)$coords[$j][1];
@@ -369,10 +403,11 @@ try {
 
                 $dLat = $bLat - $aLat;
                 $dLng = $bLng - $aLng;
-                if ($dLat == 0.0 && $dLng == 0.0) {
+                $denom = ($dLat * $dLat) + ($dLng * $dLng);
+                if ($denom < 1e-12) {
                     $pLat = $aLat; $pLng = $aLng;
                 } else {
-                    $t = ((($lat - $aLat) * $dLat) + (($lng - $aLng) * $dLng)) / (($dLat * $dLat) + ($dLng * $dLng));
+                    $t = ((($lat - $aLat) * $dLat) + (($lng - $aLng) * $dLng)) / $denom;
                     $t = max(0.0, min(1.0, $t));
                     $pLat = $aLat + ($t * $dLat);
                     $pLng = $aLng + ($t * $dLng);
@@ -381,13 +416,15 @@ try {
                 $d1 = deg2rad($lat - $pLat);
                 $d2 = deg2rad($lng - $pLng);
                 $val = sin($d1 / 2) ** 2 + cos(deg2rad($pLat)) * cos(deg2rad($lat)) * sin($d2 / 2) ** 2;
-                $dist = 6371000 * 2 * atan2(sqrt($val), sqrt(1 - $val));
+                $val = max(0.0, min(1.0, $val));
+                $dist = 6371000 * 2 * atan2(sqrt($val), sqrt(max(0.0, 1.0 - $val)));
                 if ($dist < $minEdgeDist) $minEdgeDist = $dist;
             }
 
-            $sumLat = 0; $sumLng = 0;
+            $sumLat = 0.0; $sumLng = 0.0;
             foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
 
+            $finalDist = is_finite($minEdgeDist) ? round($minEdgeDist, 1) : 99999.0;
             $results[] = [
                 'id' => (int)$r['id'],
                 'name' => $r['name'],
@@ -395,8 +432,8 @@ try {
                 'lat' => round($sumLat / $n, 6),
                 'lng' => round($sumLng / $n, 6),
                 'is_inside' => $inside,
-                'edge_distance' => round($minEdgeDist, 1),
-                'distance' => $inside ? 0.0 : round($minEdgeDist, 1),
+                'edge_distance' => $finalDist,
+                'distance' => $inside ? 0.0 : $finalDist,
                 'coordinates' => $coords,
             ];
         }
@@ -404,7 +441,7 @@ try {
         usort($results, function($a, $b) {
             if ($a['is_inside'] && !$b['is_inside']) return -1;
             if (!$a['is_inside'] && $b['is_inside']) return 1;
-            return $a['edge_distance'] <=> $b['edge_distance'];
+            return $a['distance'] <=> $b['distance'];
         });
 
         $top = array_slice($results, 0, $limit);
@@ -450,6 +487,10 @@ try {
             fail('Plot polygon not found', 404);
         }
         $coords = json_decode($row['coordinates'] ?? '[]', true);
+        $sumLat = 0.0; $sumLng = 0.0; $n = is_array($coords) ? count($coords) : 0;
+        if ($n > 0) {
+            foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
+        }
         out([
             'ok' => true,
             'id' => (int)$row['id'],
@@ -457,6 +498,8 @@ try {
             'code' => $row['code'],
             'type' => $row['type'],
             'color' => $row['color'] ?: '#2563eb',
+            'lat' => $n > 0 ? round($sumLat / $n, 6) : 0.0,
+            'lng' => $n > 0 ? round($sumLng / $n, 6) : 0.0,
             'coordinates' => $coords
         ]);
     }

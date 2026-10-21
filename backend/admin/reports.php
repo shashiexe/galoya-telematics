@@ -165,137 +165,15 @@ if ($report_type === 'staff_audit') {
         ];
     }
 
-    // Cluster Field Photos into Distinct Field Visit Sessions / Rounds
-    // A gap >= 40 minutes between consecutive photos indicates an office / break interval & starts a new round
-    $visitRounds = [];
-    $allPlotsVisited = [];
-    $annotatedPhotos = [];
-
-    if (!empty($photos)) {
-        usort($photos, function($a, $b) {
-            return strcmp((string)$a['taken_at'], (string)$b['taken_at']);
-        });
-
-        $currentRoundPhotos = [];
-        $lastPhotoTime = null;
-
-        foreach ($photos as $ph) {
-            $pTime = strtotime($ph['taken_at']);
-            if ($lastPhotoTime !== null && ($pTime - $lastPhotoTime) >= 2400) { // >= 40 minutes gap
-                if (!empty($currentRoundPhotos)) {
-                    $visitRounds[] = $currentRoundPhotos;
-                }
-                $currentRoundPhotos = [];
-            }
-            $currentRoundPhotos[] = $ph;
-            $lastPhotoTime = $pTime;
-
-            $pName = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
-            if ($pName !== '') $allPlotsVisited[$pName] = true;
-        }
-
-        if (!empty($currentRoundPhotos)) {
-            $visitRounds[] = $currentRoundPhotos;
-        }
-    }
-
-    $processedRounds = [];
-    $totalFieldSec = 0;
-
-    foreach ($visitRounds as $rIdx => $rPhotos) {
-        $rNum = $rIdx + 1;
-        $rStart = $rPhotos[0]['taken_at'];
-        $rEnd = end($rPhotos)['taken_at'];
-        $rSec = max(0, strtotime($rEnd) - strtotime($rStart));
-        
-        // Active field duration (if single photo in round, consider standard 10m inspection window)
-        $rDurSec = $rSec > 0 ? $rSec : 600; 
-        $totalFieldSec += $rDurSec;
-
-        $rH = floor($rSec / 3600);
-        $rM = round(($rSec % 3600) / 60);
-        $rDurStr = $rSec > 0 ? (($rH > 0 ? "{$rH}h " : "") . "{$rM}m") : 'Single Photo';
-
-        $rWindow = date('h:i A', strtotime($rStart));
-        if ($rStart !== $rEnd && date('h:i A', strtotime($rStart)) !== date('h:i A', strtotime($rEnd))) {
-            $rWindow .= ' – ' . date('h:i A', strtotime($rEnd)) . " ({$rDurStr})";
-        }
-
-        $rPlots = [];
-        foreach ($rPhotos as &$ph) {
-            $ph['round_num'] = $rNum;
-            $annotatedPhotos[] = $ph;
-            $pn = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
-            if ($pn !== '') $rPlots[$pn] = true;
-        }
-        unset($ph);
-
-        // Break between this round and previous round (Office / Yard interval)
-        $officeGapStr = null;
-        if ($rIdx > 0) {
-            $prevEnd = end($visitRounds[$rIdx - 1])['taken_at'];
-            $gapSec = max(0, strtotime($rStart) - strtotime($prevEnd));
-            $gH = floor($gapSec / 3600);
-            $gM = round(($gapSec % 3600) / 60);
-            $officeGapStr = ($gH > 0 ? "{$gH}h " : "") . "{$gM}m";
-        }
-
-        $processedRounds[] = [
-            'round_num' => $rNum,
-            'start' => $rStart,
-            'end' => $rEnd,
-            'duration_sec' => $rDurSec,
-            'duration_str' => $rDurStr,
-            'window_str' => $rWindow,
-            'photo_count' => count($rPhotos),
-            'plots' => array_keys($rPlots),
-            'photos' => $rPhotos,
-            'office_gap_before' => $officeGapStr
-        ];
-    }
-
-    $photos = $annotatedPhotos;
-    $hasMultipleRounds = count($processedRounds) > 1;
-
-    // Add Field Photos into Timeline (with Round labels if multiple rounds)
-    foreach ($photos as $ph) {
-        $rndLabel = $hasMultipleRounds ? " (Round {$ph['round_num']})" : "";
-        $timeline[] = [
-            'time' => $ph['taken_at'],
-            'event' => '📷 ' . ($ph['activity_type'] ?: 'Field Photo Upload') . $rndLabel,
-            'type' => 'photo',
-            'location' => $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot')),
-            'details' => ($ph['note'] ? $ph['note'] . ' · ' : '') . ($hasMultipleRounds ? "Visit Round {$ph['round_num']}" : "Field inspection"),
-            'battery' => '—',
-            'remarks' => 'Auto: ' . ($ph['auto_geofence'] ?: '—') . ' | Confirmed: ' . ($ph['selected_geofence'] ?: '—'),
-            'file_path' => $ph['file_path'] ?? ''
-        ];
-    }
-
-    // Insert Office / Base Interval into Timeline between consecutive rounds
-    if ($hasMultipleRounds) {
-        foreach ($processedRounds as $rIdx => $rnd) {
-            if ($rIdx > 0 && !empty($rnd['office_gap_before'])) {
-                $prevRnd = $processedRounds[$rIdx - 1];
-                $timeline[] = [
-                    'time' => date('Y-m-d H:i:s', strtotime($prevRnd['end']) + 30),
-                    'event' => '🏢 Office / Base Break (' . $rnd['office_gap_before'] . ')',
-                    'type' => 'parking',
-                    'location' => 'Base / Divisional Office',
-                    'details' => 'Returned to office / base between Round ' . $prevRnd['round_num'] . ' and Round ' . $rnd['round_num'],
-                    'battery' => '—',
-                    'remarks' => 'Office break interval (' . date('h:i A', strtotime($prevRnd['end'])) . ' – ' . date('h:i A', strtotime($rnd['start'])) . ')'
-                ];
-            }
-        }
-    }
-
-    // Process GPS Points: Calculate Trips, Stops, and Inactive Gaps
+    // -------------------------------------------------------------------------
+    // Process GPS Points: Calculate Trips, Stationary Stops, and Inactive Gaps
+    // -------------------------------------------------------------------------
     $n = count($pts);
     $totalKm = 0;
     $maxSpd = 0;
     $movingPts = [];
     $stationaryPts = [];
+    $gpsStops = [];
 
     for ($i = 0; $i < $n; $i++) {
         $p = $pts[$i];
@@ -356,6 +234,17 @@ if ($report_type === 'staff_audit') {
                         $stopLoc = find_nearest_geofence((float)$pStart['lat'], (float)$pStart['lng']) ?: $stopLoc;
                     } catch (Throwable $e) {}
 
+                    $gpsStops[] = [
+                        'start' => $tS1,
+                        'end' => $tS2,
+                        'start_str' => $pStart['recorded_at'],
+                        'end_str' => $pEnd['recorded_at'],
+                        'duration_sec' => $sDur,
+                        'lat' => (float)$pStart['lat'],
+                        'lng' => (float)$pStart['lng'],
+                        'location' => $stopLoc
+                    ];
+
                     $timeline[] = [
                         'time' => $pStart['recorded_at'],
                         'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
@@ -413,6 +302,17 @@ if ($report_type === 'staff_audit') {
                 $stopLoc = find_nearest_geofence((float)$pStart['lat'], (float)$pStart['lng']) ?: $stopLoc;
             } catch (Throwable $e) {}
 
+            $gpsStops[] = [
+                'start' => $tS1,
+                'end' => $tS2,
+                'start_str' => $pStart['recorded_at'],
+                'end_str' => $pEnd['recorded_at'],
+                'duration_sec' => $sDur,
+                'lat' => (float)$pStart['lat'],
+                'lng' => (float)$pStart['lng'],
+                'location' => $stopLoc
+            ];
+
             $timeline[] = [
                 'time' => $pStart['recorded_at'],
                 'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
@@ -422,6 +322,194 @@ if ($report_type === 'staff_audit') {
                 'battery' => ($pStart['battery'] ?? '—') . '%',
                 'remarks' => 'Vehicle parked at location'
             ];
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Cluster Field Photos into Distinct Field Visit Sessions / Rounds
+    // Correlate with GPS Stationary Stops at plots for real stay duration
+    // -------------------------------------------------------------------------
+    $visitRounds = [];
+    $allPlotsVisited = [];
+    $annotatedPhotos = [];
+
+    if (!empty($photos)) {
+        usort($photos, function($a, $b) {
+            return strcmp((string)$a['taken_at'], (string)$b['taken_at']);
+        });
+
+        $currentRoundPhotos = [];
+        $lastPhotoTime = null;
+
+        foreach ($photos as $ph) {
+            $pTime = strtotime($ph['taken_at']);
+            if ($lastPhotoTime !== null && ($pTime - $lastPhotoTime) >= 2400) { // >= 40 minutes gap
+                if (!empty($currentRoundPhotos)) {
+                    $visitRounds[] = $currentRoundPhotos;
+                }
+                $currentRoundPhotos = [];
+            }
+            $currentRoundPhotos[] = $ph;
+            $lastPhotoTime = $pTime;
+
+            $pName = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
+            if ($pName !== '') $allPlotsVisited[$pName] = true;
+        }
+
+        if (!empty($currentRoundPhotos)) {
+            $visitRounds[] = $currentRoundPhotos;
+        }
+    }
+
+    $processedRounds = [];
+    $totalFieldSec = 0;
+
+    foreach ($visitRounds as $rIdx => $rPhotos) {
+        $rNum = $rIdx + 1;
+        $rStart = $rPhotos[0]['taken_at'];
+        $rEnd = end($rPhotos)['taken_at'];
+        $rStartTs = strtotime($rStart);
+        $rEndTs = strtotime($rEnd);
+        $photoSpan = max(0, $rEndTs - $rStartTs);
+
+        $pLat = (float)($rPhotos[0]['lat'] ?? 0);
+        $pLng = (float)($rPhotos[0]['lng'] ?? 0);
+        $pGeofence = trim((string)($rPhotos[0]['selected_geofence'] ?: ($rPhotos[0]['auto_geofence'] ?: ($rPhotos[0]['geofence_name'] ?: ''))));
+
+        // Detect if photo was taken at/near base/office (> 500m from closest plot)
+        $isBaseOrFar = false;
+        if (preg_match('/\(([0-9.]+)\s*km\)/i', $pGeofence, $kmMatch)) {
+            if ((float)$kmMatch[1] > 0.5) $isBaseOrFar = true;
+        } elseif (preg_match('/\(([0-9.]+)\s*m\)/i', $pGeofence, $mMatch)) {
+            if ((float)$mMatch[1] > 500) $isBaseOrFar = true;
+        }
+
+        // Match with GPS Stop at the plot location
+        $matchedStop = null;
+        if (!$isBaseOrFar && !empty($gpsStops)) {
+            foreach ($gpsStops as $st) {
+                // Must overlap photo window (+- 5 minutes buffer for walking into field)
+                if (($st['start'] - 300) <= $rEndTs && ($st['end'] + 300) >= $rStartTs) {
+                    if ($pLat != 0.0 && $st['lat'] != 0.0) {
+                        $distKm = haversine_dist_km($st['lat'], $st['lng'], $pLat, $pLng);
+                        if ($distKm <= 0.6) { // Within 600m
+                            $matchedStop = $st;
+                            break;
+                        }
+                    } else {
+                        $matchedStop = $st;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $isGpsStop = false;
+        // Plot visit stop: max 2.5 hours (9000s) to avoid full-day depot stays
+        if ($matchedStop !== null && $matchedStop['duration_sec'] <= 9000) {
+            $rDurSec = max($photoSpan, $matchedStop['duration_sec']);
+            $isGpsStop = true;
+        } elseif ($photoSpan > 0) {
+            $rDurSec = $photoSpan;
+        } else {
+            // Single instantaneous snapshot (1 minute realistic inspection window)
+            $rDurSec = 60;
+        }
+
+        $totalFieldSec += $rDurSec;
+
+        $rH = floor($rDurSec / 3600);
+        $rM = round(($rDurSec % 3600) / 60);
+        if ($rM == 0 && $rH == 0) $rM = 1;
+        $durFormatted = ($rH > 0 ? "{$rH}h " : "") . "{$rM}m";
+
+        if ($isGpsStop) {
+            $rDurStr = "{$durFormatted} (GPS Stop)";
+        } elseif ($photoSpan > 0) {
+            $rDurStr = $durFormatted;
+        } else {
+            $rDurStr = $isBaseOrFar ? 'Single Photo (Office)' : 'Single Photo (1m)';
+        }
+
+        $rDispStart = $isGpsStop ? $matchedStop['start_str'] : $rStart;
+        $rDispEnd = $isGpsStop ? $matchedStop['end_str'] : $rEnd;
+
+        $rWindow = date('h:i A', strtotime($rDispStart));
+        if ($rDispStart !== $rDispEnd && date('h:i A', strtotime($rDispStart)) !== date('h:i A', strtotime($rDispEnd))) {
+            $rWindow .= ' – ' . date('h:i A', strtotime($rDispEnd)) . " ({$rDurStr})";
+        } else {
+            $rWindow .= " ({$rDurStr})";
+        }
+
+        $rPlots = [];
+        foreach ($rPhotos as &$ph) {
+            $ph['round_num'] = $rNum;
+            $annotatedPhotos[] = $ph;
+            $pn = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
+            if ($pn !== '') $rPlots[$pn] = true;
+        }
+        unset($ph);
+
+        // Break between this round and previous round (Office / Yard interval)
+        $officeGapStr = null;
+        if ($rIdx > 0) {
+            $prevEnd = end($visitRounds[$rIdx - 1])['taken_at'];
+            $gapSec = max(0, strtotime($rStart) - strtotime($prevEnd));
+            $gH = floor($gapSec / 3600);
+            $gM = round(($gapSec % 3600) / 60);
+            $officeGapStr = ($gH > 0 ? "{$gH}h " : "") . "{$gM}m";
+        }
+
+        $processedRounds[] = [
+            'round_num' => $rNum,
+            'start' => $rDispStart,
+            'end' => $rDispEnd,
+            'photo_start' => $rStart,
+            'photo_end' => $rEnd,
+            'duration_sec' => $rDurSec,
+            'duration_str' => $rDurStr,
+            'window_str' => $rWindow,
+            'is_gps_stop' => $isGpsStop,
+            'photo_count' => count($rPhotos),
+            'plots' => array_keys($rPlots),
+            'photos' => $rPhotos,
+            'office_gap_before' => $officeGapStr
+        ];
+    }
+
+    $photos = $annotatedPhotos;
+    $hasMultipleRounds = count($processedRounds) > 1;
+
+    // Add Field Photos into Timeline (with Round labels if multiple rounds)
+    foreach ($photos as $ph) {
+        $rndLabel = $hasMultipleRounds ? " (Round {$ph['round_num']})" : "";
+        $timeline[] = [
+            'time' => $ph['taken_at'],
+            'event' => '📷 ' . ($ph['activity_type'] ?: 'Field Photo Upload') . $rndLabel,
+            'type' => 'photo',
+            'location' => $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot')),
+            'details' => ($ph['note'] ? $ph['note'] . ' · ' : '') . ($hasMultipleRounds ? "Visit Round {$ph['round_num']}" : "Field inspection"),
+            'battery' => '—',
+            'remarks' => 'Auto: ' . ($ph['auto_geofence'] ?: '—') . ' | Confirmed: ' . ($ph['selected_geofence'] ?: '—'),
+            'file_path' => $ph['file_path'] ?? ''
+        ];
+    }
+
+    // Insert Office / Base Interval into Timeline between consecutive rounds
+    if ($hasMultipleRounds) {
+        foreach ($processedRounds as $rIdx => $rnd) {
+            if ($rIdx > 0 && !empty($rnd['office_gap_before'])) {
+                $prevRnd = $processedRounds[$rIdx - 1];
+                $timeline[] = [
+                    'time' => date('Y-m-d H:i:s', strtotime($prevRnd['end']) + 30),
+                    'event' => '🏢 Office / Base Break (' . $rnd['office_gap_before'] . ')',
+                    'type' => 'parking',
+                    'location' => 'Base / Divisional Office',
+                    'details' => 'Returned to office / base between Round ' . $prevRnd['round_num'] . ' and Round ' . $rnd['round_num'],
+                    'battery' => '—',
+                    'remarks' => 'Office break interval (' . date('h:i A', strtotime($prevRnd['end'])) . ' – ' . date('h:i A', strtotime($rnd['start'])) . ')'
+                ];
+            }
         }
     }
 
@@ -990,7 +1078,7 @@ if ($report_type === 'staff_audit') {
             $t = strtotime($tStr);
             if ($lastT === null || ($t - $lastT) >= 2400) {
                 if ($rStart !== null && $lastT !== null) {
-                    $totalFieldSec += max(600, $lastT - $rStart);
+                    $totalFieldSec += max(60, $lastT - $rStart);
                 }
                 $rCount++;
                 $rStart = $t;
@@ -998,7 +1086,7 @@ if ($report_type === 'staff_audit') {
             $lastT = $t;
         }
         if ($rStart !== null && $lastT !== null) {
-            $totalFieldSec += max(600, $lastT - $rStart);
+            $totalFieldSec += max(60, $lastT - $rStart);
         }
         $os['round_count'] = $rCount;
         $fH = floor($totalFieldSec / 3600);
@@ -1397,7 +1485,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </div>
 
       <?php if (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1): ?>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:3px">
+        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:3px;max-height:190px;overflow-y:auto;padding-right:4px">
           <?php foreach ($staffAuditSummary['rounds'] as $rnd): ?>
             <?php if (!empty($rnd['office_gap_before'])): ?>
               <div style="font-size:9.5px;color:#64748b;padding:1px 4px;background:#f8fafc;border-radius:3px">
@@ -1405,7 +1493,12 @@ layout_start('Reports & Tracking Audit', 'reports.php');
               </div>
             <?php endif; ?>
             <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:#475569">
-              <span><strong>Round <?= $rnd['round_num'] ?>:</strong> <?= date('h:i A', strtotime($rnd['start'])) ?> – <?= date('h:i A', strtotime($rnd['end'])) ?></span>
+              <?php 
+                $sStr = date('h:i A', strtotime($rnd['start']));
+                $eStr = date('h:i A', strtotime($rnd['end']));
+                $timeLabel = ($sStr !== $eStr) ? "{$sStr} – {$eStr}" : $sStr;
+              ?>
+              <span><strong>Round <?= $rnd['round_num'] ?>:</strong> <?= $timeLabel ?></span>
               <span style="font-weight:700;color:#6d28d9"><?= $rnd['duration_str'] ?></span>
             </div>
           <?php endforeach; ?>
@@ -1463,8 +1556,13 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <span style="background:#ede9fe;color:#6d28d9;font-weight:800;font-size:10.5px;padding:2px 8px;border-radius:10px">
                   🌾 Round <?= $rnd['round_num'] ?>
                 </span>
+                <?php 
+                  $rS = date('h:i A', strtotime($rnd['start']));
+                  $rE = date('h:i A', strtotime($rnd['end']));
+                  $roundTimeStr = ($rS !== $rE) ? "{$rS} – {$rE}" : $rS;
+                ?>
                 <strong style="color:#0f172a;font-size:12.5px">
-                  <?= date('h:i A', strtotime($rnd['start'])) ?> – <?= date('h:i A', strtotime($rnd['end'])) ?>
+                  <?= $roundTimeStr ?>
                 </strong>
                 <span style="color:#6d28d9;font-size:11.5px;font-weight:700">
                   (<?= $rnd['duration_str'] ?>)

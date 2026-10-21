@@ -391,7 +391,7 @@ try {
                 $diffY = $yj - $yi;
                 if (abs($diffY) < 1e-10) $diffY = ($diffY < 0 ? -1e-10 : 1e-10);
                 $intersect = (($yi > $lng) !== ($yj > $lng)) &&
-                             ($lat < ($xj - xi) * ($lng - $yi) / $diffY + $xi);
+                             ($lat < ($xj - $xi) * ($lng - $yi) / $diffY + $xi);
                 if ($intersect) $inside = !$inside;
             }
 

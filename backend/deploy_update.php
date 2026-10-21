@@ -414,6 +414,19 @@ try {
             (7, 'Mechanic / Technician', 'MECH'),
             (8, 'Field Staff', 'STAFF')");
     }
+
+    // Ensure Factory & Mill department has Milling and Boiler sections
+    try {
+        $millDept = $pdo->query("SELECT id FROM `departments` WHERE `name` LIKE '%Factory%' OR `name` LIKE '%Mill%' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if ($millDept) {
+            $mId = (int)$millDept['id'];
+            $pdo->exec("INSERT IGNORE INTO `sections` (`department_id`, `name`, `code`) VALUES 
+                ($mId, 'Milling', 'MILL-SEC'),
+                ($mId, 'Boiler', 'BLR')");
+            $results[] = ["✅ Seeded Factory department sections: Milling, Boiler", "color:#10b981"];
+        }
+    } catch (Throwable $e) {}
+
     $results[] = ["✅ Database: Ensured departments, sections, and designations exist", "color:#10b981"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Departments table note: " . $e->getMessage(), "color:#f59e0b"];

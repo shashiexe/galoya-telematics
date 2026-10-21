@@ -268,14 +268,26 @@ void _serviceMain(ServiceInstance service) async {
       } catch (_) {}
       pos ??= await Geolocator.getLastKnownPosition();
       if (pos != null) {
+        final double distFromLast = (lastLat != null && lastLng != null)
+            ? Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude)
+            : 0.0;
+        final double elapsed = lastTime > 0 ? ((now - lastTime) / 1000.0) : 1.0;
+        final double computedKmh = (elapsed > 0 && distFromLast >= 20.0) ? ((distFromLast / elapsed) * 3.6) : 0.0;
+        final double speedToLog = pos.speed >= 1.2
+            ? pos.speed * 3.6
+            : ((computedKmh >= 4.0 && computedKmh <= 140.0) ? computedKmh : 0.0);
+        final bool isMoving = speedToLog >= 4.0;
+
         lastTime = now;
         lastLat = pos.latitude;
         lastLng = pos.longitude;
-        await Tracker.recordPosition(pos, 0.0); // 0.0 km/h stationary
+        await Tracker.recordPosition(pos, speedToLog);
         if (service is AndroidServiceInstance) {
           service.setForegroundNotificationInfo(
             title: 'Galoya Telematics – Live',
-            content: 'Stationary (On Duty) · Live Synced 🟢',
+            content: isMoving
+                ? 'Speed: ${speedToLog.toStringAsFixed(1)} km/h · Live Synced 🟢'
+                : 'Stationary (On Duty) · Live Synced 🟢',
           );
         }
         Sync.run();
@@ -303,9 +315,9 @@ void _serviceMain(ServiceInstance service) async {
       final double headingDelta = (pos.heading - lastHeading).abs();
       final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
       final double elapsedSec = (now - lastTime) / 1000.0;
-      // Vehicle / Person motion: Requires both hardware speed >= 1.2 m/s (4.3 km/h) AND displacement >= 20m
-      // This prevents solar panels, metal roofs, and indoor multipath reflection from faking movement!
-      final bool isMoving = pos.speed >= 1.2 && dist >= 20.0;
+      final double dispKmh = (elapsedSec > 0 && dist >= 20.0) ? ((dist / elapsedSec) * 3.6) : 0.0;
+      // Vehicle / Person motion: Hardware Doppler speed >= 1.2 m/s OR physical displacement speed >= 4.0 km/h
+      final bool isMoving = (pos.speed >= 1.2 || (dispKmh >= 4.0 && dispKmh <= 140.0)) && dist >= 20.0;
 
       if (isMoving) {
         // If vehicle was parked, log parking_end upon motion resumption!
@@ -384,8 +396,8 @@ void _serviceMain(ServiceInstance service) async {
           ? Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude)
           : 999.0;
       final double elapsed = lastTime > 0 ? ((now - lastTime) / 1000.0) : 1.0;
-      final bool isGenuineMotion = pos.speed >= 1.2 && distFromLast >= 22.0;
-      final double computedKmh = (elapsed > 0 && distFromLast >= 22.0) ? ((distFromLast / elapsed) * 3.6) : 0.0;
+      final double computedKmh = (elapsed > 0 && distFromLast >= 20.0) ? ((distFromLast / elapsed) * 3.6) : 0.0;
+      final bool isGenuineMotion = (pos.speed >= 1.2 || (computedKmh >= 4.0 && computedKmh <= 140.0)) && distFromLast >= 20.0;
       final double actualSpeedKmh = isGenuineMotion 
           ? (pos.speed >= 1.2 ? pos.speed * 3.6 : (computedKmh >= 4.0 ? computedKmh : 0.0))
           : 0.0;

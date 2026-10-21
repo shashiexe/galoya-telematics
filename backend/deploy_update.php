@@ -203,18 +203,40 @@ try {
 
         if ($ok2 && file_exists($zipTmp) && filesize($zipTmp) > 1000000) {
             $zip = new ZipArchive();
+            $extracted = false;
             if ($zip->open($zipTmp) === true) {
                 for ($i = 0; $i < $zip->numFiles; $i++) {
                     $filename = $zip->getNameIndex($i);
-                    if (substr($filename, -4) === '.apk') {
-                        copy("zip://".$zipTmp."#".$filename, $apkTargetPath);
+                    if (substr(strtolower($filename), -4) === '.apk') {
+                        $stream = $zip->getStream($filename);
+                        if ($stream) {
+                            $out = fopen($apkTargetPath, 'wb');
+                            if ($out) {
+                                stream_copy_to_stream($stream, $out);
+                                fclose($out);
+                                $extracted = true;
+                            }
+                            fclose($stream);
+                        }
+                        if (!$extracted) {
+                            $zip->extractTo(__DIR__, $filename);
+                            if (file_exists(__DIR__ . '/' . $filename)) {
+                                @rename(__DIR__ . '/' . $filename, $apkTargetPath);
+                                $extracted = true;
+                            }
+                        }
                         break;
                     }
                 }
                 $zip->close();
             }
             @unlink($zipTmp);
-            $results[] = ["✅ Live Web APK Updated directly from GitHub Actions: Galoya-Telematics.apk (" . round(filesize($apkTargetPath) / 1048576, 1) . " MB)", "color:#10b981;font-weight:bold"];
+            clearstatcache(true, $apkTargetPath);
+            if ($extracted && file_exists($apkTargetPath)) {
+                $results[] = ["✅ Live Web APK Successfully Extracted & Updated: Galoya-Telematics.apk (" . round(filesize($apkTargetPath) / 1048576, 1) . " MB)", "color:#10b981;font-weight:bold"];
+            } else {
+                $results[] = ["❌ Failed extracting APK from artifact zip", "color:#ef4444;font-weight:bold"];
+            }
         }
     } else {
         $results[] = ["ℹ️ No new APK artifact found on GitHub.", "color:#94a3b8"];

@@ -751,5 +751,5 @@ try {
 } catch (Throwable $e) {
     if (db()->inTransaction()) db()->rollBack();
     error_log('StaffTrack API: ' . $e->getMessage());
-    fail('Server error', 500);
+    fail('Server error: ' . $e->getMessage() . ' on line ' . $e->getLine(), 500);
 }

@@ -64,7 +64,11 @@ class Sync {
   /// Sync high-precision polygon coordinates for plots near current GPS location
   static Future<List<Map<String, dynamic>>?> refreshNearbyGeofences(double lat, double lng) async {
     try {
-      final res = await Api.get('geofences_nearby&lat=$lat&lng=$lng&limit=25');
+      final res = await Api.get('geofences_nearby', params: {
+        'lat': lat.toString(),
+        'lng': lng.toString(),
+        'limit': '25',
+      });
       if (res['ok'] == true && res['geofences'] is List) {
         final list = res['geofences'] as List;
         await LocalDb.saveGeofences(list);

@@ -589,6 +589,7 @@ if ($report_type === 'staff_audit') {
     }
 
     $processedShifts = [];
+    $totalOffSeconds = 0;
     if (!empty($shifts)) {
         foreach ($shifts as $sIdx => $s) {
             $sH = floor($s['duration'] / 3600);
@@ -598,9 +599,13 @@ if ($report_type === 'staff_audit') {
             $offGapStr = null;
             if ($sIdx > 0 && !empty($shifts[$sIdx - 1]['end'])) {
                 $gapSec = max(0, strtotime($s['start']) - strtotime($shifts[$sIdx - 1]['end']));
-                $gH = floor($gapSec / 3600);
-                $gM = round(($gapSec % 3600) / 60);
-                $offGapStr = ($gH > 0 ? "{$gH}h " : "") . "{$gM}m";
+                // Only consider gaps >= 60 seconds (1 min) as real breaks
+                if ($gapSec >= 60) {
+                    $totalOffSeconds += $gapSec;
+                    $gH = floor($gapSec / 3600);
+                    $gM = round(($gapSec % 3600) / 60);
+                    $offGapStr = ($gH > 0 ? "{$gH}h " : "") . "{$gM}m";
+                }
             }
 
             $processedShifts[] = [
@@ -613,6 +618,13 @@ if ($report_type === 'staff_audit') {
                 'off_gap_before' => $offGapStr
             ];
         }
+    }
+
+    $offH = floor($totalOffSeconds / 3600);
+    $offM = round(($totalOffSeconds % 3600) / 60);
+    $totalOffDurStr = ($offH > 0 ? "{$offH}h " : "") . "{$offM}m";
+    if ($totalOffSeconds === 0) {
+        $totalOffDurStr = '0m';
     }
 
     // Cumulative path distance from GPS coordinates (filter noise < 10m)
@@ -666,6 +678,8 @@ if ($report_type === 'staff_audit') {
         'is_active' => $isCurrentlyActive,
         'duty_duration' => $dutyDurStr,
         'shifts' => $processedShifts,
+        'off_duration' => $totalOffDurStr,
+        'total_off_seconds' => $totalOffSeconds,
         'first_visit' => $firstVisitTime,
         'last_visit' => $lastVisitTime,
         'visit_window' => $visitWindowStr,
@@ -1336,7 +1350,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </div>
 
       <?php if (!empty($staffAuditSummary['shifts']) && count($staffAuditSummary['shifts']) > 1): ?>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:3px">
+        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:3px;max-height:190px;overflow-y:auto;padding-right:2px">
           <?php foreach ($staffAuditSummary['shifts'] as $sh): ?>
             <?php if (!empty($sh['off_gap_before'])): ?>
               <div style="font-size:9.5px;color:#94a3b8;padding:1px 4px;background:#f8fafc;border-radius:3px">
@@ -1348,6 +1362,16 @@ layout_start('Reports & Tracking Audit', 'reports.php');
               <span style="font-weight:700;color:#0284c7"><?= $sh['duration_str'] ?></span>
             </div>
           <?php endforeach; ?>
+        </div>
+
+        <!-- Total Work & Total Off-Duty Breaks Summary Footer inside Box 3 -->
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f0f9ff;padding:5px 8px;border-radius:4px;font-size:10.5px">
+          <span style="color:#0369a1;font-weight:700" title="Total active work hours across all shifts">
+            ⏱️ Work Total: <strong><?= $staffAuditSummary['duty_duration'] ?></strong>
+          </span>
+          <span style="color:#b45309;font-weight:700" title="Total off-duty break duration">
+            ☕ Off Breaks Total: <strong><?= $staffAuditSummary['off_duration'] ?></strong>
+          </span>
         </div>
       <?php endif; ?>
     </div>

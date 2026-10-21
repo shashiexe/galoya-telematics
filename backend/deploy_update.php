@@ -579,12 +579,16 @@ try {
 $totalGf = (int)$pdo->query("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
 $results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-weight:bold"];
 
-try {
-    $u22Count = (int)$pdo->query("SELECT COUNT(*) FROM locations WHERE user_id=22 AND DATE(recorded_at)=CURDATE()")->fetchColumn();
-    $u22MinMax = $pdo->query("SELECT MIN(recorded_at) as min_t, MAX(recorded_at) as max_t FROM locations WHERE user_id=22 AND DATE(recorded_at)=CURDATE()")->fetch(PDO::FETCH_ASSOC);
-    $latestPt = $pdo->query("SELECT user_id, lat, lng, speed, recorded_at, received_at FROM locations ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-    $results[] = ["📍 User 22 Points Today: $u22Count points (from {$u22MinMax['min_t']} to {$u22MinMax['max_t']})", "color:#a855f7;font-weight:bold"];
-} catch (Throwable $e) {}
+    $chamikaUsers = $pdo->query("SELECT id, name, code, phone, role, active, on_duty, last_lat, last_lng, last_battery, last_seen, device_type FROM users WHERE name LIKE '%Chamika%' OR name LIKE '%Camika%'")->fetchAll(PDO::FETCH_ASSOC);
+    if (empty($chamikaUsers)) {
+        $chamikaUsers = $pdo->query("SELECT id, name, code, role, active, on_duty, last_seen, device_type FROM users WHERE role='staff' LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+    }
+    $results[] = ["👤 Chamika User Search: " . json_encode($chamikaUsers), "color:#f59e0b;font-weight:bold"];
+    if (!empty($chamikaUsers)) {
+        $cId = (int)$chamikaUsers[0]['id'];
+        $cLogs = $pdo->query("SELECT recorded_at, received_at, speed, battery FROM locations WHERE user_id=$cId ORDER BY id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
+        $results[] = ["📍 Chamika Recent Pings: " . json_encode($cLogs), "color:#38bdf8"];
+    }
 
 try {
     $latestPhotos = $pdo->query("SELECT id, user_id, lat, lng, taken_at, activity_type, geofence_name FROM field_photos ORDER BY id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);

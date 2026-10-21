@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -50,7 +51,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
   final MapController _mapController = MapController();
   
   bool _tracking = false;
@@ -80,12 +81,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _serverPhotos = [];
   bool _loadingGallery = false;
 
+  // Compass & Heading Direction Follow Mode
+  double _mapRotation = 0.0;
+  bool _isHeadingFollowMode = false;
+
+  // Visual Blinking & Nearby Plot Polygons
+  late AnimationController _locationBlinkCtrl;
+  late Animation<double> _locationBlinkAnim;
+  bool _isBlinkingLocation = false;
+  List<Map<String, dynamic>> _nearbyIdentifiedPlots = [];
+  List<Polygon> _nearbyIdentifiedPolygons = [];
+  List<Marker> _nearbyIdentifiedMarkers = [];
+
   // Default Galoya Plantation / Damana center
   static const LatLng _defaultCenter = LatLng(7.2050, 81.6580);
 
   @override
   void initState() {
     super.initState();
+    _locationBlinkCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _locationBlinkAnim = CurvedAnimation(
+      parent: _locationBlinkCtrl,
+      curve: Curves.easeInOut,
+    );
     WidgetsBinding.instance.addObserver(this);
     _bootstrap();
     WidgetsBinding.instance.addPostFrameCallback((_) => AppUpdater.checkOnLaunch(context));
@@ -96,6 +117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _locationTimer?.cancel();
     _syncTimer?.cancel();
+    _locationBlinkCtrl.dispose();
     super.dispose();
   }
 
@@ -254,8 +276,200 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _speed = pos.speed >= 0 ? pos.speed : 0.0;
           _accuracy = pos.accuracy;
         });
+        if (_isHeadingFollowMode && pos.heading >= 0) {
+          _mapController.rotate(pos.heading);
+        }
       }
     } catch (_) {}
+  }
+
+  void _onCompassTap() {
+    if (_mapRotation.abs() > 2.0) {
+      // Map is rotated away from North: rotate back smoothly to 0 (North-Up)
+      _mapController.rotate(0);
+      setState(() {
+        _isHeadingFollowMode = false;
+        _mapRotation = 0.0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🧭 Map aligned North-Up (0°)'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      // Toggle Follow Direction Mode
+      final nextMode = !_isHeadingFollowMode;
+      setState(() => _isHeadingFollowMode = nextMode);
+      if (nextMode) {
+        final heading = _currentPosition?.heading ?? 0.0;
+        if (heading >= 0) {
+          _mapController.rotate(heading);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xff2563eb),
+            content: Text('🧭 Compass Direction Mode: Map follows your travel heading'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        _mapController.rotate(0);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🧭 North-Up Mode (0°)'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _locateCurrentPlotAndShowNearby() async {
+    // 1. Trigger visible pulsing/blinking on user's current location pin
+    setState(() {
+      _isBlinkingLocation = true;
+    });
+    _locationBlinkCtrl.repeat(reverse: true);
+    Timer(const Duration(seconds: 8), () {
+      if (mounted && _isBlinkingLocation) {
+        setState(() => _isBlinkingLocation = false);
+        _locationBlinkCtrl.stop();
+      }
+    });
+
+    // 2. Refresh GPS coordinates
+    if (_currentPosition == null) {
+      await _fetchLiveLocation();
+    }
+    final lat = _currentPosition?.latitude ?? _defaultCenter.latitude;
+    final lng = _currentPosition?.longitude ?? _defaultCenter.longitude;
+    final targetLatLng = LatLng(lat, lng);
+
+    // 3. Move map camera directly to user position with high-precision zoom
+    _mapController.move(targetLatLng, 17.2);
+
+    // 4. Query nearby plots from online sync and local cache
+    List<Map<String, dynamic>> nearbyList = [];
+    try {
+      final online = await Sync.refreshNearbyGeofences(lat, lng)
+          .timeout(const Duration(milliseconds: 1800), onTimeout: () => null);
+      if (online != null && online.isNotEmpty) {
+        nearbyList = online;
+      } else {
+        nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
+      }
+    } catch (_) {
+      nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
+    }
+
+    // 5. Build polygons and identification badges
+    final polygons = <Polygon>[];
+    final markers = <Marker>[];
+    Map<String, dynamic>? insidePlot;
+
+    for (final p in nearbyList) {
+      final coords = p['coordinates'];
+      List<LatLng> pts = [];
+      if (coords is List) {
+        for (final c in coords) {
+          if (c is List && c.length >= 2) {
+            pts.add(LatLng((c[0] as num).toDouble(), (c[1] as num).toDouble()));
+          }
+        }
+      }
+      final isInside = p['is_inside'] == true;
+      if (isInside && insidePlot == null) {
+        insidePlot = p;
+      }
+
+      if (pts.length >= 3) {
+        polygons.add(
+          Polygon(
+            points: pts,
+            color: isInside ? const Color(0x4522c55e) : const Color(0x2238bdf8),
+            borderColor: isInside ? const Color(0xff16a34a) : const Color(0xff0284c7),
+            borderStrokeWidth: isInside ? 3.5 : 2.0,
+            isFilled: true,
+          ),
+        );
+      }
+
+      final cLat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+      final cLng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+      final name = (p['name'] ?? p['code'] ?? 'Plot').toString();
+      final dist = (p['distance'] as num?)?.toDouble() ?? (p['edge_distance'] as num?)?.toDouble() ?? 0.0;
+
+      if (cLat != 0.0 && cLng != 0.0) {
+        markers.add(
+          Marker(
+            point: LatLng(cLat, cLng),
+            width: 140,
+            height: 38,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: isInside ? const Color(0xff16a34a) : const Color(0xff1e293b).withOpacity(0.92),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: isInside ? Colors.white : const Color(0xff38bdf8),
+                  width: isInside ? 1.5 : 1.0,
+                ),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2)),
+                ],
+              ),
+              child: Text(
+                isInside ? '📍 INSIDE: $name' : '$name (${dist < 1000 ? "${dist.round()}m" : "${(dist/1000).toStringAsFixed(1)}km"})',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: isInside ? FontWeight.bold : FontWeight.w600,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _nearbyIdentifiedPlots = nearbyList;
+        _nearbyIdentifiedPolygons = polygons;
+        _nearbyIdentifiedMarkers = markers;
+      });
+
+      final msg = insidePlot != null
+          ? '📍 You are inside: ${insidePlot['name']} (${insidePlot['code'] ?? ''})'
+          : (nearbyList.isNotEmpty
+              ? '📍 ${nearbyList.length} nearby plots identified. Nearest: ${nearbyList.first['name']} (${(nearbyList.first['distance'] as num?)?.round() ?? 0}m)'
+              : '📍 No registered plantation plots found near current position');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: insidePlot != null ? const Color(0xff16a34a) : const Color(0xff0284c7),
+          content: Text(msg),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Clear Polygons',
+            textColor: Colors.white,
+            onPressed: () {
+              if (mounted) {
+                setState(() {
+                  _nearbyIdentifiedPolygons = [];
+                  _nearbyIdentifiedMarkers = [];
+                  _nearbyIdentifiedPlots = [];
+                });
+              }
+            },
+          ),
+        ),
+      );
+    }
   }
 
   void _recenterMap() {
@@ -1417,56 +1631,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xff0f172a),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (_, scrollCtl) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: ListView(
-            controller: scrollCtl,
-            children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('My Assigned Tasks (${_tasks.length})', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(icon: const Icon(Icons.refresh, color: Colors.blue), onPressed: () => _loadTasks()),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (_tasks.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(child: Text('No pending tasks assigned', style: TextStyle(color: Colors.white54))),
-                )
-              else
-                ..._tasks.map((t) => Card(
-                      color: const Color(0xff1e293b),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: ListTile(
-                        leading: const CircleAvatar(backgroundColor: Color(0xff3b82f6), child: Icon(Icons.assignment, color: Colors.white)),
-                        title: Text(t['title'] ?? 'Task', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        subtitle: Text(t['location_name'] ?? 'Galoya Plantation', style: const TextStyle(color: Colors.white70)),
-                        trailing: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                          child: Text(t['status'] ?? 'pending', style: const TextStyle(color: Colors.blueAccent, fontSize: 12)),
-                        ),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => TaskDetailScreen(task: t)));
-                        },
-                      ),
-                    )),
-            ],
-          ),
-        ),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _AssignedTasksModalSheet(
+        tasks: _tasks,
+        onRefresh: _loadTasks,
+        onOpenTask: (task) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => TaskDetailScreen(task: task))).then((_) => _loadTasks());
+        },
+        onGoogleNavigate: (lat, lng, name) {
+          _openGoogleMapsNavigation(lat, lng, name);
+        },
+        onSelectOnMap: (task) {
+          _selectPlotForNavigation(task);
+        },
       ),
     );
   }
@@ -1593,6 +1770,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   initialZoom: 15.5,
                   minZoom: 5.0,
                   maxZoom: 19.0,
+                  onPositionChanged: (camera, hasGesture) {
+                    if (mounted && camera.rotation != _mapRotation) {
+                      setState(() => _mapRotation = camera.rotation);
+                    }
+                  },
                 ),
                 children: [
                   TileLayer(
@@ -1601,16 +1783,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'lk.galoya.stafftrack',
                   ),
-                  if (_targetPolygonPoints.isNotEmpty)
+                  if (_targetPolygonPoints.isNotEmpty || _nearbyIdentifiedPolygons.isNotEmpty)
                     PolygonLayer(
                       polygons: [
-                        Polygon(
-                          points: _targetPolygonPoints,
-                          color: const Color(0x3322c55e),
-                          borderColor: const Color(0xff16a34a),
-                          borderStrokeWidth: 3.0,
-                          isFilled: true,
-                        ),
+                        if (_targetPolygonPoints.isNotEmpty)
+                          Polygon(
+                            points: _targetPolygonPoints,
+                            color: const Color(0x3322c55e),
+                            borderColor: const Color(0xff16a34a),
+                            borderStrokeWidth: 3.0,
+                            isFilled: true,
+                          ),
+                        ..._nearbyIdentifiedPolygons,
                       ],
                     ),
                   if (_targetPlot != null)
@@ -1631,6 +1815,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   MarkerLayer(
                     markers: [
+                      ..._nearbyIdentifiedMarkers,
+                      if (_isBlinkingLocation)
+                        Marker(
+                          point: currentLatLng,
+                          width: 100,
+                          height: 100,
+                          child: AnimatedBuilder(
+                            animation: _locationBlinkAnim,
+                            builder: (ctx, _) {
+                              final v = _locationBlinkAnim.value;
+                              return Center(
+                                child: Container(
+                                  width: 40 + (v * 50),
+                                  height: 40 + (v * 50),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0xffec4899).withOpacity((1.0 - v) * 0.45),
+                                    border: Border.all(
+                                      color: const Color(0xffec4899).withOpacity(1.0 - v),
+                                      width: 2.5,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                       if (_targetPlot != null)
                         Marker(
                           point: LatLng(
@@ -1664,27 +1875,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       Marker(
                         point: currentLatLng,
-                        width: 50,
-                        height: 50,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.blue.withOpacity(0.3),
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 20,
-                              height: 20,
+                        width: 70,
+                        height: 70,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Google Maps Direction Cone / Beam if heading available
+                            if (_currentPosition != null && _currentPosition!.heading >= 0)
+                              Transform.rotate(
+                                angle: (_currentPosition!.heading - _mapRotation) * (pi / 180.0),
+                                child: CustomPaint(
+                                  size: const Size(64, 64),
+                                  painter: _GoogleDirectionBeamPainter(),
+                                ),
+                              ),
+                            Container(
+                              width: 44,
+                              height: 44,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: const Color(0xff2563eb),
-                                border: Border.all(color: Colors.white, width: 3),
-                                boxShadow: const [
-                                  BoxShadow(color: Colors.black45, blurRadius: 6, spreadRadius: 2),
-                                ],
+                                color: _isBlinkingLocation
+                                    ? const Color(0xffec4899).withOpacity(0.35)
+                                    : Colors.blue.withOpacity(0.25),
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 18,
+                                  height: 18,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _isBlinkingLocation ? const Color(0xffec4899) : const Color(0xff2563eb),
+                                    border: Border.all(color: Colors.white, width: 2.8),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black45, blurRadius: 6, spreadRadius: 1.5),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                       ..._capturedPhotos.map((p) {
@@ -1780,28 +2009,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           onPressed: _showPlotNavigatorModal,
                         ),
                         const SizedBox(width: 2),
-                        // Assigned Tasks Icon
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                          icon: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              const Icon(Icons.assignment_outlined, color: Color(0xff334155), size: 22),
-                              if (_tasks.isNotEmpty)
-                                Positioned(
-                                  right: -4,
-                                  top: -3,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                    decoration: BoxDecoration(color: const Color(0xff2563eb), borderRadius: BorderRadius.circular(10)),
-                                    child: Text('${_tasks.length}', style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          tooltip: 'Assigned Tasks',
-                          onPressed: _showTasksModal,
+                        // Assigned Tasks Icon (Counts only pending/uncompleted tasks)
+                        Builder(
+                          builder: (context) {
+                            final pendingCount = _tasks.where((t) => t['status'] != 'done' && t['status'] != 'cancelled').length;
+                            return IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                              icon: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  const Icon(Icons.assignment_outlined, color: Color(0xff334155), size: 22),
+                                  if (pendingCount > 0)
+                                    Positioned(
+                                      right: -4,
+                                      top: -3,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                        decoration: BoxDecoration(color: const Color(0xff2563eb), borderRadius: BorderRadius.circular(10)),
+                                        child: Text('$pendingCount', style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              tooltip: 'Assigned Tasks',
+                              onPressed: _showTasksModal,
+                            );
+                          },
                         ),
                         const SizedBox(width: 2),
                         // Settings Icon (Supervisor PIN Protected)
@@ -1983,7 +2217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
 
-            // 4. FLOATING MAP CONTROLS (Right side: Layers, Center, Compass)
+            // 4. FLOATING MAP CONTROLS (Right side: Layers, Center, Compass, Nearby Plots)
             Positioned(
               top: _targetPlot != null ? 144 : 64,
               right: 14,
@@ -2003,12 +2237,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onTap: _recenterMap,
                   ),
                   const SizedBox(height: 10),
-                  // Compass
+                  // Compass (Google Maps Style: Dynamic Needle + North Reset + Heading Follow)
+                  _buildCompassMapBtn(),
+                  const SizedBox(height: 10),
+                  // Locate Current Plot & Nearby Polygons (Pink button from user request)
                   _buildCircleMapBtn(
-                    icon: Icons.explore,
-                    iconColor: Colors.redAccent,
-                    tooltip: 'Compass',
-                    onTap: () => _mapController.rotate(0),
+                    icon: Icons.radar,
+                    iconColor: const Color(0xffec4899),
+                    tooltip: 'Identify Current & Nearby Plots',
+                    onTap: _locateCurrentPlotAndShowNearby,
                   ),
                 ],
               ),
@@ -2302,6 +2539,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         icon: Icon(icon, size: 20, color: iconColor ?? const Color(0xff1e293b)),
         tooltip: tooltip,
         onPressed: onTap,
+      ),
+    );
+  }
+
+  Widget _buildCompassMapBtn() {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: _isHeadingFollowMode
+            ? Border.all(color: const Color(0xff2563eb), width: 2.2)
+            : null,
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 3)),
+        ],
+      ),
+      child: IconButton(
+        tooltip: _isHeadingFollowMode
+            ? 'Compass: Following Direction (Tap for North-Up)'
+            : 'Compass (Tap to align North / follow direction)',
+        padding: EdgeInsets.zero,
+        onPressed: _onCompassTap,
+        icon: Transform.rotate(
+          angle: (-_mapRotation * (pi / 180.0)),
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  top: 1,
+                  child: CustomPaint(
+                    size: const Size(10, 11),
+                    painter: _CompassNeedlePainter(isNorth: true),
+                  ),
+                ),
+                Positioned(
+                  bottom: 1,
+                  child: CustomPaint(
+                    size: const Size(10, 11),
+                    painter: _CompassNeedlePainter(isNorth: false),
+                  ),
+                ),
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: const BoxDecoration(
+                    color: Color(0xff0f172a),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2910,5 +3205,650 @@ class _FieldPhotosGallerySheetState extends State<_FieldPhotosGallerySheet> {
       ),
     );
   }
+}
+
+/// Modal bottom sheet for displaying assigned tasks with Pending vs Completed History separation
+class _AssignedTasksModalSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> tasks;
+  final VoidCallback onRefresh;
+  final ValueChanged<Map<String, dynamic>> onOpenTask;
+  final void Function(double lat, double lng, String name) onGoogleNavigate;
+  final ValueChanged<Map<String, dynamic>> onSelectOnMap;
+
+  const _AssignedTasksModalSheet({
+    required this.tasks,
+    required this.onRefresh,
+    required this.onOpenTask,
+    required this.onGoogleNavigate,
+    required this.onSelectOnMap,
+  });
+
+  @override
+  State<_AssignedTasksModalSheet> createState() => _AssignedTasksModalSheetState();
+}
+
+class _AssignedTasksModalSheetState extends State<_AssignedTasksModalSheet> {
+  int _tabIndex = 0; // 0 = Pending/Active, 1 = Completed History
+  DateTime _historyDate = DateTime.now();
+  bool _showAllHistory = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final pendingTasks = widget.tasks
+        .where((t) => t['status'] != 'done' && t['status'] != 'cancelled')
+        .toList();
+
+    final allCompleted = widget.tasks
+        .where((t) => t['status'] == 'done' || t['status'] == 'cancelled')
+        .toList();
+
+    final completedTasks = _showAllHistory
+        ? allCompleted
+        : allCompleted.where((t) {
+            final compStr = t['completed_at'] ?? t['created_at'] ?? t['due_date'];
+            if (compStr == null) return true;
+            try {
+              final dt = DateTime.parse(compStr.toString().replaceAll(' ', 'T'));
+              return dt.year == _historyDate.year &&
+                  dt.month == _historyDate.month &&
+                  dt.day == _historyDate.day;
+            } catch (_) {
+              return true;
+            }
+          }).toList();
+
+    final now = DateTime.now();
+    final isToday = _historyDate.year == now.year &&
+        _historyDate.month == now.month &&
+        _historyDate.day == now.day;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Color(0xff0f172a),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0xff334155), width: 1.5)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 8),
+            width: 44,
+            height: 4,
+            decoration: BoxDecoration(color: const Color(0xff475569), borderRadius: BorderRadius.circular(2)),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff2563eb).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.assignment, color: Color(0xff38bdf8), size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'My Assigned Tasks',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Track pending work & review completed history',
+                        style: TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Color(0xff38bdf8), size: 20),
+                  tooltip: 'Refresh Tasks',
+                  onPressed: widget.onRefresh,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+
+          // Segmented Tabs: [ Pending & Active (N) ]  [ Completed History (N) ]
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: const Color(0xff1e293b),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xff334155)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _tabIndex = 0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _tabIndex == 0 ? const Color(0xff2563eb) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.pending_actions, size: 16, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Pending & Active (${pendingTasks.length})',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: _tabIndex == 0 ? FontWeight.bold : FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _tabIndex = 1),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _tabIndex == 1 ? const Color(0xff059669) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.history, size: 16, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Completed (${allCompleted.length})',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: _tabIndex == 1 ? FontWeight.bold : FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // TAB 0: PENDING & ACTIVE
+          if (_tabIndex == 0)
+            Expanded(
+              child: pendingTasks.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xff10b981).withOpacity(0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.task_alt_rounded, color: Color(0xff10b981), size: 48),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'No Pending Tasks Today! 🎉',
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'All assigned tasks are completed.\nSwitch to "Completed" to review past finished tasks.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Color(0xff94a3b8), fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      itemCount: pendingTasks.length,
+                      itemBuilder: (ctx, i) {
+                        final t = pendingTasks[i];
+                        final status = (t['status'] ?? 'pending').toString();
+                        final isProgress = status == 'in_progress';
+                        final lat = (t['lat'] is num) ? (t['lat'] as num).toDouble() : null;
+                        final lng = (t['lng'] is num) ? (t['lng'] as num).toDouble() : null;
+                        final gfName = t['geofence_name']?.toString() ?? '';
+                        final location = t['address']?.toString() ?? t['location_name']?.toString() ?? 'Galoya Plantation';
+
+                        return Card(
+                          color: const Color(0xff1e293b),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: isProgress ? const Color(0xff3b82f6) : const Color(0xff334155),
+                              width: isProgress ? 1.5 : 1.0,
+                            ),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onOpenTask(t);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      CircleAvatar(
+                                        backgroundColor: isProgress ? const Color(0xff2563eb) : const Color(0xfff59e0b).withOpacity(0.2),
+                                        child: Icon(
+                                          isProgress ? Icons.run_circle_outlined : Icons.assignment,
+                                          color: isProgress ? Colors.white : const Color(0xfff59e0b),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              t['title'] ?? 'Field Task',
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            if (gfName.isNotEmpty) ...[
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xff065f46),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: Text(
+                                                      '🌾 $gfName',
+                                                      style: const TextStyle(color: Color(0xff6ee7b7), fontSize: 10.5, fontWeight: FontWeight.w700),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 3),
+                                            ],
+                                            Text(
+                                              '📍 $location',
+                                              style: const TextStyle(color: Color(0xff94a3b8), fontSize: 11.5),
+                                            ),
+                                            if (t['due_date'] != null)
+                                              Text(
+                                                '📅 Due: ${t['due_date']}',
+                                                style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isProgress ? const Color(0xff2563eb).withOpacity(0.2) : const Color(0xfff59e0b).withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          isProgress ? 'In Progress' : 'Pending',
+                                          style: TextStyle(
+                                            color: isProgress ? const Color(0xff60a5fa) : const Color(0xfffbbf24),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // Quick Action: Google Maps Turn-by-Turn Navigation & Show on Map
+                                  if (lat != null && lng != null) ...[
+                                    const SizedBox(height: 10),
+                                    const Divider(color: Color(0xff334155), height: 1),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xff059669),
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(vertical: 8),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              elevation: 0,
+                                            ),
+                                            icon: const Icon(Icons.navigation, size: 15),
+                                            label: const Text('Google Maps Directions ↗', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                            onPressed: () => widget.onGoogleNavigate(lat, lng, t['title'] ?? 'Task Location'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: const Color(0xff38bdf8),
+                                            side: const BorderSide(color: Color(0xff0284c7)),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          ),
+                                          icon: const Icon(Icons.map_outlined, size: 15),
+                                          label: const Text('On Map', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                            widget.onSelectOnMap(t);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+
+          // TAB 1: COMPLETED HISTORY
+          if (_tabIndex == 1) ...[
+            // Date Filter Selector Bar (Matching Field Photos Gallery!)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xff1e293b),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xff334155)),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left, color: Color(0xff38bdf8), size: 22),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        setState(() {
+                          _showAllHistory = false;
+                          _historyDate = _historyDate.subtract(const Duration(days: 1));
+                        });
+                      },
+                    ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _historyDate,
+                            firstDate: DateTime(2025),
+                            lastDate: DateTime.now().add(const Duration(days: 1)),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _showAllHistory = false;
+                              _historyDate = picked;
+                            });
+                          }
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.calendar_today, color: Color(0xff38bdf8), size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              _showAllHistory
+                                  ? 'All Completed Tasks'
+                                  : (isToday ? 'Today, ${_historyDate.day}/${_historyDate.month}/${_historyDate.year}' : '${_historyDate.day}/${_historyDate.month}/${_historyDate.year}'),
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right, color: Color(0xff38bdf8), size: 22),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: isToday
+                          ? null
+                          : () {
+                              setState(() {
+                                _showAllHistory = false;
+                                _historyDate = _historyDate.add(const Duration(days: 1));
+                              });
+                            },
+                    ),
+                    const SizedBox(width: 6),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        backgroundColor: _showAllHistory ? const Color(0xff059669) : const Color(0xff334155),
+                        minimumSize: const Size(40, 26),
+                      ),
+                      onPressed: () => setState(() => _showAllHistory = !_showAllHistory),
+                      child: Text(
+                        _showAllHistory ? 'By Date' : 'View All',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: completedTasks.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.history, color: Colors.white38, size: 44),
+                            const SizedBox(height: 12),
+                            Text(
+                              _showAllHistory ? 'No completed tasks found in history.' : 'No completed tasks on this date.',
+                              style: const TextStyle(color: Colors.white54, fontSize: 14),
+                            ),
+                            if (!_showAllHistory) ...[
+                              const SizedBox(height: 10),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff334155)),
+                                onPressed: () => setState(() => _showAllHistory = true),
+                                child: const Text('View All History', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      itemCount: completedTasks.length,
+                      itemBuilder: (ctx, i) {
+                        final t = completedTasks[i];
+                        final isCancelled = t['status'] == 'cancelled';
+                        final lat = (t['lat'] is num) ? (t['lat'] as num).toDouble() : null;
+                        final lng = (t['lng'] is num) ? (t['lng'] as num).toDouble() : null;
+
+                        return Card(
+                          color: const Color(0xff1e293b),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onOpenTask(t);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: isCancelled ? const Color(0xffef4444).withOpacity(0.2) : const Color(0xff10b981).withOpacity(0.2),
+                                    child: Icon(
+                                      isCancelled ? Icons.cancel_outlined : Icons.check_circle_outline,
+                                      color: isCancelled ? const Color(0xffef4444) : const Color(0xff10b981),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          t['title'] ?? 'Task',
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        if (t['geofence_name'] != null)
+                                          Text(
+                                            '🌾 ${t['geofence_name']}',
+                                            style: const TextStyle(color: Color(0xff34d399), fontSize: 11, fontWeight: FontWeight.w600),
+                                          ),
+                                        Text(
+                                          t['address'] ?? t['location_name'] ?? 'Galoya Plantation',
+                                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                        ),
+                                        if (t['completed_at'] != null)
+                                          Text(
+                                            '✓ Completed: ${t['completed_at']}',
+                                            style: const TextStyle(color: Color(0xff94a3b8), fontSize: 10.5),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: isCancelled ? const Color(0xffef4444).withOpacity(0.2) : const Color(0xff10b981).withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          isCancelled ? 'Cancelled' : 'Done ✓',
+                                          style: TextStyle(
+                                            color: isCancelled ? const Color(0xfff87171) : const Color(0xff34d399),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      if (lat != null && lng != null) ...[
+                                        const SizedBox(height: 6),
+                                        IconButton(
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          icon: const Icon(Icons.directions, color: Color(0xff38bdf8), size: 22),
+                                          tooltip: 'Google Maps Directions',
+                                          onPressed: () => widget.onGoogleNavigate(lat, lng, t['title'] ?? 'Task Location'),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Dynamic rotating needle for the compass widget
+class _CompassNeedlePainter extends CustomPainter {
+  final bool isNorth;
+  const _CompassNeedlePainter({required this.isNorth});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = isNorth ? const Color(0xffef4444) : const Color(0xff64748b)
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    if (isNorth) {
+      path.moveTo(size.width / 2, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    } else {
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Google Maps style glowing blue directional beam cone pointing in device heading
+class _GoogleDirectionBeamPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(center: center, radius: size.width / 2);
+
+    final gradient = RadialGradient(
+      colors: [
+        const Color(0xff3b82f6).withOpacity(0.4),
+        const Color(0xff38bdf8).withOpacity(0.15),
+        const Color(0xff38bdf8).withOpacity(0.0),
+      ],
+      stops: const [0.2, 0.6, 1.0],
+    );
+
+    final paint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.fill;
+
+    const sweepAngle = pi / 3;
+    const startAngle = -pi / 2 - sweepAngle / 2;
+
+    final path = Path();
+    path.moveTo(center.dx, center.dy);
+    path.arcTo(rect, startAngle, sweepAngle, false);
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 

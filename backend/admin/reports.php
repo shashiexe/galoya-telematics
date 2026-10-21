@@ -588,6 +588,33 @@ if ($report_type === 'staff_audit') {
         }
     }
 
+    $processedShifts = [];
+    if (!empty($shifts)) {
+        foreach ($shifts as $sIdx => $s) {
+            $sH = floor($s['duration'] / 3600);
+            $sM = round(($s['duration'] % 3600) / 60);
+            $sDurStr = ($sH > 0 ? "{$sH}h " : "") . "{$sM}m";
+
+            $offGapStr = null;
+            if ($sIdx > 0 && !empty($shifts[$sIdx - 1]['end'])) {
+                $gapSec = max(0, strtotime($s['start']) - strtotime($shifts[$sIdx - 1]['end']));
+                $gH = floor($gapSec / 3600);
+                $gM = round(($gapSec % 3600) / 60);
+                $offGapStr = ($gH > 0 ? "{$gH}h " : "") . "{$gM}m";
+            }
+
+            $processedShifts[] = [
+                'shift_num' => $sIdx + 1,
+                'start' => $s['start'],
+                'end' => $s['end'],
+                'duration_sec' => $s['duration'],
+                'duration_str' => $sDurStr,
+                'is_active' => empty($s['end']),
+                'off_gap_before' => $offGapStr
+            ];
+        }
+    }
+
     // Cumulative path distance from GPS coordinates (filter noise < 10m)
     $pathKm = 0;
     for ($k = 1; $k < $n; $k++) {
@@ -638,6 +665,7 @@ if ($report_type === 'staff_audit') {
         'last_off' => $lastOffTime,
         'is_active' => $isCurrentlyActive,
         'duty_duration' => $dutyDurStr,
+        'shifts' => $processedShifts,
         'first_visit' => $firstVisitTime,
         'last_visit' => $lastVisitTime,
         'visit_window' => $visitWindowStr,
@@ -1288,15 +1316,40 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </div>
     </div>
 
-    <!-- Box 3: Total Duty Time -->
+    <!-- Box 3: Total Duty Time & Shifts -->
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #0284c7">
-      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">⏱️ Shift / Work Duration</div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">
+          ⏱️ Shift / Work Duration
+        </div>
+        <?php if (!empty($staffAuditSummary['shifts']) && count($staffAuditSummary['shifts']) > 1): ?>
+          <span style="font-size:10px;background:#e0f2fe;color:#0369a1;font-weight:800;padding:1px 6px;border-radius:10px">
+            <?= count($staffAuditSummary['shifts']) ?> Shifts
+          </span>
+        <?php endif; ?>
+      </div>
       <div style="font-size:16px;font-weight:800;color:#0369a1;margin-top:2px">
         <?= $staffAuditSummary['duty_duration'] ?> <?= $staffAuditSummary['is_active'] ? '<span style="font-size:11px;color:#16a34a;font-weight:600">(Running)</span>' : '' ?>
       </div>
       <div style="font-size:10.5px;color:#94a3b8">
         <?= $staffAuditSummary['is_active'] ? 'Ongoing active duty duration' : 'Total active shift time' ?>
       </div>
+
+      <?php if (!empty($staffAuditSummary['shifts']) && count($staffAuditSummary['shifts']) > 1): ?>
+        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:3px">
+          <?php foreach ($staffAuditSummary['shifts'] as $sh): ?>
+            <?php if (!empty($sh['off_gap_before'])): ?>
+              <div style="font-size:9.5px;color:#94a3b8;padding:1px 4px;background:#f8fafc;border-radius:3px">
+                ☕ Off-Duty Break: <?= $sh['off_gap_before'] ?>
+              </div>
+            <?php endif; ?>
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:#475569">
+              <span><strong>Shift <?= $sh['shift_num'] ?>:</strong> <?= date('h:i A', strtotime($sh['start'])) ?> – <?= $sh['end'] ? date('h:i A', strtotime($sh['end'])) : '<span style="color:#16a34a;font-weight:700">Active</span>' ?></span>
+              <span style="font-weight:700;color:#0284c7"><?= $sh['duration_str'] ?></span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     </div>
 
     <!-- Box 4: Field Visit Period & Rounds -->

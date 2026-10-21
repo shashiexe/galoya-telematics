@@ -178,6 +178,27 @@ if ($report_type === 'staff_audit') {
     for ($i = 0; $i < $n; $i++) {
         $p = $pts[$i];
         $spd = (float)$p['speed'];
+
+        if ($i > 0) {
+            $prev_p = $pts[$i - 1];
+            $t_gap = max(1, strtotime($p['recorded_at']) - strtotime($prev_p['recorded_at']));
+            $dist_km = haversine_dist_km((float)$prev_p['lat'], (float)$prev_p['lng'], (float)$p['lat'], (float)$p['lng']);
+            $dist_m = $dist_km * 1000.0;
+            $disp_spd = $t_gap > 0 ? ($dist_km / ($t_gap / 3600.0)) : 0.0;
+
+            if ($dist_m < 15.0 && $t_gap >= 10) {
+                $spd = 0.0;
+            } elseif ($dist_m >= 20.0 && $disp_spd >= 4.0 && $disp_spd <= 140.0) {
+                if ($spd < 4.0) {
+                    $spd = round($disp_spd, 1);
+                }
+            } elseif ($spd < 4.0) {
+                $spd = 0.0;
+            }
+        } else {
+            if ($spd < 4.0) $spd = 0.0;
+        }
+        $p['speed'] = $spd;
         if ($spd > $maxSpd) $maxSpd = $spd;
 
         // Check Gap to Next Point (> 15 minutes = Inactive Gap / Phone Off / Battery Dead)

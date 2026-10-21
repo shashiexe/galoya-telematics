@@ -255,10 +255,10 @@ try {
 } catch (Throwable $e) {}
 
 try {
-    set_setting('latest_app_version', '1.3.4');
-    set_setting('latest_app_build', '17');
-    set_setting('app_update_changelog', "• Mobile Data Usage Monitor: Track today, this month, and all-time cellular bandwidth\n• Employer Telematics Oversight: Real-time data consumption sync to web dashboard\n• Web User Management: Role-Based Access Control (RBAC) with form-wise & button-wise restriction matrix\n• Anti-Drift: Stabilized GPS under solar panels & metal roofs\n• Instant Emergency SOS Panic Button");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.4 (Build 17)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.5');
+    set_setting('latest_app_build', '18');
+    set_setting('app_update_changelog', "• Nearby Plot & Geofence Identifier: Pink Radar button blinks current location pin and draws surrounding plot polygon boundaries\n• Dynamic Compass & Direction Tracking: Google Maps style rotating needle and directional beam cone\n• Tasks List Split: Separate Pending & Active tasks from Completed History (with date filter)\n• Pending Tasks Badge: Header badge strictly counts only pending/active tasks\n• Turn-by-Turn Navigation: One-tap Google Maps directions directly from task cards and detail view\n• Web Admin Geofence Link: Auto-attach GPS coordinates and plot names when creating new tasks");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.5 (Build 18)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {

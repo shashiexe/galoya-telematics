@@ -64,20 +64,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Master Lookups
 $departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
 $sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY name ASC")->fetchAll();
-$geofences = q("SELECT id, name, code, group_name, coordinates FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
-foreach ($geofences as &$gf) {
-    $coords = json_decode($gf['coordinates'] ?? '[]', true);
-    $lat = ''; $lng = '';
-    if (is_array($coords) && count($coords) > 0) {
-        $sumLat = 0; $sumLng = 0; $n = count($coords);
-        foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
-        $lat = round($sumLat / $n, 6);
-        $lng = round($sumLng / $n, 6);
+// Master Geofence Groups & Initial Lookups
+$gfGroups = [];
+try {
+    $gfGroups = q("SELECT DISTINCT group_name FROM geofences WHERE active=1 AND group_name IS NOT NULL AND group_name != '' ORDER BY group_name ASC")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {}
+
+$initialGeofences = [];
+try {
+    $initialGeofences = q("SELECT id, name, code, group_name, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 40")->fetchAll();
+    foreach ($initialGeofences as &$gf) {
+        $coords = json_decode($gf['coordinates'] ?? '[]', true);
+        $lat = ''; $lng = '';
+        if (is_array($coords) && count($coords) > 0) {
+            $sumLat = 0; $sumLng = 0; $n = count($coords);
+            foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
+            $lat = round($sumLat / $n, 6);
+            $lng = round($sumLng / $n, 6);
+        }
+        $gf['center_lat'] = $lat;
+        $gf['center_lng'] = $lng;
     }
-    $gf['center_lat'] = $lat;
-    $gf['center_lng'] = $lng;
+    unset($gf);
+} catch (Throwable $e) {}
+
+// Handle AJAX search for 5,000+ Geofences / Plots in Create Task Modal
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'search_geofences') {
+    header('Content-Type: application/json; charset=utf-8');
+    $q = trim($_GET['q'] ?? '');
+    $group = trim($_GET['group'] ?? '');
+    
+    $where = ["active = 1"];
+    $params = [];
+    
+    if ($group !== '') {
+        $where[] = "group_name = ?";
+        $params[] = $group;
+    }
+    
+    if ($q !== '') {
+        $where[] = "(name LIKE ? OR code LIKE ? OR description LIKE ?)";
+        $params[] = "%$q%";
+        $params[] = "%$q%";
+        $params[] = "%$q%";
+    }
+    
+    $rows = [];
+    try {
+        $rows = q("SELECT id, name, code, group_name, coordinates FROM geofences WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 60", $params)->fetchAll();
+    } catch (Throwable $e) {}
+    
+    $out = [];
+    foreach ($rows as $gf) {
+        $coords = json_decode($gf['coordinates'] ?? '[]', true);
+        $lat = ''; $lng = '';
+        if (is_array($coords) && count($coords) > 0) {
+            $sumLat = 0; $sumLng = 0; $n = count($coords);
+            foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
+            $lat = round($sumLat / $n, 6);
+            $lng = round($sumLng / $n, 6);
+        }
+        $out[] = [
+            'id' => (int)$gf['id'],
+            'name' => $gf['name'],
+            'code' => $gf['code'] ?? '',
+            'group' => $gf['group_name'] ?? '',
+            'lat' => $lat,
+            'lng' => $lng,
+        ];
+    }
+    echo json_encode(['ok' => true, 'count' => count($out), 'plots' => $out]);
+    exit;
 }
-unset($gf);
 
 // CSV export / filters
 $where = [user_section_scope_sql('u')]; 
@@ -336,17 +394,38 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
         </select>
       </div>
 
-      <!-- Geofence / Plantation Plot Selector -->
+      <!-- Geofence / Plantation Plot Selector (Searchable across 5,000+ plots) -->
       <div style="background:#f0fdf4;padding:12px;border:1px solid #bbf7d0;border-radius:6px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <label style="font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase">
             🌾 Select Geofence / Plot (Auto-Attach GPS Location):
           </label>
-          <span id="gf-coord-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:10px;background:#15803d;color:#fff;font-weight:600">GPS Attached ✓</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="gf-search-status" style="font-size:10.5px;color:#059669;font-weight:600">5,000+ plots</span>
+            <span id="gf-coord-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:10px;background:#15803d;color:#fff;font-weight:600">GPS Attached ✓</span>
+          </div>
         </div>
+
+        <!-- Quick Search & Group Filters -->
+        <div style="display:grid;grid-template-columns:1fr 140px;gap:6px;margin-bottom:6px">
+          <div style="position:relative">
+            <input type="text" id="task-geofence-search" placeholder="🔍 Quick Search 5,000+ Plots (e.g. 207, Hingurana, D/)..." 
+                   oninput="onGeofenceSearchInput()" 
+                   style="width:100%;padding:6px 26px 6px 8px;font-size:12px;border:1px solid #86efac;border-radius:4px;background:#fff;box-sizing:border-box">
+            <button type="button" onclick="clearGeofenceSearch()" title="Clear Search" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:none;color:#94a3b8;cursor:pointer;font-size:13px;padding:0;line-height:1">✕</button>
+          </div>
+          <select id="task-geofence-group-filter" onchange="onGeofenceGroupChange()" style="padding:6px;font-size:11.5px;border:1px solid #86efac;border-radius:4px;background:#fff">
+            <option value="">All Groups</option>
+            <?php foreach ($gfGroups as $grp): ?>
+              <option value="<?= h($grp) ?>"><?= h($grp) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+
+        <!-- Plots Dropdown -->
         <select name="geofence_id" id="task-geofence-select" onchange="onGeofenceSelected(this)" style="width:100%;padding:7px 10px;font-size:12px;border:1px solid #86efac;border-radius:4px;background:#fff;box-sizing:border-box">
           <option value="">— Optional: Link to Plantation Plot / Geofence —</option>
-          <?php foreach ($geofences as $gf): ?>
+          <?php foreach ($initialGeofences as $gf): ?>
             <option value="<?= $gf['id'] ?>" 
                     data-name="<?= h($gf['name']) ?>" 
                     data-code="<?= h($gf['code'] ?? '') ?>"
@@ -357,6 +436,13 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
             </option>
           <?php endforeach; ?>
         </select>
+
+        <!-- Selected Plot Confirmation Banner -->
+        <div id="gf-selected-banner" style="display:none;margin-top:6px;padding:6px 10px;background:#dcfce7;border:1px solid #86efac;border-radius:4px;font-size:11.5px;color:#166534;align-items:center;justify-content:space-between">
+          <span id="gf-selected-text"></span>
+          <button type="button" onclick="clearSelectedGeofence()" style="border:none;background:#bbf7d0;color:#15803d;padding:2px 8px;border-radius:4px;font-size:10.5px;cursor:pointer;font-weight:700">Remove</button>
+        </div>
+
         <input type="hidden" name="lat" id="task-modal-lat" value="">
         <input type="hidden" name="lng" id="task-modal-lng" value="">
       </div>
@@ -437,12 +523,115 @@ function filterModalStaff() {
   document.getElementById('staff-match-count').innerText = visibleCount + ' staff matching';
 }
 
+var gfSearchDebounce = null;
+
+function onGeofenceSearchInput() {
+  clearTimeout(gfSearchDebounce);
+  gfSearchDebounce = setTimeout(function() {
+    searchGeofencesAjax();
+  }, 220);
+}
+
+function onGeofenceGroupChange() {
+  searchGeofencesAjax();
+}
+
+function clearGeofenceSearch() {
+  document.getElementById('task-geofence-search').value = '';
+  document.getElementById('task-geofence-group-filter').value = '';
+  searchGeofencesAjax();
+}
+
+function clearSelectedGeofence() {
+  var sel = document.getElementById('task-geofence-select');
+  sel.value = '';
+  onGeofenceSelected(sel);
+}
+
+function searchGeofencesAjax() {
+  var q = document.getElementById('task-geofence-search').value.trim();
+  var grp = document.getElementById('task-geofence-group-filter').value;
+  var statusSpan = document.getElementById('gf-search-status');
+  var sel = document.getElementById('task-geofence-select');
+
+  if (statusSpan) statusSpan.textContent = 'Searching...';
+
+  var url = 'tasks.php?ajax=search_geofences&q=' + encodeURIComponent(q) + '&group=' + encodeURIComponent(grp);
+
+  fetch(url)
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (!data || !data.ok) return;
+      var plots = data.plots || [];
+      
+      var currVal = sel.value;
+      var currOpt = sel.options[sel.selectedIndex];
+      var currOptSaved = (currVal && currOpt) ? {
+        value: currVal,
+        text: currOpt.text,
+        name: currOpt.getAttribute('data-name'),
+        code: currOpt.getAttribute('data-code'),
+        group: currOpt.getAttribute('data-group'),
+        lat: currOpt.getAttribute('data-lat'),
+        lng: currOpt.getAttribute('data-lng')
+      } : null;
+
+      sel.innerHTML = '';
+      
+      var defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = plots.length === 0 
+        ? '— No matching plots found —' 
+        : '— Select matching plot (' + plots.length + ' found) —';
+      sel.appendChild(defaultOpt);
+
+      var foundCurrent = false;
+      for (var i = 0; i < plots.length; i++) {
+        var p = plots[i];
+        if (currOptSaved && String(p.id) === String(currOptSaved.value)) foundCurrent = true;
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.setAttribute('data-name', p.name || '');
+        opt.setAttribute('data-code', p.code || '');
+        opt.setAttribute('data-group', p.group || '');
+        opt.setAttribute('data-lat', p.lat || '');
+        opt.setAttribute('data-lng', p.lng || '');
+        opt.textContent = p.name + (p.code ? ' (' + p.code + ')' : '') + (p.group ? ' — ' + p.group : '');
+        sel.appendChild(opt);
+      }
+
+      if (currOptSaved && !foundCurrent) {
+        var opt = document.createElement('option');
+        opt.value = currOptSaved.value;
+        opt.setAttribute('data-name', currOptSaved.name);
+        opt.setAttribute('data-code', currOptSaved.code);
+        opt.setAttribute('data-group', currOptSaved.group);
+        opt.setAttribute('data-lat', currOptSaved.lat);
+        opt.setAttribute('data-lng', currOptSaved.lng);
+        opt.textContent = '✓ ' + currOptSaved.text;
+        opt.selected = true;
+        sel.insertBefore(opt, sel.children[1]);
+      } else if (currOptSaved && foundCurrent) {
+        sel.value = currOptSaved.value;
+      }
+
+      if (statusSpan) {
+        statusSpan.textContent = plots.length + ' matching';
+      }
+    })
+    .catch(function(err) {
+      if (statusSpan) statusSpan.textContent = '5,000+ plots';
+    });
+}
+
 function onGeofenceSelected(select) {
   var opt = select.options[select.selectedIndex];
   var addrInput = document.querySelector('input[name="address"]');
   var latInput = document.getElementById('task-modal-lat');
   var lngInput = document.getElementById('task-modal-lng');
   var badge = document.getElementById('gf-coord-badge');
+  var banner = document.getElementById('gf-selected-banner');
+  var bannerText = document.getElementById('gf-selected-text');
 
   if (opt && opt.value) {
     var name = opt.getAttribute('data-name') || '';
@@ -459,10 +648,15 @@ function onGeofenceSelected(select) {
       badge.style.display = 'inline-block';
       badge.textContent = '📍 ' + lat + ', ' + lng;
     }
+    if (banner && bannerText) {
+      banner.style.display = 'flex';
+      bannerText.textContent = '🌾 Selected: ' + fullLoc + (lat && lng ? ' (📍 ' + lat + ', ' + lng + ')' : '');
+    }
   } else {
     if (latInput) latInput.value = '';
     if (lngInput) lngInput.value = '';
     if (badge) badge.style.display = 'none';
+    if (banner) banner.style.display = 'none';
   }
 }
 </script>

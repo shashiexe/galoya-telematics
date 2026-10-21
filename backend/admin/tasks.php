@@ -12,6 +12,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $deptId = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
         $secId = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
 
+        $geofenceId = !empty($_POST['geofence_id']) ? (int)$_POST['geofence_id'] : null;
+
         foreach ((array)($_POST['assigned_to'] ?? ['']) as $uid) {
             // If user selected, also infer user's department/section if not explicitly chosen
             $assignedUid = $uid ?: null;
@@ -24,19 +26,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             try {
-                q('INSERT INTO tasks (title,description,assigned_to,department_id,section_id,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)', [
+                q('INSERT INTO tasks (title,description,assigned_to,department_id,section_id,geofence_id,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [
                     trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $assignedUid,
-                    $deptId, $secId,
+                    $deptId, $secId, $geofenceId,
                     trim($_POST['address'] ?? '') ?: null,
                     $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
                     $_POST['due_date'] ?: null, $me['id']]);
             } catch (Throwable $e) {
-                // Fallback if department_id or section_id column is pending
-                q('INSERT INTO tasks (title,description,assigned_to,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?)', [
-                    trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $assignedUid,
-                    trim($_POST['address'] ?? '') ?: null,
-                    $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
-                    $_POST['due_date'] ?: null, $me['id']]);
+                // Fallback if department_id, section_id or geofence_id column is pending
+                try {
+                    q('INSERT INTO tasks (title,description,assigned_to,department_id,section_id,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)', [
+                        trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $assignedUid,
+                        $deptId, $secId,
+                        trim($_POST['address'] ?? '') ?: null,
+                        $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
+                        $_POST['due_date'] ?: null, $me['id']]);
+                } catch (Throwable $e2) {
+                    q('INSERT INTO tasks (title,description,assigned_to,address,lat,lng,due_date,created_by) VALUES (?,?,?,?,?,?,?,?)', [
+                        trim($_POST['title']), trim($_POST['description'] ?? '') ?: null, $assignedUid,
+                        trim($_POST['address'] ?? '') ?: null,
+                        $_POST['lat'] !== '' ? $_POST['lat'] : null, $_POST['lng'] !== '' ? $_POST['lng'] : null,
+                        $_POST['due_date'] ?: null, $me['id']]);
+                }
             }
             $n++;
         }
@@ -53,6 +64,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Master Lookups
 $departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
 $sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY name ASC")->fetchAll();
+$geofences = q("SELECT id, name, code, group_name, coordinates FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
+foreach ($geofences as &$gf) {
+    $coords = json_decode($gf['coordinates'] ?? '[]', true);
+    $lat = ''; $lng = '';
+    if (is_array($coords) && count($coords) > 0) {
+        $sumLat = 0; $sumLng = 0; $n = count($coords);
+        foreach ($coords as $c) { $sumLat += (float)$c[0]; $sumLng += (float)$c[1]; }
+        $lat = round($sumLat / $n, 6);
+        $lng = round($sumLng / $n, 6);
+    }
+    $gf['center_lat'] = $lat;
+    $gf['center_lng'] = $lng;
+}
+unset($gf);
 
 // CSV export / filters
 $where = [user_section_scope_sql('u')]; 
@@ -68,12 +93,14 @@ if (!empty($_GET['date'])) {
 
 $sql = "SELECT t.*, u.name staff, u.code staff_code, u.designation staff_desig,
    s.name section_name, d.name department_name,
+   gf.name geofence_name, gf.code geofence_code,
    (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='before' ORDER BY id DESC LIMIT 1) bp,
    (SELECT file_path FROM task_photos WHERE task_id=t.id AND type='after' ORDER BY id DESC LIMIT 1) ap
    FROM tasks t 
    LEFT JOIN users u ON u.id=t.assigned_to 
    LEFT JOIN sections s ON s.id=t.section_id
    LEFT JOIN departments d ON d.id=t.department_id
+   LEFT JOIN geofences gf ON gf.id=t.geofence_id
    WHERE " . implode(' AND ', $where) . " ORDER BY t.id DESC LIMIT 500";
 $tasks = q($sql, $p)->fetchAll();
 
@@ -171,6 +198,16 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
             <td style="color:#64748b;font-weight:600">#<?= $t['id'] ?></td>
             <td>
               <a href="task.php?id=<?= $t['id'] ?>" style="font-weight:600;font-size:13px"><?= h($t['title']) ?></a>
+              <?php if (!empty($t['geofence_name'])): ?>
+                <div style="margin-top:2px">
+                  <span style="display:inline-block;padding:1px 6px;background:#dcfce7;color:#15803d;border-radius:4px;font-size:10px;font-weight:700">
+                    🌾 <?= h($t['geofence_name']) ?> <?= !empty($t['geofence_code']) ? '(' . h($t['geofence_code']) . ')' : '' ?>
+                  </span>
+                  <?php if (!empty($t['lat']) && !empty($t['lng'])): ?>
+                    <a href="https://www.google.com/maps/dir/?api=1&destination=<?= $t['lat'] ?>,<?= $t['lng'] ?>" target="_blank" style="font-size:10px;color:#0284c7;text-decoration:none;margin-left:4px" title="Open Google Maps Directions">🚗 Directions ↗</a>
+                  <?php endif; ?>
+                </div>
+              <?php endif; ?>
               <?php if (!empty($t['address'])): ?>
                 <div style="font-size:11px;color:#64748b"><?= h($t['address']) ?></div>
               <?php endif; ?>
@@ -299,6 +336,31 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
         </select>
       </div>
 
+      <!-- Geofence / Plantation Plot Selector -->
+      <div style="background:#f0fdf4;padding:12px;border:1px solid #bbf7d0;border-radius:6px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <label style="font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase">
+            🌾 Select Geofence / Plot (Auto-Attach GPS Location):
+          </label>
+          <span id="gf-coord-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:10px;background:#15803d;color:#fff;font-weight:600">GPS Attached ✓</span>
+        </div>
+        <select name="geofence_id" id="task-geofence-select" onchange="onGeofenceSelected(this)" style="width:100%;padding:7px 10px;font-size:12px;border:1px solid #86efac;border-radius:4px;background:#fff;box-sizing:border-box">
+          <option value="">— Optional: Link to Plantation Plot / Geofence —</option>
+          <?php foreach ($geofences as $gf): ?>
+            <option value="<?= $gf['id'] ?>" 
+                    data-name="<?= h($gf['name']) ?>" 
+                    data-code="<?= h($gf['code'] ?? '') ?>"
+                    data-group="<?= h($gf['group_name'] ?? '') ?>"
+                    data-lat="<?= $gf['center_lat'] ?>" 
+                    data-lng="<?= $gf['center_lng'] ?>">
+              <?= h($gf['name']) ?> <?= !empty($gf['code']) ? '(' . h($gf['code']) . ')' : '' ?> <?= !empty($gf['group_name']) ? '— ' . h($gf['group_name']) : '' ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+        <input type="hidden" name="lat" id="task-modal-lat" value="">
+        <input type="hidden" name="lng" id="task-modal-lng" value="">
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div>
           <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;font-weight:600">Due Date</label>
@@ -373,6 +435,35 @@ function filterModalStaff() {
   }
 
   document.getElementById('staff-match-count').innerText = visibleCount + ' staff matching';
+}
+
+function onGeofenceSelected(select) {
+  var opt = select.options[select.selectedIndex];
+  var addrInput = document.querySelector('input[name="address"]');
+  var latInput = document.getElementById('task-modal-lat');
+  var lngInput = document.getElementById('task-modal-lng');
+  var badge = document.getElementById('gf-coord-badge');
+
+  if (opt && opt.value) {
+    var name = opt.getAttribute('data-name') || '';
+    var code = opt.getAttribute('data-code') || '';
+    var group = opt.getAttribute('data-group') || '';
+    var lat = opt.getAttribute('data-lat') || '';
+    var lng = opt.getAttribute('data-lng') || '';
+
+    var fullLoc = name + (code ? ' (' + code + ')' : '') + (group ? ', ' + group : '');
+    if (addrInput) addrInput.value = fullLoc;
+    if (latInput) latInput.value = lat;
+    if (lngInput) lngInput.value = lng;
+    if (badge) {
+      badge.style.display = 'inline-block';
+      badge.textContent = '📍 ' + lat + ', ' + lng;
+    }
+  } else {
+    if (latInput) latInput.value = '';
+    if (lngInput) lngInput.value = '';
+    if (badge) badge.style.display = 'none';
+  }
 }
 </script>
 

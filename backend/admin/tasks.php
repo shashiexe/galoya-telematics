@@ -362,7 +362,7 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
             </select>
           </div>
           <div>
-            <select name="section_id" id="task-create-sec" onchange="filterModalStaff()" style="width:100%;padding:6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
+            <select name="section_id" id="task-create-sec" onchange="onTaskCreateSecChange()" style="width:100%;padding:6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px">
               <option value="">All Sections / Divisions</option>
               <?php foreach ($sections as $s): ?>
                 <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>"><?= h($s['name']) ?></option>
@@ -474,6 +474,18 @@ layout_start('Tasks & Assignments', 'tasks.php', true);
 <script>
 function openCreateTaskModal() {
   document.getElementById('task-modal').style.display = 'flex';
+  filterModalStaff();
+}
+
+function onTaskCreateSecChange() {
+  var secSelect = document.getElementById('task-create-sec');
+  var opt = secSelect.options[secSelect.selectedIndex];
+  if (opt) {
+    var deptId = opt.getAttribute('data-dept');
+    if (deptId) {
+      document.getElementById('task-create-dept').value = deptId;
+    }
+  }
   filterModalStaff();
 }
 

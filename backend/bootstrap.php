@@ -285,9 +285,10 @@ try {
     try { q("ALTER TABLE `users` ADD COLUMN `designation_id` INT NULL AFTER `section_id`"); } catch (Throwable $e) {}
     try { q("ALTER TABLE `users` ADD COLUMN `designation` VARCHAR(100) NULL AFTER `designation_id`"); } catch (Throwable $e) {}
 
-    // 5. Alter tasks table for department & section
+    // 5. Alter tasks table for department & section & geofence
     try { q("ALTER TABLE `tasks` ADD COLUMN `department_id` INT NULL AFTER `assigned_to`"); } catch (Throwable $e) {}
     try { q("ALTER TABLE `tasks` ADD COLUMN `section_id` INT NULL AFTER `department_id`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `tasks` ADD COLUMN `geofence_id` INT NULL AFTER `section_id`"); } catch (Throwable $e) {}
 
     // 6. Alter duty_logs for battery, event_type, note
     try { q("ALTER TABLE `duty_logs` ADD COLUMN `battery` TINYINT NULL AFTER `lng`"); } catch (Throwable $e) {}

@@ -509,7 +509,7 @@ if ($attempts >= $maxAttempts && (time() - $lastAttemptTime) < $lockoutTime) {
           <div>
             <a href="../Galoya-Telematics.apk" download class="apk-dl-link">
               <span>📱</span>
-              <span>Download GalOya Track360 Android APK (v1.3.0)</span>
+              <span>Download GalOya Track360 Android APK (v1.3.5)</span>
             </a>
           </div>
         </div>

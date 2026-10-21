@@ -1944,9 +1944,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 children: [
                   TileLayer(
                     urlTemplate: _isSatellite
-                        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                        ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'lk.galoya.stafftrack',
+                    maxZoom: 20,
                   ),
                   if (_targetPolygonPoints.isNotEmpty || _nearbyIdentifiedPolygons.isNotEmpty)
                     PolygonLayer(

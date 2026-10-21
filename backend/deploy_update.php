@@ -488,9 +488,9 @@ try {
 // Update latest app version & build in settings table using bootstrap set_setting
 try {
     set_setting('latest_app_version', '1.3.5');
-    set_setting('latest_app_build', '19');
-    set_setting('app_update_changelog', "• Single clean green boundary plantation plot identification matching field\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Enhanced 24/7 background tracking");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.5 build 19", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_build', '20');
+    set_setting('app_update_changelog', "• Single clean green boundary plantation plot identification matching field\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Dismissible floating bottom bar with Clear Polygons\n• Enhanced 24/7 background tracking");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.5 build 20", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

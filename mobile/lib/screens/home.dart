@@ -353,41 +353,190 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       if (online != null && online.isNotEmpty) {
         nearbyList = online;
       } else {
-        nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 10);
+        nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
       }
     } catch (_) {
-      nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 10);
+      nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
     }
 
     // 4. Find the plot officer is inside, or the closest plot
-    Map<String, dynamic>? targetPlot;
+    Map<String, dynamic>? insidePlot;
     for (final p in nearbyList) {
       if (p['is_inside'] == true) {
-        targetPlot = p;
+        insidePlot = p;
         break;
       }
     }
-    if (targetPlot == null && nearbyList.isNotEmpty) {
-      targetPlot = nearbyList.first;
+    final target = insidePlot ?? (nearbyList.isNotEmpty ? nearbyList.first : null);
+
+    // 5. Build clean green polygons and centered name badges for nearby plots
+    final polygons = <Polygon>[];
+    final markers = <Marker>[];
+    final allPointsForBounds = <LatLng>[];
+
+    for (final p in nearbyList) {
+      final isTarget = (target != null && (p['name'] == target['name'] || p['id'] == target['id']));
+      final polyCoords = p['coordinates'];
+      final pts = <LatLng>[];
+      if (polyCoords is List && polyCoords.length >= 3) {
+        for (final c in polyCoords) {
+          if (c is List && c.length >= 2) {
+            final pLat = (c[0] is num) ? (c[0] as num).toDouble() : double.tryParse(c[0]?.toString() ?? '') ?? 0.0;
+            final pLng = (c[1] is num) ? (c[1] as num).toDouble() : double.tryParse(c[1]?.toString() ?? '') ?? 0.0;
+            if (pLat != 0.0 && pLng != 0.0) {
+              pts.add(LatLng(pLat, pLng));
+            }
+          }
+        }
+        if (pts.isNotEmpty) {
+          polygons.add(
+            Polygon(
+              points: pts,
+              color: isTarget ? const Color(0x3322c55e) : const Color(0x1522c55e),
+              borderColor: isTarget ? const Color(0xff22c55e) : const Color(0xff16a34a),
+              borderStrokeWidth: isTarget ? 3.0 : 1.8,
+              isFilled: true,
+            ),
+          );
+          if (isTarget) allPointsForBounds.addAll(pts);
+        }
+      }
+
+      LatLng centerPt;
+      if (pts.isNotEmpty) {
+        double sLat = 0.0;
+        double sLng = 0.0;
+        for (final pt in pts) {
+          sLat += pt.latitude;
+          sLng += pt.longitude;
+        }
+        centerPt = LatLng(sLat / pts.length, sLng / pts.length);
+      } else {
+        final pLat = (p['lat'] is num)
+            ? (p['lat'] as num).toDouble()
+            : double.tryParse(p['lat']?.toString() ?? '') ?? 0.0;
+        final pLng = (p['lng'] is num)
+            ? (p['lng'] as num).toDouble()
+            : double.tryParse(p['lng']?.toString() ?? '') ?? 0.0;
+        centerPt = LatLng(pLat, pLng);
+      }
+
+      if (centerPt.latitude != 0.0 && centerPt.longitude != 0.0) {
+        markers.add(
+          Marker(
+            point: centerPt,
+            width: 120,
+            height: 34,
+            child: Center(
+              child: GestureDetector(
+                onTap: () => _selectPlotForNavigation(p),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isTarget ? const Color(0xee0f172a) : const Color(0xcc1e293b),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isTarget ? const Color(0xff22c55e) : const Color(0xff16a34a),
+                      width: isTarget ? 1.8 : 1.0,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black45, blurRadius: 3, offset: Offset(0, 1.5)),
+                    ],
+                  ),
+                  child: Text(
+                    p['name'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isTarget ? const Color(0xff4ade80) : Colors.white,
+                      fontWeight: isTarget ? FontWeight.bold : FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
     }
 
-    if (targetPlot != null && mounted) {
-      // Clear any previous multi-plot clutter
+    if (mounted) {
       setState(() {
-        _nearbyIdentifiedPolygons = [];
-        _nearbyIdentifiedMarkers = [];
-        _nearbyIdentifiedPlots = [];
+        _targetPlot = target;
+        _targetPolygonPoints = [];
+        _nearbyIdentifiedPlots = nearbyList;
+        _nearbyIdentifiedPolygons = polygons;
+        _nearbyIdentifiedMarkers = markers;
       });
 
-      // Display the single clean green polygon matching Photo 2 and set target plot
-      _selectPlotForNavigation(targetPlot);
-    } else if (mounted) {
-      _mapController.move(LatLng(lat, lng), 17.0);
+      if (allPointsForBounds.isNotEmpty) {
+        final bounds = LatLngBounds.fromPoints(allPointsForBounds);
+        _mapController.fitCamera(CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)));
+      } else if (target != null) {
+        final tLat = (target['lat'] as num?)?.toDouble() ?? lat;
+        final tLng = (target['lng'] as num?)?.toDouble() ?? lng;
+        _mapController.move(LatLng(tLat, tLng), 16.5);
+      }
+
+      final msg = insidePlot != null
+          ? '📍 Inside: ${insidePlot['name']}'
+          : (target != null
+              ? '📍 Nearest: ${target['name']} (${(target['distance'] as num?)?.round() ?? 0}m)'
+              : '📍 No plots found nearby');
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Color(0xfff59e0b),
-          content: Text('📍 No registered plantation plot found near current position'),
-          duration: Duration(seconds: 3),
+        SnackBar(
+          backgroundColor: const Color(0xff15803d),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(14, 0, 14, 120),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          duration: const Duration(seconds: 10),
+          dismissDirection: DismissDirection.horizontal,
+          content: Row(
+            children: [
+              const Icon(Icons.radar, color: Color(0xfffde047), size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  msg,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  backgroundColor: const Color(0x33ffffff),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  setState(() {
+                    _targetPlot = null;
+                    _targetPolygonPoints = [];
+                    _nearbyIdentifiedPolygons = [];
+                    _nearbyIdentifiedMarkers = [];
+                    _nearbyIdentifiedPlots = [];
+                  });
+                },
+                child: const Text('Clear Polygons', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                tooltip: 'Dismiss Bar',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1606,8 +1755,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       _nearbyIdentifiedMarkers = [];
       _nearbyIdentifiedPlots = [];
     });
-    final gLat = (plot['lat'] as num?)?.toDouble() ?? 0.0;
-    final gLng = (plot['lng'] as num?)?.toDouble() ?? 0.0;
+
+    final gLat = (plot['lat'] is num)
+        ? (plot['lat'] as num).toDouble()
+        : double.tryParse(plot['lat']?.toString() ?? '') ?? 0.0;
+    final gLng = (plot['lng'] is num)
+        ? (plot['lng'] as num).toDouble()
+        : double.tryParse(plot['lng']?.toString() ?? '') ?? 0.0;
+
     if (gLat != 0.0 && gLng != 0.0) {
       _mapController.move(LatLng(gLat, gLng), 16.5);
     }
@@ -1621,9 +1776,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     if (plot['coordinates'] is List) {
       for (final c in (plot['coordinates'] as List)) {
         if (c is List && c.length >= 2) {
-          final lat = (c[0] as num).toDouble();
-          final lng = (c[1] as num).toDouble();
-          pts.add(LatLng(lat, lng));
+          final lat = (c[0] is num) ? (c[0] as num).toDouble() : double.tryParse(c[0]?.toString() ?? '') ?? 0.0;
+          final lng = (c[1] is num) ? (c[1] as num).toDouble() : double.tryParse(c[1]?.toString() ?? '') ?? 0.0;
+          if (lat != 0.0 && lng != 0.0) pts.add(LatLng(lat, lng));
         }
       }
     }
@@ -1638,14 +1793,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             final rawList = res['coordinates'] as List;
             for (final c in rawList) {
               if (c is List && c.length >= 2) {
-                final lat = (c[0] as num).toDouble();
-                final lng = (c[1] as num).toDouble();
-                pts.add(LatLng(lat, lng));
+                final lat = (c[0] is num) ? (c[0] as num).toDouble() : double.tryParse(c[0]?.toString() ?? '') ?? 0.0;
+                final lng = (c[1] is num) ? (c[1] as num).toDouble() : double.tryParse(c[1]?.toString() ?? '') ?? 0.0;
+                if (lat != 0.0 && lng != 0.0) pts.add(LatLng(lat, lng));
               }
             }
           }
         }
       } catch (_) {}
+    }
+
+    double centerLat = gLat;
+    double centerLng = gLng;
+    if (pts.isNotEmpty) {
+      double sumLat = 0.0;
+      double sumLng = 0.0;
+      for (final p in pts) {
+        sumLat += p.latitude;
+        sumLng += p.longitude;
+      }
+      centerLat = sumLat / pts.length;
+      centerLng = sumLng / pts.length;
+      plot['lat'] = centerLat;
+      plot['lng'] = centerLng;
     }
 
     if (pts.isNotEmpty && mounted) {
@@ -1657,15 +1827,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
 
     if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xff15803d),
-          content: Text('📍 Plot: $plotLabel'),
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'Google Maps',
-            textColor: Colors.white,
-            onPressed: () => _openGoogleMapsNavigation(gLat, gLng, plotLabel),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(14, 0, 14, 120),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          duration: const Duration(seconds: 10),
+          dismissDirection: DismissDirection.horizontal,
+          content: Row(
+            children: [
+              const Icon(Icons.location_on, color: Color(0xff4ade80), size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Plot: $plotLabel',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  backgroundColor: const Color(0x33ffffff),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  setState(() {
+                    _targetPlot = null;
+                    _targetPolygonPoints = [];
+                    _nearbyIdentifiedPolygons = [];
+                    _nearbyIdentifiedMarkers = [];
+                    _nearbyIdentifiedPlots = [];
+                  });
+                },
+                child: const Text('Clear', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 4),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  backgroundColor: const Color(0xff059669),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => _openGoogleMapsNavigation(centerLat != 0.0 ? centerLat : gLat, centerLng != 0.0 ? centerLng : gLng, plotLabel),
+                child: const Text('Google Maps', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                tooltip: 'Dismiss Bar',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ],
           ),
         ),
       );
@@ -1725,19 +1948,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'lk.galoya.stafftrack',
                   ),
-                  if (_targetPolygonPoints.isNotEmpty)
+                  if (_targetPolygonPoints.isNotEmpty || _nearbyIdentifiedPolygons.isNotEmpty)
                     PolygonLayer(
                       polygons: [
-                        Polygon(
-                          points: _targetPolygonPoints,
-                          color: const Color(0x3322c55e),
-                          borderColor: const Color(0xff16a34a),
-                          borderStrokeWidth: 3.0,
-                          isFilled: true,
-                        ),
+                        ..._nearbyIdentifiedPolygons,
+                        if (_targetPolygonPoints.isNotEmpty && _nearbyIdentifiedPolygons.isEmpty)
+                          Polygon(
+                            points: _targetPolygonPoints,
+                            color: const Color(0x3322c55e),
+                            borderColor: const Color(0xff16a34a),
+                            borderStrokeWidth: 3.0,
+                            isFilled: true,
+                          ),
                       ],
                     ),
-                  if (_targetPlot != null && _targetPolygonPoints.isEmpty)
+                  if (_targetPlot != null && _targetPolygonPoints.isEmpty && _nearbyIdentifiedPolygons.isEmpty)
                     PolylineLayer(
                       polylines: [
                         Polyline(
@@ -1755,6 +1980,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     ),
                   MarkerLayer(
                     markers: [
+                      ..._nearbyIdentifiedMarkers,
                       if (_isBlinkingLocation)
                         Marker(
                           point: currentLatLng,
@@ -1781,35 +2007,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                             },
                           ),
                         ),
-                      if (_targetPlot != null && _targetPolygonPoints.isEmpty)
+                      // CENTER PLOT NAME BADGE (Always visible in the middle of target plot / polygon!)
+                      if (_targetPlot != null && _nearbyIdentifiedMarkers.isEmpty)
                         Marker(
-                          point: LatLng(
-                            (_targetPlot!['lat'] as num).toDouble(),
-                            (_targetPlot!['lng'] as num).toDouble(),
-                          ),
+                          point: _targetPolygonPoints.isNotEmpty
+                              ? LatLng(
+                                  _targetPolygonPoints.map((e) => e.latitude).reduce((a, b) => a + b) / _targetPolygonPoints.length,
+                                  _targetPolygonPoints.map((e) => e.longitude).reduce((a, b) => a + b) / _targetPolygonPoints.length,
+                                )
+                              : LatLng(
+                                  (_targetPlot!['lat'] is num)
+                                      ? (_targetPlot!['lat'] as num).toDouble()
+                                      : double.tryParse(_targetPlot!['lat']?.toString() ?? '') ?? 0.0,
+                                  (_targetPlot!['lng'] is num)
+                                      ? (_targetPlot!['lng'] as num).toDouble()
+                                      : double.tryParse(_targetPlot!['lng']?.toString() ?? '') ?? 0.0,
+                                ),
                           width: 140,
-                          height: 65,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xfff59e0b),
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: const [
-                                    BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
-                                  ],
-                                ),
-                                child: Text(
-                                  _targetPlot!['name'] ?? 'Target Plot',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
-                                ),
+                          height: 38,
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xee0f172a),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xff22c55e), width: 1.8),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black87, blurRadius: 6, offset: Offset(0, 2)),
+                                ],
                               ),
-                              const Icon(Icons.location_on, color: Color(0xfff59e0b), size: 34),
-                            ],
+                              child: Text(
+                                _targetPlot!['name'] ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Color(0xff4ade80), fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                            ),
                           ),
                         ),
                       Marker(
@@ -2045,70 +2278,89 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                       BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4)),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xff16a34a).withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.grass_rounded, color: Color(0xff22c55e), size: 20),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _targetPlot!['name'] ?? 'Target Plot',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                  child: Builder(
+                    builder: (ctx) {
+                      final hudLat = _targetPolygonPoints.isNotEmpty
+                          ? _targetPolygonPoints.map((e) => e.latitude).reduce((a, b) => a + b) / _targetPolygonPoints.length
+                          : ((_targetPlot!['lat'] is num)
+                              ? (_targetPlot!['lat'] as num).toDouble()
+                              : double.tryParse(_targetPlot!['lat']?.toString() ?? '') ?? 0.0);
+                      final hudLng = _targetPolygonPoints.isNotEmpty
+                          ? _targetPolygonPoints.map((e) => e.longitude).reduce((a, b) => a + b) / _targetPolygonPoints.length
+                          : ((_targetPlot!['lng'] is num)
+                              ? (_targetPlot!['lng'] as num).toDouble()
+                              : double.tryParse(_targetPlot!['lng']?.toString() ?? '') ?? 0.0);
+
+                      return Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff16a34a).withOpacity(0.2),
+                              shape: BoxShape.circle,
                             ),
-                            Text(
-                              (_targetPlot!['is_inside'] == true)
-                                  ? '📍 Current Location Inside Plot'
-                                  : (_currentPosition != null
-                                      ? 'Distance: ${_formatDistanceMeters(
-                                          Geolocator.distanceBetween(
-                                            _currentPosition!.latitude,
-                                            _currentPosition!.longitude,
-                                            (_targetPlot!['lat'] as num).toDouble(),
-                                            (_targetPlot!['lng'] as num).toDouble(),
-                                          ),
-                                        )}'
-                                      : 'Target plot active'),
-                              style: TextStyle(
-                                color: (_targetPlot!['is_inside'] == true)
-                                    ? const Color(0xff4ade80)
-                                    : const Color(0xff38bdf8),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: const Icon(Icons.grass_rounded, color: Color(0xff22c55e), size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _targetPlot!['name'] ?? 'Target Plot',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  (_targetPlot!['is_inside'] == true)
+                                      ? '📍 Current Location Inside Plot'
+                                      : (_currentPosition != null && hudLat != 0.0 && hudLng != 0.0
+                                          ? 'Distance: ${_formatDistanceMeters(
+                                              Geolocator.distanceBetween(
+                                                _currentPosition!.latitude,
+                                                _currentPosition!.longitude,
+                                                hudLat,
+                                                hudLng,
+                                              ),
+                                            )}'
+                                          : 'Target plot active'),
+                                  style: TextStyle(
+                                    color: (_targetPlot!['is_inside'] == true)
+                                        ? const Color(0xff4ade80)
+                                        : const Color(0xff38bdf8),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.navigation, color: Colors.greenAccent),
-                        tooltip: 'Google Maps Turn-by-Turn',
-                        onPressed: () {
-                          final lat = (_targetPlot!['lat'] as num).toDouble();
-                          final lng = (_targetPlot!['lng'] as num).toDouble();
-                          _openGoogleMapsNavigation(lat, lng, _targetPlot!['name'] ?? 'Plot');
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white60),
-                        tooltip: 'Clear Polygon & Details',
-                        onPressed: () => setState(() {
-                          _targetPlot = null;
-                          _targetPolygonPoints = [];
-                        }),
-                      ),
-                    ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.navigation, color: Colors.greenAccent),
+                            tooltip: 'Google Maps Turn-by-Turn',
+                            onPressed: () {
+                              _openGoogleMapsNavigation(hudLat, hudLng, _targetPlot!['name'] ?? 'Plot');
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white60),
+                            tooltip: 'Clear Polygon & Details',
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              setState(() {
+                                _targetPlot = null;
+                                _targetPolygonPoints = [];
+                                _nearbyIdentifiedPolygons = [];
+                                _nearbyIdentifiedMarkers = [];
+                                _nearbyIdentifiedPlots = [];
+                              });
+                            },
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),

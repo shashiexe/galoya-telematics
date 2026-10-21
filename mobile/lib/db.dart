@@ -247,6 +247,7 @@ class LocalDb {
         'is_inside': isInside,
         'edge_distance': edgeDist,
         'distance': isInside ? 0.0 : edgeDist, // 0 if inside, else boundary distance in meters
+        'coordinates': poly,
       });
     }
 
@@ -279,8 +280,8 @@ class LocalDb {
       double dist = 0.0;
       bool isInside = false;
 
+      final poly = _parsePolygon(r['coordinates']);
       if (userLat != null && userLng != null && gLat != 0.0 && gLng != 0.0) {
-        final poly = _parsePolygon(r['coordinates']);
         if (poly != null && poly.isNotEmpty) {
           isInside = isPointInsidePolygon(userLat, userLng, poly);
           dist = isInside ? 0.0 : minDistanceToPolygonBoundary(userLat, userLng, poly);
@@ -296,6 +297,7 @@ class LocalDb {
         'lng': gLng,
         'is_inside': isInside,
         'distance': dist,
+        'coordinates': poly,
       });
     }
     if (userLat != null && userLng != null) {

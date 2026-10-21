@@ -226,20 +226,16 @@ void _serviceMain(ServiceInstance service) async {
   int lastSync = 0;
   int stationaryStartTime = 0;
   bool isParkedLogged = false;
+  bool isMovingState = false;
 
   final locationSettings = AndroidSettings(
     accuracy: LocationAccuracy.bestForNavigation,
     distanceFilter: 3, // Hardware-level micro-jitter suppression for indoor/roof stability
     intervalDuration: const Duration(seconds: 2), // poll hardware stream every 2s
-    foregroundNotificationConfig: const ForegroundNotificationConfig(
-      notificationText: "Tracking vehicle & field operations 24/7",
-      notificationTitle: "Galoya Telematics – GPS Active",
-      enableWakeLock: true,
-    ),
   );
 
-  // Periodic offline sync flush (every 20s: auto-sync all accumulated SQLite points as soon as signal returns)
-  Timer.periodic(const Duration(seconds: 20), (_) async {
+  // Periodic offline sync flush (every 15s: auto-sync all accumulated SQLite points as soon as signal returns)
+  Timer.periodic(const Duration(seconds: 15), (_) async {
     if (!running) return;
     try {
       final pCount = await LocalDb.countPoints();
@@ -250,19 +246,20 @@ void _serviceMain(ServiceInstance service) async {
     } catch (_) {}
   });
 
-  // Stationary Heartbeat Timer (Every 60s):
-  // Guarantees that when staff or machinery is stationary (not moving >= 12m),
-  // a stationary heartbeat point (speed: 0 km/h) is sent to the server every 60 seconds.
-  // This prevents the Web Monitor / Radar from marking the unit offline (which happens after 5 minutes of silence)!
-  Timer.periodic(const Duration(seconds: 60), (_) async {
+  // Motion & Stationary Heartbeat Timer:
+  // - While in motion: logs a GPS point at least every 15 seconds so points are tightly spaced and follow curves
+  // - While stationary: logs a heartbeat every 45-60 seconds to keep live radar active
+  Timer.periodic(const Duration(seconds: 8), (_) async {
     if (!running) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // If no point has been recorded in the last 45 seconds (i.e. stopped / stationary):
-    if (now - lastTime >= 45000) {
+    final int interval = await effectiveInterval(); // e.g. 15s
+    final int timeoutMs = isMovingState ? (interval * 1000) : 45000;
+
+    if (now - lastTime >= timeoutMs) {
       Position? pos;
       try {
         pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
+          desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 4),
         );
       } catch (_) {}
@@ -272,11 +269,12 @@ void _serviceMain(ServiceInstance service) async {
             ? Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude)
             : 0.0;
         final double elapsed = lastTime > 0 ? ((now - lastTime) / 1000.0) : 1.0;
-        final double computedKmh = (elapsed > 0 && distFromLast >= 20.0) ? ((distFromLast / elapsed) * 3.6) : 0.0;
+        final double computedKmh = (elapsed > 0 && distFromLast >= 15.0) ? ((distFromLast / elapsed) * 3.6) : 0.0;
         final double speedToLog = pos.speed >= 1.2
             ? pos.speed * 3.6
             : ((computedKmh >= 4.0 && computedKmh <= 140.0) ? computedKmh : 0.0);
         final bool isMoving = speedToLog >= 4.0;
+        isMovingState = isMoving;
 
         lastTime = now;
         lastLat = pos.latitude;
@@ -295,31 +293,34 @@ void _serviceMain(ServiceInstance service) async {
     }
   });
 
-  streamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
-    if (!running) return;
+  void startLocationStream() {
+    streamSub?.cancel();
+    streamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
+      if (!running) return;
 
-    // 1. In-Vehicle & Field Accuracy Filter:
-    // Allow up to 80m so in-car attenuation / rural plantation canopy never silently drops points!
-    if (pos.accuracy > 80.0) return;
+      // 1. In-Vehicle & Field Accuracy Filter:
+      // Allow up to 80m so in-car attenuation / rural plantation canopy never silently drops points!
+      if (pos.accuracy > 80.0) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final int interval = await effectiveInterval(); // e.g. 15s
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final int interval = await effectiveInterval(); // e.g. 15s
 
-    bool shouldRecord = false;
+      bool shouldRecord = false;
 
-    if (lastLat == null || lastLng == null) {
-      // First fix
-      shouldRecord = true;
-    } else {
-      final double dist = Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude);
-      final double headingDelta = (pos.heading - lastHeading).abs();
-      final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
-      final double elapsedSec = (now - lastTime) / 1000.0;
-      final double dispKmh = (elapsedSec > 0 && dist >= 20.0) ? ((dist / elapsedSec) * 3.6) : 0.0;
-      // Vehicle / Person motion: Hardware Doppler speed >= 1.2 m/s OR physical displacement speed >= 4.0 km/h
-      final bool isMoving = (pos.speed >= 1.2 || (dispKmh >= 4.0 && dispKmh <= 140.0)) && dist >= 20.0;
+      if (lastLat == null || lastLng == null) {
+        // First fix
+        shouldRecord = true;
+      } else {
+        final double dist = Geolocator.distanceBetween(lastLat!, lastLng!, pos.latitude, pos.longitude);
+        final double headingDelta = (pos.heading - lastHeading).abs();
+        final double normalizedAngle = headingDelta > 180 ? 360 - headingDelta : headingDelta;
+        final double elapsedSec = (now - lastTime) / 1000.0;
+        final double dispKmh = (elapsedSec > 0 && dist >= 20.0) ? ((dist / elapsedSec) * 3.6) : 0.0;
+        // Vehicle / Person motion: Hardware Doppler speed >= 1.2 m/s OR physical displacement speed >= 4.0 km/h
+        final bool isMoving = (pos.speed >= 1.2 || (dispKmh >= 4.0 && dispKmh <= 140.0)) && dist >= 20.0;
 
-      if (isMoving) {
+        if (isMoving) {
+          isMovingState = true;
         // If vehicle was parked, log parking_end upon motion resumption!
         if (isParkedLogged) {
           final stopMins = stationaryStartTime > 0 ? (((now - stationaryStartTime) / 60000).round()) : 0;
@@ -363,6 +364,7 @@ void _serviceMain(ServiceInstance service) async {
           stationaryStartTime = now;
         } else if (!isParkedLogged && (now - stationaryStartTime) >= 180000) { // >= 3 minutes stationary
           isParkedLogged = true;
+          isMovingState = false;
           try {
             int? bat;
             try { bat = await Battery().batteryLevel; } catch (_) {}
@@ -431,5 +433,12 @@ void _serviceMain(ServiceInstance service) async {
         Sync.run();
       }
     }
-  });
+  }, onError: (err) {
+    Future.delayed(const Duration(seconds: 4), () {
+      if (running) startLocationStream();
+    });
+  }, cancelOnError: false);
+  }
+
+  startLocationStream();
 }

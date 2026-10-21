@@ -75,11 +75,17 @@ for ($i = 0; $i < count($pts); $i++) {
         $t_gap = max(1, strtotime($p['recorded_at']) - strtotime($prev_p['recorded_at']));
         $dist_km = haversine_km((float)$prev_p['lat'], (float)$prev_p['lng'], (float)$p['lat'], (float)$p['lng']);
         $dist_m = $dist_km * 1000.0;
+        $disp_spd = $t_gap > 0 ? ($dist_km / ($t_gap / 3600.0)) : 0.0;
 
         // If moved less than 15 meters and time gap is >= 10s:
         // Reported speed is Doppler GPS noise from being indoors / stationary!
         if ($dist_m < 15.0 && $t_gap >= 10) {
             $spd = 0.0;
+        } elseif ($dist_m >= 20.0 && $disp_spd >= 4.0 && $disp_spd <= 140.0) {
+            // Significant displacement occurred: use calculated displacement speed if reported speed is 0 or low
+            if ($spd < 4.0) {
+                $spd = round($disp_spd, 1);
+            }
         } elseif ($spd < 4.0) {
             $spd = 0.0;
         }

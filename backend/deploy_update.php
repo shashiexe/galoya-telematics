@@ -42,6 +42,26 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
+if (isset($_GET['diag_duty'])) {
+    header('Content-Type: application/json');
+    $uId = (int)($_GET['uid'] ?? 22);
+    $dLogs = q("SELECT * FROM duty_logs WHERE user_id=? AND at >= '2026-10-21 00:00:00' ORDER BY at ASC", [$uId])->fetchAll();
+    $allRecentLogs = q("SELECT * FROM duty_logs WHERE user_id=? ORDER BY at DESC LIMIT 10", [$uId])->fetchAll();
+    $uRow = q("SELECT id, name, phone, on_duty, last_seen FROM users WHERE id=?", [$uId])->fetch();
+    $firstPts = q("SELECT recorded_at, lat, lng, speed, battery FROM locations WHERE user_id=? AND recorded_at >= '2026-10-21 00:00:00' ORDER BY recorded_at ASC LIMIT 10", [$uId])->fetchAll();
+    $lastPts = q("SELECT recorded_at, lat, lng, speed, battery FROM locations WHERE user_id=? AND recorded_at >= '2026-10-21 00:00:00' ORDER BY recorded_at DESC LIMIT 10", [$uId])->fetchAll();
+    $locCount = q("SELECT COUNT(*) FROM locations WHERE user_id=? AND recorded_at >= '2026-10-21 00:00:00'", [$uId])->fetchColumn();
+    echo json_encode([
+        'user' => $uRow,
+        'duty_logs_today' => $dLogs,
+        'all_recent_duty_logs' => $allRecentLogs,
+        'loc_count_today' => (int)$locCount,
+        'first_pts' => $firstPts,
+        'last_pts' => $lastPts,
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
+
 if (isset($_GET['test_ai'])) {
     if (session_status() === PHP_SESSION_NONE) {
         session_name('stafftrack_admin');

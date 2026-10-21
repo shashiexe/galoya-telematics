@@ -331,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       _isBlinkingLocation = true;
     });
     _locationBlinkCtrl.repeat(reverse: true);
-    Timer(const Duration(seconds: 8), () {
+    Timer(const Duration(seconds: 6), () {
       if (mounted && _isBlinkingLocation) {
         setState(() => _isBlinkingLocation = false);
         _locationBlinkCtrl.stop();
@@ -344,12 +344,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
     final lat = _currentPosition?.latitude ?? _defaultCenter.latitude;
     final lng = _currentPosition?.longitude ?? _defaultCenter.longitude;
-    final targetLatLng = LatLng(lat, lng);
 
-    // 3. Move map camera directly to user position with high-precision zoom
-    _mapController.move(targetLatLng, 17.2);
-
-    // 4. Query nearby plots from online sync and local cache
+    // 3. Query nearby plots from online sync or local cache
     List<Map<String, dynamic>> nearbyList = [];
     try {
       final online = await Sync.refreshNearbyGeofences(lat, lng)
@@ -357,116 +353,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       if (online != null && online.isNotEmpty) {
         nearbyList = online;
       } else {
-        nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
+        nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 10);
       }
     } catch (_) {
-      nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
+      nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 10);
     }
 
-    // 5. Build polygons and identification badges
-    final polygons = <Polygon>[];
-    final markers = <Marker>[];
-    Map<String, dynamic>? insidePlot;
-
+    // 4. Find the plot officer is inside, or the closest plot
+    Map<String, dynamic>? targetPlot;
     for (final p in nearbyList) {
-      final coords = p['coordinates'];
-      List<LatLng> pts = [];
-      if (coords is List) {
-        for (final c in coords) {
-          if (c is List && c.length >= 2) {
-            pts.add(LatLng((c[0] as num).toDouble(), (c[1] as num).toDouble()));
-          }
-        }
-      }
-      final isInside = p['is_inside'] == true;
-      if (isInside && insidePlot == null) {
-        insidePlot = p;
-      }
-
-      if (pts.length >= 3) {
-        polygons.add(
-          Polygon(
-            points: pts,
-            color: isInside ? const Color(0x4522c55e) : const Color(0x2238bdf8),
-            borderColor: isInside ? const Color(0xff16a34a) : const Color(0xff0284c7),
-            borderStrokeWidth: isInside ? 3.5 : 2.0,
-            isFilled: true,
-          ),
-        );
-      }
-
-      final cLat = (p['lat'] as num?)?.toDouble() ?? 0.0;
-      final cLng = (p['lng'] as num?)?.toDouble() ?? 0.0;
-      final name = (p['name'] ?? p['code'] ?? 'Plot').toString();
-      final dist = (p['distance'] as num?)?.toDouble() ?? (p['edge_distance'] as num?)?.toDouble() ?? 0.0;
-
-      if (cLat != 0.0 && cLng != 0.0) {
-        markers.add(
-          Marker(
-            point: LatLng(cLat, cLng),
-            width: 140,
-            height: 38,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              decoration: BoxDecoration(
-                color: isInside ? const Color(0xff16a34a) : const Color(0xff1e293b).withOpacity(0.92),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isInside ? Colors.white : const Color(0xff38bdf8),
-                  width: isInside ? 1.5 : 1.0,
-                ),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2)),
-                ],
-              ),
-              child: Text(
-                isInside ? '📍 INSIDE: $name' : '$name (${dist < 1000 ? "${dist.round()}m" : "${(dist/1000).toStringAsFixed(1)}km"})',
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: isInside ? FontWeight.bold : FontWeight.w600,
-                  fontSize: 10,
-                ),
-              ),
-            ),
-          ),
-        );
+      if (p['is_inside'] == true) {
+        targetPlot = p;
+        break;
       }
     }
+    if (targetPlot == null && nearbyList.isNotEmpty) {
+      targetPlot = nearbyList.first;
+    }
 
-    if (mounted) {
+    if (targetPlot != null && mounted) {
+      // Clear any previous multi-plot clutter
       setState(() {
-        _nearbyIdentifiedPlots = nearbyList;
-        _nearbyIdentifiedPolygons = polygons;
-        _nearbyIdentifiedMarkers = markers;
+        _nearbyIdentifiedPolygons = [];
+        _nearbyIdentifiedMarkers = [];
+        _nearbyIdentifiedPlots = [];
       });
 
-      final msg = insidePlot != null
-          ? '📍 You are inside: ${insidePlot['name']} (${insidePlot['code'] ?? ''})'
-          : (nearbyList.isNotEmpty
-              ? '📍 ${nearbyList.length} nearby plots identified. Nearest: ${nearbyList.first['name']} (${(nearbyList.first['distance'] as num?)?.round() ?? 0}m)'
-              : '📍 No registered plantation plots found near current position');
-
+      // Display the single clean green polygon matching Photo 2 and set target plot
+      _selectPlotForNavigation(targetPlot);
+    } else if (mounted) {
+      _mapController.move(LatLng(lat, lng), 17.0);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: insidePlot != null ? const Color(0xff16a34a) : const Color(0xff0284c7),
-          content: Text(msg),
-          duration: const Duration(seconds: 6),
-          action: SnackBarAction(
-            label: 'Clear Polygons',
-            textColor: Colors.white,
-            onPressed: () {
-              if (mounted) {
-                setState(() {
-                  _nearbyIdentifiedPolygons = [];
-                  _nearbyIdentifiedMarkers = [];
-                  _nearbyIdentifiedPlots = [];
-                });
-              }
-            },
-          ),
+        const SnackBar(
+          backgroundColor: Color(0xfff59e0b),
+          content: Text('📍 No registered plantation plot found near current position'),
+          duration: Duration(seconds: 3),
         ),
       );
     }
@@ -1681,6 +1602,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     setState(() {
       _targetPlot = plot;
       _targetPolygonPoints = [];
+      _nearbyIdentifiedPolygons = [];
+      _nearbyIdentifiedMarkers = [];
+      _nearbyIdentifiedPlots = [];
     });
     final gLat = (plot['lat'] as num?)?.toDouble() ?? 0.0;
     final gLng = (plot['lng'] as num?)?.toDouble() ?? 0.0;
@@ -1688,42 +1612,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       _mapController.move(LatLng(gLat, gLng), 16.5);
     }
 
-    // Fetch full polygon coordinates from server on-demand (keeps mobile SQLite lightweight)
-    try {
-      final name = (plot['name'] ?? plot['code'] ?? '').toString();
-      if (name.isNotEmpty) {
-        final res = await Api.get('plot_polygon', params: {'name': name});
-        if (res['ok'] == true && res['coordinates'] is List) {
-          final rawList = res['coordinates'] as List;
-          final pts = <LatLng>[];
-          for (final c in rawList) {
-            if (c is List && c.length >= 2) {
-              final lat = (c[0] as num).toDouble();
-              final lng = (c[1] as num).toDouble();
-              pts.add(LatLng(lat, lng));
-            }
-          }
-          if (pts.isNotEmpty && mounted) {
-            setState(() {
-              _targetPolygonPoints = pts;
-            });
-            final bounds = LatLngBounds.fromPoints(pts);
-            _mapController.fitCamera(CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)));
-          }
+    final plotLabel = (plot['code'] != null && plot['code'].toString().isNotEmpty && plot['code'] != plot['name'])
+        ? '${plot['name']} (${plot['code']})'
+        : '${plot['name'] ?? 'Plot'}';
+
+    // 1. Check if polygon coordinates already exist in the plot map (from online sync or cache)
+    final pts = <LatLng>[];
+    if (plot['coordinates'] is List) {
+      for (final c in (plot['coordinates'] as List)) {
+        if (c is List && c.length >= 2) {
+          final lat = (c[0] as num).toDouble();
+          final lng = (c[1] as num).toDouble();
+          pts.add(LatLng(lat, lng));
         }
       }
-    } catch (_) {}
+    }
+
+    // 2. Fallback: Query full polygon coordinates from server on-demand
+    if (pts.isEmpty) {
+      try {
+        final name = (plot['name'] ?? plot['code'] ?? '').toString();
+        if (name.isNotEmpty) {
+          final res = await Api.get('plot_polygon', params: {'name': name});
+          if (res['ok'] == true && res['coordinates'] is List) {
+            final rawList = res['coordinates'] as List;
+            for (final c in rawList) {
+              if (c is List && c.length >= 2) {
+                final lat = (c[0] as num).toDouble();
+                final lng = (c[1] as num).toDouble();
+                pts.add(LatLng(lat, lng));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (pts.isNotEmpty && mounted) {
+      setState(() {
+        _targetPolygonPoints = pts;
+      });
+      final bounds = LatLngBounds.fromPoints(pts);
+      _mapController.fitCamera(CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)));
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: const Color(0xff0284c7),
-          content: Text('Target Plot: ${plot['name']} (${plot['code'] ?? ''})'),
+          backgroundColor: const Color(0xff15803d),
+          content: Text('📍 Plot: $plotLabel'),
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
             label: 'Google Maps',
             textColor: Colors.white,
-            onPressed: () => _openGoogleMapsNavigation(gLat, gLng, plot['name'] ?? 'Plot'),
+            onPressed: () => _openGoogleMapsNavigation(gLat, gLng, plotLabel),
           ),
         ),
       );
@@ -1783,21 +1725,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'lk.galoya.stafftrack',
                   ),
-                  if (_targetPolygonPoints.isNotEmpty || _nearbyIdentifiedPolygons.isNotEmpty)
+                  if (_targetPolygonPoints.isNotEmpty)
                     PolygonLayer(
                       polygons: [
-                        if (_targetPolygonPoints.isNotEmpty)
-                          Polygon(
-                            points: _targetPolygonPoints,
-                            color: const Color(0x3322c55e),
-                            borderColor: const Color(0xff16a34a),
-                            borderStrokeWidth: 3.0,
-                            isFilled: true,
-                          ),
-                        ..._nearbyIdentifiedPolygons,
+                        Polygon(
+                          points: _targetPolygonPoints,
+                          color: const Color(0x3322c55e),
+                          borderColor: const Color(0xff16a34a),
+                          borderStrokeWidth: 3.0,
+                          isFilled: true,
+                        ),
                       ],
                     ),
-                  if (_targetPlot != null)
+                  if (_targetPlot != null && _targetPolygonPoints.isEmpty)
                     PolylineLayer(
                       polylines: [
                         Polyline(
@@ -1815,7 +1755,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     ),
                   MarkerLayer(
                     markers: [
-                      ..._nearbyIdentifiedMarkers,
                       if (_isBlinkingLocation)
                         Marker(
                           point: currentLatLng,
@@ -1842,7 +1781,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                             },
                           ),
                         ),
-                      if (_targetPlot != null)
+                      if (_targetPlot != null && _targetPolygonPoints.isEmpty)
                         Marker(
                           point: LatLng(
                             (_targetPlot!['lat'] as num).toDouble(),
@@ -2101,7 +2040,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                   decoration: BoxDecoration(
                     color: const Color(0xff1e293b),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xfff59e0b), width: 1.5),
+                    border: Border.all(color: const Color(0xff16a34a), width: 1.5),
                     boxShadow: const [
                       BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4)),
                     ],
@@ -2111,10 +2050,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xfff59e0b).withOpacity(0.2),
+                          color: const Color(0xff16a34a).withOpacity(0.2),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.near_me, color: Color(0xfff59e0b), size: 20),
+                        child: const Icon(Icons.grass_rounded, color: Color(0xff22c55e), size: 20),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -2129,17 +2068,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              _currentPosition != null
-                                  ? 'Distance: ${_formatDistanceMeters(
-                                      Geolocator.distanceBetween(
-                                        _currentPosition!.latitude,
-                                        _currentPosition!.longitude,
-                                        (_targetPlot!['lat'] as num).toDouble(),
-                                        (_targetPlot!['lng'] as num).toDouble(),
-                                      ),
-                                    )}'
-                                  : 'Target plot active',
-                              style: const TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.w600),
+                              (_targetPlot!['is_inside'] == true)
+                                  ? '📍 Current Location Inside Plot'
+                                  : (_currentPosition != null
+                                      ? 'Distance: ${_formatDistanceMeters(
+                                          Geolocator.distanceBetween(
+                                            _currentPosition!.latitude,
+                                            _currentPosition!.longitude,
+                                            (_targetPlot!['lat'] as num).toDouble(),
+                                            (_targetPlot!['lng'] as num).toDouble(),
+                                          ),
+                                        )}'
+                                      : 'Target plot active'),
+                              style: TextStyle(
+                                color: (_targetPlot!['is_inside'] == true)
+                                    ? const Color(0xff4ade80)
+                                    : const Color(0xff38bdf8),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -2155,8 +2102,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white60),
-                        tooltip: 'Cancel Navigation',
-                        onPressed: () => setState(() => _targetPlot = null),
+                        tooltip: 'Clear Polygon & Details',
+                        onPressed: () => setState(() {
+                          _targetPlot = null;
+                          _targetPolygonPoints = [];
+                        }),
                       ),
                     ],
                   ),

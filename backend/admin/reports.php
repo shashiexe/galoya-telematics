@@ -331,45 +331,168 @@ if ($report_type === 'staff_audit') {
         ];
     }
 
-    // Calculate Executive Audit Summary for Selected Staff
+    // -------------------------------------------------------------------------
+    // Calculate Executive Audit Summary for Selected Staff (Duty Shifts & Live Status)
+    // -------------------------------------------------------------------------
     $firstOnTime = null;
     $lastOffTime = null;
-    foreach ($dutyRows as $dl) {
-        $et = $dl['event_type'] ?: ($dl['status'] === 'on' ? 'tracking_on' : 'tracking_off');
-        if (($et === 'tracking_on' || $dl['status'] === 'on') && !$firstOnTime) {
-            $firstOnTime = $dl['at'];
-        }
-        if ($et === 'tracking_off' || $dl['status'] === 'off') {
-            $lastOffTime = $dl['at'];
-        }
-    }
-
-    // Fallbacks if formal tracking_on/off wasn't explicitly logged in duty_logs
-    if (!$firstOnTime && !empty($pts)) {
-        $firstOnTime = $pts[0]['recorded_at'];
-    }
-    if (!$firstOnTime && !empty($dutyRows)) {
-        $firstOnTime = $dutyRows[0]['at'];
-    }
-
     $isCurrentlyActive = false;
-    if (!empty($pts)) {
-        $latestPingTime = end($pts)['recorded_at'];
-        if (!$lastOffTime) {
-            if (time() - strtotime($latestPingTime) <= 2700) {
-                $isCurrentlyActive = true;
-            } else {
-                $lastOffTime = $latestPingTime;
+
+    // Filter for real duty session toggles (excluding telemetry/lifecycle noise like app_open, app_close, boot_resume)
+    $realDutyEvents = [];
+    foreach ($dutyRows as $dl) {
+        $et = $dl['event_type'] ?? '';
+        $note = $dl['note'] ?? '';
+        $cid = $dl['client_id'] ?? '';
+        $status = $dl['status'] ?? '';
+
+        $isOn = ($et === 'tracking_on' 
+                 || stripos($note, 'Turned ON') !== false 
+                 || strpos($cid, 'on_') === 0 
+                 || (($et === 'duty' || empty($et)) && $status === 'on'));
+
+        $isOff = ($et === 'tracking_off' 
+                  || stripos($note, 'Turned OFF') !== false 
+                  || strpos($cid, 'off_') === 0 
+                  || (($et === 'duty' || empty($et)) && $status === 'off'));
+
+        // App lifecycle and vehicle telemetry events are NOT duty on/off toggles
+        if (in_array($et, ['app_open', 'app_close', 'boot_resume', 'parking_start', 'parking_end'], true)) {
+            $isOn = false;
+            $isOff = false;
+        }
+
+        if ($isOn) {
+            $realDutyEvents[] = ['type' => 'on', 'time' => $dl['at'], 'id' => $dl['id']];
+        } elseif ($isOff) {
+            $realDutyEvents[] = ['type' => 'off', 'time' => $dl['at'], 'id' => $dl['id']];
+        }
+    }
+
+    // Pair events into shifts and detect active in-progress shift
+    $shifts = [];
+    $activeShiftStart = null;
+
+    foreach ($realDutyEvents as $ev) {
+        if ($ev['type'] === 'on') {
+            if ($activeShiftStart === null) {
+                $activeShiftStart = $ev['time'];
+            }
+        } elseif ($ev['type'] === 'off') {
+            if ($activeShiftStart !== null) {
+                $dur = max(0, strtotime($ev['time']) - strtotime($activeShiftStart));
+                // Discard transient spikes < 60 seconds (like quick 1s restart at midnight)
+                if ($dur >= 60) {
+                    $shifts[] = [
+                        'start' => $activeShiftStart,
+                        'end' => $ev['time'],
+                        'duration' => $dur
+                    ];
+                }
+                $activeShiftStart = null;
             }
         }
     }
 
+    // Check live duty state of the user
+    $userIsOnDutyFlag = !empty($staffUser['on_duty']);
+    $latestPingTime = !empty($pts) ? end($pts)['recorded_at'] : null;
+    $hasRecentPing = $latestPingTime && (time() - strtotime($latestPingTime) <= 7200);
+
+    if ($activeShiftStart !== null) {
+        $isCurrentlyActive = true;
+        $shifts[] = [
+            'start' => $activeShiftStart,
+            'end' => null,
+            'duration' => max(0, time() - strtotime($activeShiftStart))
+        ];
+    } elseif ($userIsOnDutyFlag && $hasRecentPing) {
+        $isCurrentlyActive = true;
+        $fallbackStart = null;
+        for ($k = count($realDutyEvents) - 1; $k >= 0; $k--) {
+            if ($realDutyEvents[$k]['type'] === 'on') {
+                $fallbackStart = $realDutyEvents[$k]['time'];
+                break;
+            }
+        }
+        if (!$fallbackStart && !empty($pts)) {
+            foreach ($pts as $pt) {
+                if (date('H', strtotime($pt['recorded_at'])) >= 5) {
+                    $fallbackStart = $pt['recorded_at'];
+                    break;
+                }
+            }
+            if (!$fallbackStart) $fallbackStart = $pts[0]['recorded_at'];
+        }
+        if ($fallbackStart) {
+            $shifts[] = [
+                'start' => $fallbackStart,
+                'end' => null,
+                'duration' => max(0, time() - strtotime($fallbackStart))
+            ];
+        }
+    }
+
+    $totalDutySeconds = 0;
+    if (!empty($shifts)) {
+        // Pick primary shift of the day (preferring shift after 05:00 AM)
+        $morningShift = null;
+        foreach ($shifts as $s) {
+            if (date('H', strtotime($s['start'])) >= 5) {
+                $morningShift = $s;
+                break;
+            }
+        }
+        $primaryShift = $morningShift ?: $shifts[0];
+        $firstOnTime = $primaryShift['start'];
+
+        if ($isCurrentlyActive) {
+            $lastOffTime = null;
+        } else {
+            $lastOffTime = end($shifts)['end'];
+        }
+
+        foreach ($shifts as $s) {
+            $totalDutySeconds += $s['duration'];
+        }
+    } else {
+        // Fallback when no explicit duty events were logged
+        if (!empty($pts)) {
+            foreach ($pts as $pt) {
+                if (date('H', strtotime($pt['recorded_at'])) >= 5) {
+                    $firstOnTime = $pt['recorded_at'];
+                    break;
+                }
+            }
+            if (!$firstOnTime) $firstOnTime = $pts[0]['recorded_at'];
+
+            if ($userIsOnDutyFlag && $hasRecentPing) {
+                $isCurrentlyActive = true;
+                $lastOffTime = null;
+                $totalDutySeconds = max(0, time() - strtotime($firstOnTime));
+            } else {
+                $lastOffTime = end($pts)['recorded_at'];
+                $totalDutySeconds = max(0, strtotime($lastOffTime) - strtotime($firstOnTime));
+            }
+        }
+    }
+
+    // Cumulative path distance from GPS coordinates (filter noise < 10m)
+    $pathKm = 0;
+    for ($k = 1; $k < $n; $k++) {
+        $d = haversine_dist_km((float)$pts[$k-1]['lat'], (float)$pts[$k-1]['lng'], (float)$pts[$k]['lat'], (float)$pts[$k]['lng']);
+        if ($d >= 0.010 && $d <= 80.0) {
+            $pathKm += $d;
+        }
+    }
+    if ($totalKm < 0.1 && $pathKm >= 0.05) {
+        $totalKm = $pathKm;
+    }
+
     $dutyDurStr = '—';
-    if ($firstOnTime) {
-        $endTs = $lastOffTime ? strtotime($lastOffTime) : time();
-        $diffSec = max(0, $endTs - strtotime($firstOnTime));
-        $dH = floor($diffSec / 3600);
-        $dM = round(($diffSec % 3600) / 60);
+    if ($totalDutySeconds > 0) {
+        $dH = floor($totalDutySeconds / 3600);
+        $dM = round(($totalDutySeconds % 3600) / 60);
         $dutyDurStr = ($dH > 0 ? "{$dH}h " : "") . "{$dM}m";
     }
 
@@ -429,7 +552,7 @@ if ($report_type === 'staff_audit') {
     $summary['total_mileage'] = round($totalKm, 1);
     $summary['max_speed'] = round($maxSpd, 1);
     $summary['total_trips'] = count($report_rows);
-    $summary['total_hours'] = round(count($pts) * 0.25 / 60, 1);
+    $summary['total_hours'] = $totalDutySeconds > 0 ? round($totalDutySeconds / 3600, 1) : round(count($pts) * 0.25 / 60, 1);
 
 } elseif ($report_type === 'dept_section') {
     // -------------------------------------------------------------------------
@@ -1014,10 +1137,12 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </div>
     </div>
 
-    <!-- Box 2: Off Time -->
-    <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #dc2626">
-      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">🔴 Tracking OFF (Duty End)</div>
-      <div style="font-size:16px;font-weight:800;color:#991b1b;margin-top:2px">
+    <!-- Box 2: Off Time / Active Status -->
+    <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid <?= $staffAuditSummary['is_active'] ? '#16a34a' : '#dc2626' ?>">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">
+        <?= $staffAuditSummary['is_active'] ? '🟢 Current Duty Status' : '🔴 Tracking OFF (Duty End)' ?>
+      </div>
+      <div style="font-size:16px;font-weight:800;color:<?= $staffAuditSummary['is_active'] ? '#166534' : '#991b1b' ?>;margin-top:2px">
         <?php if ($staffAuditSummary['is_active']): ?>
           <span style="color:#16a34a">🟢 Active On Duty</span>
         <?php elseif ($staffAuditSummary['last_off']): ?>
@@ -1027,7 +1152,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
         <?php endif; ?>
       </div>
       <div style="font-size:10.5px;color:#94a3b8">
-        <?= $staffAuditSummary['last_off'] ? date('Y-m-d', strtotime($staffAuditSummary['last_off'])) : ($staffAuditSummary['is_active'] ? 'Live connection' : '—') ?>
+        <?= $staffAuditSummary['is_active'] ? 'Live shift in progress · Not ended' : ($staffAuditSummary['last_off'] ? date('Y-m-d', strtotime($staffAuditSummary['last_off'])) : '—') ?>
       </div>
     </div>
 
@@ -1035,9 +1160,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #0284c7">
       <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">⏱️ Shift / Work Duration</div>
       <div style="font-size:16px;font-weight:800;color:#0369a1;margin-top:2px">
-        <?= $staffAuditSummary['duty_duration'] ?>
+        <?= $staffAuditSummary['duty_duration'] ?> <?= $staffAuditSummary['is_active'] ? '<span style="font-size:11px;color:#16a34a;font-weight:600">(Running)</span>' : '' ?>
       </div>
-      <div style="font-size:10.5px;color:#94a3b8">Total active shift time</div>
+      <div style="font-size:10.5px;color:#94a3b8">
+        <?= $staffAuditSummary['is_active'] ? 'Ongoing active duty duration' : 'Total active shift time' ?>
+      </div>
     </div>
 
     <!-- Box 4: Field Visit Period -->

@@ -195,10 +195,20 @@ class LocalDb {
   /// Inside plots (point-in-polygon) and boundary proximity (~5m) are prioritized over centroids.
   static Future<List<Map<String, dynamic>>> getNearbyGeofences(double lat, double lng, {int limit = 8}) async {
     final d = await db;
-    final rows = await d.query('geofences_cache');
-    if (rows.isEmpty) return [];
+    // Step 1: Pre-filter by bounding box in SQLite (~10 km radius) so we only fetch nearby candidates, NOT 5,000!
+    const double delta = 0.09; // ~10 km
+    List<Map<String, Object?>> rows = await d.query(
+      'geofences_cache',
+      where: 'lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?',
+      whereArgs: [lat - delta, lat + delta, lng - delta, lng + delta],
+      limit: 60,
+    );
+    if (rows.isEmpty) {
+      // Fallback: query closest 25 if outside bbox
+      rows = await d.query('geofences_cache', limit: 25);
+      if (rows.isEmpty) return [];
+    }
 
-    // Step 1: Pre-filter by centroid distance to isolate candidates within proximity (zero UI lag)
     final candidates = <Map<String, dynamic>>[];
     for (final r in rows) {
       final gLat = (r['lat'] as num?)?.toDouble() ?? 0.0;

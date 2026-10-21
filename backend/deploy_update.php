@@ -586,8 +586,12 @@ $results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-w
     $results[] = ["👤 Chamika User Search: " . json_encode($chamikaUsers), "color:#f59e0b;font-weight:bold"];
     if (!empty($chamikaUsers)) {
         $cId = (int)$chamikaUsers[0]['id'];
-        $cLogs = $pdo->query("SELECT recorded_at, received_at, speed, battery FROM locations WHERE user_id=$cId ORDER BY id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
-        $results[] = ["📍 Chamika Recent Pings: " . json_encode($cLogs), "color:#38bdf8"];
+        $cLogs = $pdo->query("SELECT at, event_type, status, note FROM duty_logs WHERE user_id=$cId ORDER BY id DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+        $results[] = ["📋 Chamika Duty History: " . json_encode($cLogs), "color:#38bdf8"];
+
+        $yesterdayPoints = (int)$pdo->query("SELECT COUNT(*) FROM locations WHERE user_id=$cId AND DATE(recorded_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)")->fetchColumn();
+        $todayPoints = (int)$pdo->query("SELECT COUNT(*) FROM locations WHERE user_id=$cId AND DATE(recorded_at) = CURDATE()")->fetchColumn();
+        $results[] = ["📊 Points: Yesterday = $yesterdayPoints pts | Today = $todayPoints pts", "color:#22c55e;font-weight:bold"];
     }
 
 try {

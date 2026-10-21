@@ -1199,19 +1199,15 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <?= count($os['plots']) ?>
               </span>
             </td>
-            <td style="padding:10px 14px;max-width:260px">
+            <td style="padding:10px 14px;max-width:360px">
               <div style="display:flex;flex-wrap:wrap;gap:4px">
                 <?php 
                 $pList = array_keys($os['plots']);
-                $pDisplay = array_slice($pList, 0, 4);
-                foreach ($pDisplay as $pName): ?>
-                  <span style="background:#f1f5f9;border:1px solid #cbd5e1;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;color:#334155">
-                    <?= h($pName) ?>
+                foreach ($pList as $pName): ?>
+                  <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700">
+                    🌾 <?= h($pName) ?>
                   </span>
                 <?php endforeach; ?>
-                <?php if (count($pList) > 4): ?>
-                  <span style="font-size:11px;color:#64748b;font-weight:600">+<?= count($pList) - 4 ?> more</span>
-                <?php endif; ?>
               </div>
             </td>
             <td style="padding:10px 14px;font-size:11.5px;color:#475569">
@@ -1452,8 +1448,8 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <?php endif; ?>
 
 <!-- Report Table Card -->
-<div class="card" style="padding:0;overflow:hidden">
-  <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+<div class="card" id="report-table-card" style="padding:0;overflow:hidden">
+  <div style="padding:10px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <strong style="font-size:14px;color:#1e293b">
       <?php if ($report_type === 'field_visits'): ?>
         🌾 Field Officer Plot Visits & Crop Inspection Summary Log
@@ -1468,11 +1464,17 @@ layout_start('Reports & Tracking Audit', 'reports.php');
         Generated Report: <?= h(str_replace('_', ' ', strtoupper($report_type))) ?>
       <?php endif; ?>
     </strong>
-    <span style="font-size:11.5px;color:#64748b">Period: <?= h($date_from) ?> to <?= h($date_to) ?></span>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div id="report-search-box" style="position:relative">
+        <input type="text" id="report-search-input" oninput="filterTableRows(this.value)" placeholder="Filter points / rows..." style="padding:4px 10px 4px 26px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:16px;background:#fff;width:170px;outline:none">
+        <span style="position:absolute;left:8px;top:4px;font-size:11px;color:#94a3b8;pointer-events:none">🔍</span>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;white-space:nowrap">Period: <?= h($date_from) ?> to <?= h($date_to) ?></span>
+    </div>
   </div>
 
   <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <table id="report-table" style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead>
         <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
           <?php if ($report_type === 'field_visits'): ?>
@@ -1535,7 +1537,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
           <?php endif; ?>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="report-table-body">
         <?php if (empty($report_rows)): ?>
           <tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8">No telemetry or visit records found for selected period.</td></tr>
         <?php else: ?>
@@ -1545,7 +1547,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             $rowIdx++;
             $evStr = (string)($row['event'] ?? '');
           ?>
-            <tr style="border-bottom:1px solid #f1f5f9">
+            <tr class="report-row" style="border-bottom:1px solid #f1f5f9">
               <?php if ($report_type === 'field_visits'): ?>
                 <td style="padding:10px 14px;text-align:center;color:#94a3b8;font-weight:600"><?= $rowIdx ?></td>
                 <td style="padding:10px 14px;color:#0f172a;font-weight:600;white-space:nowrap">
@@ -1692,7 +1694,67 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </tbody>
     </table>
   </div>
+
+  <!-- Pagination Controls Footer -->
+  <div id="table-pagination-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 18px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12.5px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span id="pagination-info" style="color:#64748b;font-weight:600">
+        Showing 1 to 25 of <?= count($report_rows) ?> records
+      </span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label for="rows-per-page" style="color:#64748b;font-size:11.5px;font-weight:600">Rows per page:</label>
+        <select id="rows-per-page" onchange="changePageSize(this.value)" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;background:#fff;color:#0f172a;cursor:pointer">
+          <option value="15">15</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="pagination-buttons" style="display:flex;align-items:center;gap:4px">
+      <!-- Generated dynamically: Prev, 1, 2, 3, Next -->
+    </div>
+  </div>
 </div>
+
+<style>
+@media print {
+  #table-pagination-bar, #report-search-box { display: none !important; }
+  .report-row { display: table-row !important; }
+}
+.page-btn {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.page-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+.page-btn.active {
+  border-color: #0284c7;
+  background: #0284c7;
+  color: #fff;
+  font-weight: 700;
+  cursor: default;
+}
+.page-btn:disabled {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+</style>
 
 <!-- Lightbox Modal for Photo Preview -->
 <div id="lightbox-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;flex-direction:column;padding:20px" onclick="closeLightbox()">
@@ -1733,6 +1795,175 @@ function toggleCustomDates(val) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeLightbox();
 });
+
+// =========================================================================
+// Instant Client-Side Table Pagination & Search
+// =========================================================================
+var currentPage = 1;
+var pageSize = 25;
+var allRows = [];
+var filteredRows = [];
+
+function initTablePagination() {
+  var tbody = document.getElementById('report-table-body');
+  if (!tbody) return;
+  allRows = Array.from(tbody.querySelectorAll('tr.report-row'));
+  filteredRows = allRows;
+
+  var pBar = document.getElementById('table-pagination-bar');
+  if (allRows.length === 0) {
+    if (pBar) pBar.style.display = 'none';
+    return;
+  }
+  if (pBar) pBar.style.display = 'flex';
+
+  renderTablePage();
+}
+
+function filterTableRows(query) {
+  query = (query || '').toLowerCase().trim();
+  if (!query) {
+    filteredRows = allRows;
+  } else {
+    filteredRows = allRows.filter(function(row) {
+      return row.textContent.toLowerCase().indexOf(query) !== -1;
+    });
+  }
+  currentPage = 1;
+  renderTablePage();
+}
+
+function changePageSize(size) {
+  if (size === 'all') {
+    pageSize = 999999;
+  } else {
+    pageSize = parseInt(size, 10) || 25;
+  }
+  currentPage = 1;
+  renderTablePage();
+}
+
+function goToPage(page) {
+  var totalPages = Math.ceil(filteredRows.length / pageSize) || 1;
+  if (page < 1) page = 1;
+  if (page > totalPages) page = totalPages;
+  currentPage = page;
+  renderTablePage();
+
+  var tableCard = document.getElementById('report-table-card');
+  if (tableCard) {
+    var rect = tableCard.getBoundingClientRect();
+    if (rect.top < 0) {
+      tableCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+}
+
+function renderTablePage() {
+  var total = filteredRows.length;
+  var totalPages = Math.ceil(total / pageSize) || 1;
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+
+  var startIdx = (currentPage - 1) * pageSize;
+  var endIdx = Math.min(startIdx + pageSize, total);
+
+  // Hide all rows first
+  allRows.forEach(function(row) {
+    row.style.display = 'none';
+  });
+
+  // Show only rows for current page
+  for (var i = startIdx; i < endIdx; i++) {
+    filteredRows[i].style.display = '';
+  }
+
+  // Update pagination info text
+  var infoEl = document.getElementById('pagination-info');
+  if (infoEl) {
+    if (total === 0) {
+      infoEl.textContent = 'No matching records found';
+    } else {
+      infoEl.innerHTML = 'Showing <strong>' + (startIdx + 1) + '</strong> to <strong>' + endIdx + '</strong> of <strong>' + total + '</strong> records' + (allRows.length !== total ? ' (filtered from ' + allRows.length + ' total)' : '');
+    }
+  }
+
+  // Render buttons
+  renderPaginationButtons(totalPages);
+}
+
+function renderPaginationButtons(totalPages) {
+  var container = document.getElementById('pagination-buttons');
+  if (!container) return;
+
+  if (totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  var html = '';
+
+  // First & Prev buttons
+  if (currentPage > 1) {
+    html += '<button type="button" class="page-btn" onclick="goToPage(1)" title="First Page">« First</button>';
+    html += '<button type="button" class="page-btn" onclick="goToPage(' + (currentPage - 1) + ')" title="Previous Page">‹ Prev</button>';
+  } else {
+    html += '<button type="button" class="page-btn" disabled>« First</button>';
+    html += '<button type="button" class="page-btn" disabled>‹ Prev</button>';
+  }
+
+  // Determine page window to show (max 5 page numbers)
+  var startP = Math.max(1, currentPage - 2);
+  var endP = Math.min(totalPages, currentPage + 2);
+
+  if (startP > 1) {
+    html += '<button type="button" class="page-btn" onclick="goToPage(1)">1</button>';
+    if (startP > 2) {
+      html += '<span style="padding:0 4px;color:#94a3b8">…</span>';
+    }
+  }
+
+  for (var p = startP; p <= endP; p++) {
+    if (p === currentPage) {
+      html += '<button type="button" class="page-btn active">' + p + '</button>';
+    } else {
+      html += '<button type="button" class="page-btn" onclick="goToPage(' + p + ')">' + p + '</button>';
+    }
+  }
+
+  if (endP < totalPages) {
+    if (endP < totalPages - 1) {
+      html += '<span style="padding:0 4px;color:#94a3b8">…</span>';
+    }
+    html += '<button type="button" class="page-btn" onclick="goToPage(' + totalPages + ')">' + totalPages + '</button>';
+  }
+
+  // Next & Last buttons
+  if (currentPage < totalPages) {
+    html += '<button type="button" class="page-btn" onclick="goToPage(' + (currentPage + 1) + ')" title="Next Page">Next ›</button>';
+    html += '<button type="button" class="page-btn" onclick="goToPage(' + totalPages + ')" title="Last Page">Last »</button>';
+  } else {
+    html += '<button type="button" class="page-btn" disabled>Next ›</button>';
+    html += '<button type="button" class="page-btn" disabled>Last »</button>';
+  }
+
+  container.innerHTML = html;
+}
+
+window.addEventListener('beforeprint', function() {
+  allRows.forEach(function(row) {
+    row.style.display = '';
+  });
+});
+window.addEventListener('afterprint', function() {
+  renderTablePage();
+});
+
+document.addEventListener('DOMContentLoaded', initTablePagination);
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  initTablePagination();
+}
 </script>
 
 <?php layout_end(); ?>
+

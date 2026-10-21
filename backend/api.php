@@ -311,9 +311,12 @@ try {
     }
 
     case 'geofences_light': {
-        // Returns lightweight centroids of active geofences for fast mobile proximity cache (< 50KB)
+        // Returns lightweight centroids of active landmark/division geofences for fast mobile proximity cache (< 50KB)
         auth_user();
-        $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
+        $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 AND (category != 'Agriculture' OR category IS NULL) ORDER BY name ASC LIMIT 300")->fetchAll();
+        if (empty($rows)) {
+            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 250")->fetchAll();
+        }
         $light = [];
         foreach ($rows as $r) {
             $coords = json_decode($r['coordinates'] ?? '[]', true);

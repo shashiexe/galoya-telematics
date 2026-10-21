@@ -165,18 +165,129 @@ if ($report_type === 'staff_audit') {
         ];
     }
 
-    // Add Field Photos
+    // Cluster Field Photos into Distinct Field Visit Sessions / Rounds
+    // A gap >= 40 minutes between consecutive photos indicates an office / break interval & starts a new round
+    $visitRounds = [];
+    $allPlotsVisited = [];
+    $annotatedPhotos = [];
+
+    if (!empty($photos)) {
+        usort($photos, function($a, $b) {
+            return strcmp((string)$a['taken_at'], (string)$b['taken_at']);
+        });
+
+        $currentRoundPhotos = [];
+        $lastPhotoTime = null;
+
+        foreach ($photos as $ph) {
+            $pTime = strtotime($ph['taken_at']);
+            if ($lastPhotoTime !== null && ($pTime - $lastPhotoTime) >= 2400) { // >= 40 minutes gap
+                if (!empty($currentRoundPhotos)) {
+                    $visitRounds[] = $currentRoundPhotos;
+                }
+                $currentRoundPhotos = [];
+            }
+            $currentRoundPhotos[] = $ph;
+            $lastPhotoTime = $pTime;
+
+            $pName = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
+            if ($pName !== '') $allPlotsVisited[$pName] = true;
+        }
+
+        if (!empty($currentRoundPhotos)) {
+            $visitRounds[] = $currentRoundPhotos;
+        }
+    }
+
+    $processedRounds = [];
+    $totalFieldSec = 0;
+
+    foreach ($visitRounds as $rIdx => $rPhotos) {
+        $rNum = $rIdx + 1;
+        $rStart = $rPhotos[0]['taken_at'];
+        $rEnd = end($rPhotos)['taken_at'];
+        $rSec = max(0, strtotime($rEnd) - strtotime($rStart));
+        
+        // Active field duration (if single photo in round, consider standard 10m inspection window)
+        $rDurSec = $rSec > 0 ? $rSec : 600; 
+        $totalFieldSec += $rDurSec;
+
+        $rH = floor($rSec / 3600);
+        $rM = round(($rSec % 3600) / 60);
+        $rDurStr = $rSec > 0 ? (($rH > 0 ? "{$rH}h " : "") . "{$rM}m") : 'Single Photo';
+
+        $rWindow = date('h:i A', strtotime($rStart));
+        if ($rStart !== $rEnd && date('h:i A', strtotime($rStart)) !== date('h:i A', strtotime($rEnd))) {
+            $rWindow .= ' – ' . date('h:i A', strtotime($rEnd)) . " ({$rDurStr})";
+        }
+
+        $rPlots = [];
+        foreach ($rPhotos as &$ph) {
+            $ph['round_num'] = $rNum;
+            $annotatedPhotos[] = $ph;
+            $pn = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
+            if ($pn !== '') $rPlots[$pn] = true;
+        }
+        unset($ph);
+
+        // Break between this round and previous round (Office / Yard interval)
+        $officeGapStr = null;
+        if ($rIdx > 0) {
+            $prevEnd = end($visitRounds[$rIdx - 1])['taken_at'];
+            $gapSec = max(0, strtotime($rStart) - strtotime($prevEnd));
+            $gH = floor($gapSec / 3600);
+            $gM = round(($gapSec % 3600) / 60);
+            $officeGapStr = ($gH > 0 ? "{$gH}h " : "") . "{$gM}m";
+        }
+
+        $processedRounds[] = [
+            'round_num' => $rNum,
+            'start' => $rStart,
+            'end' => $rEnd,
+            'duration_sec' => $rDurSec,
+            'duration_str' => $rDurStr,
+            'window_str' => $rWindow,
+            'photo_count' => count($rPhotos),
+            'plots' => array_keys($rPlots),
+            'photos' => $rPhotos,
+            'office_gap_before' => $officeGapStr
+        ];
+    }
+
+    $photos = $annotatedPhotos;
+    $hasMultipleRounds = count($processedRounds) > 1;
+
+    // Add Field Photos into Timeline (with Round labels if multiple rounds)
     foreach ($photos as $ph) {
+        $rndLabel = $hasMultipleRounds ? " (Round {$ph['round_num']})" : "";
         $timeline[] = [
             'time' => $ph['taken_at'],
-            'event' => '📷 ' . ($ph['activity_type'] ?: 'Field Photo Upload'),
+            'event' => '📷 ' . ($ph['activity_type'] ?: 'Field Photo Upload') . $rndLabel,
             'type' => 'photo',
             'location' => $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot')),
-            'details' => $ph['note'] ?: 'Field documentation',
+            'details' => ($ph['note'] ? $ph['note'] . ' · ' : '') . ($hasMultipleRounds ? "Visit Round {$ph['round_num']}" : "Field inspection"),
             'battery' => '—',
             'remarks' => 'Auto: ' . ($ph['auto_geofence'] ?: '—') . ' | Confirmed: ' . ($ph['selected_geofence'] ?: '—'),
             'file_path' => $ph['file_path'] ?? ''
         ];
+    }
+
+    // Insert Office / Base Interval into Timeline between consecutive rounds
+    if ($hasMultipleRounds) {
+        foreach ($processedRounds as $rIdx => $rnd) {
+            if ($rIdx > 0 && !empty($rnd['office_gap_before'])) {
+                $prevRnd = $processedRounds[$rIdx - 1];
+                $timeline[] = [
+                    'time' => date('Y-m-d H:i:s', strtotime($prevRnd['end']) + 30),
+                    'event' => '🏢 Office / Base Break (' . $rnd['office_gap_before'] . ')',
+                    'type' => 'parking',
+                    'location' => 'Base / Divisional Office',
+                    'details' => 'Returned to office / base between Round ' . $prevRnd['round_num'] . ' and Round ' . $rnd['round_num'],
+                    'battery' => '—',
+                    'remarks' => 'Office break interval (' . date('h:i A', strtotime($prevRnd['end'])) . ' – ' . date('h:i A', strtotime($rnd['start'])) . ')'
+                ];
+            }
+        }
     }
 
     // Process GPS Points: Calculate Trips, Stops, and Inactive Gaps
@@ -496,30 +607,18 @@ if ($report_type === 'staff_audit') {
         $dutyDurStr = ($dH > 0 ? "{$dH}h " : "") . "{$dM}m";
     }
 
-    // Field Visit Time Window & Plots
-    $firstVisitTime = null;
-    $lastVisitTime = null;
-    $plotsVisited = [];
-    if (!empty($photos)) {
-        $firstVisitTime = $photos[0]['taken_at'];
-        $lastVisitTime = end($photos)['taken_at'];
-        foreach ($photos as $ph) {
-            $pName = trim((string)($ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: ''))));
-            if ($pName !== '') $plotsVisited[$pName] = true;
-        }
-    }
+    // Field Visit Time Window & Multi-Round Summary
+    $firstVisitTime = !empty($photos) ? $photos[0]['taken_at'] : null;
+    $lastVisitTime = !empty($photos) ? end($photos)['taken_at'] : null;
 
     $visitWindowStr = 'No visits logged';
-    if ($firstVisitTime && $lastVisitTime) {
-        $vSec = max(0, strtotime($lastVisitTime) - strtotime($firstVisitTime));
-        $vH = floor($vSec / 3600);
-        $vM = round(($vSec % 3600) / 60);
-        $vDur = ($vH > 0 ? "{$vH}h " : "") . "{$vM}m";
-        if (date('h:i A', strtotime($firstVisitTime)) === date('h:i A', strtotime($lastVisitTime))) {
-            $visitWindowStr = date('h:i A', strtotime($firstVisitTime));
-        } else {
-            $visitWindowStr = date('h:i A', strtotime($firstVisitTime)) . ' – ' . date('h:i A', strtotime($lastVisitTime)) . " ({$vDur})";
-        }
+    if (count($processedRounds) === 1) {
+        $visitWindowStr = $processedRounds[0]['window_str'];
+    } elseif (count($processedRounds) > 1) {
+        $totH = floor($totalFieldSec / 3600);
+        $totM = round(($totalFieldSec % 3600) / 60);
+        $totDurStr = ($totH > 0 ? "{$totH}h " : "") . "{$totM}m";
+        $visitWindowStr = count($processedRounds) . " Visits · Total {$totDurStr} in Field";
     }
 
     // Battery levels
@@ -542,7 +641,9 @@ if ($report_type === 'staff_audit') {
         'first_visit' => $firstVisitTime,
         'last_visit' => $lastVisitTime,
         'visit_window' => $visitWindowStr,
-        'plots_visited' => array_keys($plotsVisited),
+        'rounds' => $processedRounds,
+        'total_field_seconds' => $totalFieldSec,
+        'plots_visited' => array_keys($allPlotsVisited),
         'photo_count' => count($photos),
         'photos' => $photos,
         'batt_start' => $battStart,
@@ -791,11 +892,13 @@ if ($report_type === 'staff_audit') {
                 'plots' => [],
                 'first_time' => $v['taken_at'],
                 'last_time' => $v['taken_at'],
-                'notes_count' => 0
+                'notes_count' => 0,
+                'raw_times' => []
             ];
         }
 
         $officerStats[$uId]['total_visits']++;
+        $officerStats[$uId]['raw_times'][] = $v['taken_at'];
         if ($plot !== 'Unspecified Plot') {
             $officerStats[$uId]['plots'][$plot] = true;
         }
@@ -833,6 +936,34 @@ if ($report_type === 'staff_audit') {
             'photo_url' => $photoUrl
         ];
     }
+
+    foreach ($officerStats as $uId => &$os) {
+        $times = $os['raw_times'] ?? [];
+        sort($times);
+        $rCount = 0;
+        $lastT = null;
+        $totalFieldSec = 0;
+        $rStart = null;
+        foreach ($times as $tStr) {
+            $t = strtotime($tStr);
+            if ($lastT === null || ($t - $lastT) >= 2400) {
+                if ($rStart !== null && $lastT !== null) {
+                    $totalFieldSec += max(600, $lastT - $rStart);
+                }
+                $rCount++;
+                $rStart = $t;
+            }
+            $lastT = $t;
+        }
+        if ($rStart !== null && $lastT !== null) {
+            $totalFieldSec += max(600, $lastT - $rStart);
+        }
+        $os['round_count'] = $rCount;
+        $fH = floor($totalFieldSec / 3600);
+        $fM = round(($totalFieldSec % 3600) / 60);
+        $os['field_duration_str'] = ($fH > 0 ? "{$fH}h " : "") . "{$fM}m";
+    }
+    unset($os);
 
     $summary['total_visits'] = count($report_rows);
     $summary['distinct_plots'] = count($distinctPlots);
@@ -1055,8 +1186,13 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             </td>
             <td style="padding:10px 14px;text-align:center">
               <span style="background:#e0f2fe;color:#0369a1;padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">
-                <?= $os['total_visits'] ?>
+                <?= $os['total_visits'] ?> Photos
               </span>
+              <?php if (!empty($os['round_count'])): ?>
+                <div style="font-size:10.5px;color:#6d28d9;font-weight:700;margin-top:3px">
+                  <?= $os['round_count'] ?> <?= $os['round_count'] > 1 ? 'Rounds' : 'Round' ?> (<?= $os['field_duration_str'] ?>)
+                </div>
+              <?php endif; ?>
             </td>
             <td style="padding:10px 14px;text-align:center">
               <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">
@@ -1167,15 +1303,41 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </div>
     </div>
 
-    <!-- Box 4: Field Visit Period -->
+    <!-- Box 4: Field Visit Period & Rounds -->
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #8b5cf6">
-      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">🌾 Field Visit Window</div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">
+          🌾 <?= (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1) ? 'Field Visits (' . count($staffAuditSummary['rounds']) . ' Rounds)' : 'Field Visit Window' ?>
+        </div>
+        <?php if (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1): ?>
+          <span style="font-size:10px;background:#ede9fe;color:#6d28d9;font-weight:800;padding:1px 6px;border-radius:10px">
+            <?= count($staffAuditSummary['rounds']) ?> Rounds
+          </span>
+        <?php endif; ?>
+      </div>
+
       <div style="font-size:14px;font-weight:800;color:#6d28d9;margin-top:2px">
         <?= $staffAuditSummary['visit_window'] ?>
       </div>
       <div style="font-size:10.5px;color:#94a3b8">
-        <?= $staffAuditSummary['photo_count'] ?> Inspection Photo(s) taken
+        <?= $staffAuditSummary['photo_count'] ?> Inspection Photo(s) taken across <?= count($staffAuditSummary['plots_visited']) ?> Plot(s)
       </div>
+
+      <?php if (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1): ?>
+        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:3px">
+          <?php foreach ($staffAuditSummary['rounds'] as $rnd): ?>
+            <?php if (!empty($rnd['office_gap_before'])): ?>
+              <div style="font-size:9.5px;color:#64748b;padding:1px 4px;background:#f8fafc;border-radius:3px">
+                🏢 Office Break: <?= $rnd['office_gap_before'] ?>
+              </div>
+            <?php endif; ?>
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:#475569">
+              <span><strong>Round <?= $rnd['round_num'] ?>:</strong> <?= date('h:i A', strtotime($rnd['start'])) ?> – <?= date('h:i A', strtotime($rnd['end'])) ?></span>
+              <span style="font-weight:700;color:#6d28d9"><?= $rnd['duration_str'] ?></span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -1200,6 +1362,62 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
   </div>
 
+  <!-- Multi-Round Field Visit Sessions Breakdown -->
+  <?php if (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1): ?>
+    <div style="margin-top:10px;padding:10px 14px;background:#fdfcfb;border:1px solid #e2e8f0;border-radius:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px">
+          🚜 <span>Daily Field Visit Sessions Breakdown</span>
+        </div>
+        <span style="font-size:10.5px;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 8px;border-radius:10px;font-weight:600">
+          Clustered by Office Interval &ge; 40 mins
+        </span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <?php foreach ($staffAuditSummary['rounds'] as $rnd): ?>
+          <?php if (!empty($rnd['office_gap_before'])): ?>
+            <div style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;font-size:11px;color:#475569">
+              <span style="font-size:13px">🏢</span>
+              <strong>Returned to Office / Base Yard:</strong>
+              <span>Interval duration <?= $rnd['office_gap_before'] ?></span>
+            </div>
+          <?php endif; ?>
+
+          <div style="background:#fff;border:1px solid #cbd5e1;border-left:3px solid #8b5cf6;border-radius:6px;padding:8px 12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="background:#ede9fe;color:#6d28d9;font-weight:800;font-size:10.5px;padding:2px 8px;border-radius:10px">
+                  🌾 Round <?= $rnd['round_num'] ?>
+                </span>
+                <strong style="color:#0f172a;font-size:12.5px">
+                  <?= date('h:i A', strtotime($rnd['start'])) ?> – <?= date('h:i A', strtotime($rnd['end'])) ?>
+                </strong>
+                <span style="color:#6d28d9;font-size:11.5px;font-weight:700">
+                  (<?= $rnd['duration_str'] ?>)
+                </span>
+              </div>
+              <span style="font-size:11px;color:#64748b">
+                📷 <strong><?= $rnd['photo_count'] ?></strong> Photos · 📍 <strong><?= count($rnd['plots']) ?></strong> Plots
+              </span>
+            </div>
+
+            <?php if (!empty($rnd['plots'])): ?>
+              <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:6px">
+                <span style="font-size:10.5px;color:#64748b;font-weight:600">Plots Inspected:</span>
+                <?php foreach ($rnd['plots'] as $pName): ?>
+                  <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:4px">
+                    🌾 <?= h($pName) ?>
+                  </span>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  <?php endif; ?>
+
   <!-- Photo Evidence Strip if photos exist -->
   <?php if (!empty($staffAuditSummary['photos'])): ?>
     <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1">
@@ -1211,6 +1429,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
           $pPlot = $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot'));
         ?>
           <div style="position:relative;flex-shrink:0;text-align:center;background:#fff;border:1px solid #cbd5e1;padding:4px;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.05)">
+            <?php if (!empty($ph['round_num']) && !empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1): ?>
+              <span style="position:absolute;top:3px;right:3px;background:#6d28d9;color:#fff;font-size:8.5px;font-weight:800;padding:1px 4px;border-radius:3px;z-index:2">
+                R<?= $ph['round_num'] ?>
+              </span>
+            <?php endif; ?>
             <a href="javascript:void(0)" onclick="openLightbox('download_photo.php?file=<?= urlencode($ph['file_path']) ?>', '<?= h(addslashes($staffUser['name'] ?? 'Staff')) ?> | <?= h(addslashes($pPlot)) ?> (<?= h(date('h:i A', strtotime($ph['taken_at']))) ?>)')" title="Click to enlarge photo">
               <img src="download_photo.php?file=<?= urlencode($ph['file_path']) ?>" style="width:68px;height:68px;object-fit:cover;border-radius:4px;display:block">
             </a>

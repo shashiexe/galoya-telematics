@@ -427,6 +427,40 @@ try {
         }
     } catch (Throwable $e) {}
 
+    // Ensure Agriculture / Plantation department links to its Sectors (Sector A, B, C, D)
+    try {
+        $agriDept = $pdo->query("SELECT id FROM `departments` WHERE `name` LIKE '%Agri%' OR `name` LIKE '%Plantation%' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if ($agriDept) {
+            $aId = (int)$agriDept['id'];
+            $pdo->exec("UPDATE `sections` SET `department_id` = $aId WHERE (`department_id` IS NULL OR `department_id` = 0 OR `department_id` NOT IN (SELECT id FROM departments)) AND (`name` LIKE '%Sector%' OR `name` LIKE '%Sugarcane%')");
+            $sCount = (int)$pdo->query("SELECT COUNT(*) FROM `sections` WHERE `department_id` = $aId")->fetchColumn();
+            if ($sCount === 0) {
+                $pdo->exec("INSERT IGNORE INTO `sections` (`department_id`, `name`, `code`) VALUES 
+                    ($aId, 'Sector A (Sugarcane)', 'SEC-A'),
+                    ($aId, 'Sector B (Sugarcane)', 'SEC-B'),
+                    ($aId, 'Sector C (Sugarcane)', 'SEC-C'),
+                    ($aId, 'Sector D (Sugarcane)', 'SEC-D')");
+            }
+            $results[] = ["✅ Linked Sector A, B, C, D to Agriculture department", "color:#10b981"];
+        }
+    } catch (Throwable $e) {}
+
+    // Ensure Fleet & Transport department links to Garage & Haulage
+    try {
+        $fleetDept = $pdo->query("SELECT id FROM `departments` WHERE `name` LIKE '%Fleet%' OR `name` LIKE '%Transport%' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if ($fleetDept) {
+            $fId = (int)$fleetDept['id'];
+            $pdo->exec("UPDATE `sections` SET `department_id` = $fId WHERE (`department_id` IS NULL OR `department_id` = 0 OR `department_id` NOT IN (SELECT id FROM departments)) AND (`name` LIKE '%Garage%' OR `name` LIKE '%Workshop%' OR `name` LIKE '%Haulage%' OR `name` LIKE '%Transport%')");
+            $fCount = (int)$pdo->query("SELECT COUNT(*) FROM `sections` WHERE `department_id` = $fId")->fetchColumn();
+            if ($fCount === 0) {
+                $pdo->exec("INSERT IGNORE INTO `sections` (`department_id`, `name`, `code`) VALUES 
+                    ($fId, 'Central Workshop & Garage', 'GARAGE'),
+                    ($fId, 'Haulage / Transport Yard', 'HAUL')");
+            }
+            $results[] = ["✅ Linked Workshop & Haulage to Fleet & Transport department", "color:#10b981"];
+        }
+    } catch (Throwable $e) {}
+
     $results[] = ["✅ Database: Ensured departments, sections, and designations exist", "color:#10b981"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Departments table note: " . $e->getMessage(), "color:#f59e0b"];

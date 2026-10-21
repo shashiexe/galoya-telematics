@@ -16,6 +16,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $secId = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
             $desigId = !empty($_POST['designation_id']) ? (int)$_POST['designation_id'] : null;
             
+            // Auto-sync department_id from section if section was chosen
+            if ($secId) {
+                $pDept = q("SELECT department_id FROM sections WHERE id=?", [$secId])->fetchColumn();
+                if ($pDept) {
+                    $deptId = (int)$pDept;
+                }
+            }
+            
             // Get designation name
             $desigName = null;
             if ($desigId) {
@@ -127,17 +135,19 @@ layout_start('Staff & Organization Management', 'staff.php');
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="font-weight:600;font-size:13px;color:#475569">Filter By:</span>
-    <form method="get" style="display:inline-flex;gap:8px;align-items:center">
-      <select name="dept" onchange="this.form.submit()" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px">
+    <form method="get" id="staff-filter-form" style="display:inline-flex;gap:8px;align-items:center">
+      <select name="dept" id="filter-dept" onchange="onFilterDeptChange()" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px">
         <option value="">All Departments</option>
         <?php foreach ($departments as $d): ?>
           <option value="<?= $d['id'] ?>" <?= $filterDept === (int)$d['id'] ? 'selected' : '' ?>><?= h($d['name']) ?></option>
         <?php endforeach; ?>
       </select>
-      <select name="sec" onchange="this.form.submit()" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px">
+      <select name="sec" id="filter-sec" onchange="onFilterSecChange()" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px">
         <option value="">All Sections</option>
         <?php foreach ($sections as $s): ?>
-          <option value="<?= $s['id'] ?>" <?= $filterSec === (int)$s['id'] ? 'selected' : '' ?>><?= h($s['name']) ?> (<?= h($s['dept_name'] ?? 'General') ?>)</option>
+          <?php if (!$filterDept || (int)$s['department_id'] === $filterDept): ?>
+            <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= $filterSec === (int)$s['id'] ? 'selected' : '' ?>><?= h($s['name']) ?> (<?= h($s['dept_name'] ?? 'General') ?>)</option>
+          <?php endif; ?>
         <?php endforeach; ?>
       </select>
       <?php if ($filterDept || $filterSec): ?>
@@ -246,31 +256,41 @@ layout_start('Staff & Organization Management', 'staff.php');
       <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Phone / Login Mobile *</label>
       <input name="phone" required value="<?= h($edit['phone'] ?? '') ?>" placeholder="077xxxxxxx" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
 
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Department</label>
-      <select name="department_id" id="user-dept" onchange="filterSectionsByDept()" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-        <option value="">Select Department...</option>
-        <?php foreach ($departments as $d): ?>
-          <option value="<?= $d['id'] ?>" <?= ((int)($edit['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?> (<?= h($d['code'] ?: 'Dept') ?>)</option>
-        <?php endforeach; ?>
-      </select>
-
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Section</label>
-      <select name="section_id" id="user-sec" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-        <option value="">Select Section...</option>
-        <?php foreach ($sections as $s): ?>
-          <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= ((int)($edit['section_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
-            <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Designation / Role</label>
-      <select name="designation_id" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
+        Designation / Job Title <span style="font-size:11px;color:#7c3aed;font-weight:normal">(Universal for all staff)</span>
+      </label>
+      <select name="designation_id" id="user-desig" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
         <option value="">Select Designation...</option>
         <?php foreach ($designations as $ds): ?>
           <option value="<?= $ds['id'] ?>" <?= ((int)($edit['designation_id'] ?? 0) === (int)$ds['id']) ? 'selected' : '' ?>><?= h($ds['name']) ?></option>
         <?php endforeach; ?>
       </select>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+        <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
+          <span>Section / Division</span>
+          <span style="font-size:10.5px;color:#0284c7;font-weight:600">⚡ Auto-selects Department</span>
+        </label>
+        <select name="section_id" id="user-sec" onchange="onUserSecChange()" style="width:100%;margin-bottom:10px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
+          <option value="">Select Section...</option>
+          <?php foreach ($sections as $s): ?>
+            <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= ((int)($edit['section_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
+              <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+
+        <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
+          <span>Department</span>
+          <span style="font-size:10.5px;color:#64748b;font-weight:500">Filters sections</span>
+        </label>
+        <select name="department_id" id="user-dept" onchange="onUserDeptChange()" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box;transition:border-color .3s, background-color .3s">
+          <option value="">Select Department...</option>
+          <?php foreach ($departments as $d): ?>
+            <option value="<?= $d['id'] ?>" <?= ((int)($edit['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?> (<?= h($d['code'] ?: 'Dept') ?>)</option>
+          <?php endforeach; ?>
+        </select>
+      </div>
 
       <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">System Access Role</label>
       <select name="role" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
@@ -336,35 +356,79 @@ layout_start('Staff & Organization Management', 'staff.php');
     <!-- 2. Sections Section -->
     <div style="margin-bottom:24px;border-top:1px solid #e2e8f0;padding-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="color:#059669;font-size:13px">2. Sections & Divisions</strong>
+        <strong style="color:#059669;font-size:13px">2. Sections & Divisions (Department-Wise)</strong>
       </div>
-      <form method="post" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <form method="post" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <?= csrf_field() ?>
         <input type="hidden" name="act" value="add_sec">
-        <select name="sec_dept_id" required style="width:160px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
-          <option value="">Under Department...</option>
+        <select name="sec_dept_id" required style="width:180px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
+          <option value="">Under Department... *</option>
           <?php foreach ($departments as $d): ?>
             <option value="<?= $d['id'] ?>"><?= h($d['name']) ?></option>
           <?php endforeach; ?>
         </select>
-        <input name="sec_name" required placeholder="Section Name (e.g. Sector D, Central Garage)" style="flex:2;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
-        <input name="sec_code" placeholder="Code (e.g. SEC-D)" style="width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
+        <input name="sec_name" required placeholder="Section Name (e.g. Milling, Boiler, Sector D)" style="flex:2;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
+        <input name="sec_code" placeholder="Code (e.g. MILL, BLR)" style="width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
         <button class="btn sm" style="white-space:nowrap">+ Add Section</button>
       </form>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        <?php foreach ($sections as $s): ?>
-          <span style="display:inline-flex;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:3px 8px;font-size:12px;gap:6px">
-            <span style="color:#047857;font-weight:600"><?= h($s['name']) ?></span>
-            <span style="color:#64748b;font-size:10px"><?= h($s['dept_name'] ?? 'General') ?></span>
-            <form method="post" style="display:inline" onsubmit="return confirm('Remove section?')">
-              <?= csrf_field() ?>
-              <input type="hidden" name="act" value="del_master">
-              <input type="hidden" name="type" value="sec">
-              <input type="hidden" name="item_id" value="<?= $s['id'] ?>">
-              <button style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:11px;padding:0">✕</button>
-            </form>
-          </span>
+      
+      <?php
+      $sectionsByDept = [];
+      foreach ($sections as $s) {
+          $dId = (int)($s['department_id'] ?? 0);
+          $sectionsByDept[$dId][] = $s;
+      }
+      ?>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <?php foreach ($departments as $d): 
+          $deptSecs = $sectionsByDept[(int)$d['id']] ?? [];
+        ?>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span style="font-size:12px;font-weight:700;color:#0f172a">🏢 <?= h($d['name']) ?></span>
+              <span style="font-size:10.5px;color:#64748b"><?= count($deptSecs) ?> section<?= count($deptSecs) === 1 ? '' : 's' ?></span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <?php if (empty($deptSecs)): ?>
+                <span style="font-size:11px;color:#94a3b8;font-style:italic">No sections in this department yet.</span>
+              <?php else: ?>
+                <?php foreach ($deptSecs as $s): ?>
+                  <span style="display:inline-flex;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:3px 8px;font-size:12px;gap:6px">
+                    <span style="color:#047857;font-weight:600"><?= h($s['name']) ?></span>
+                    <?= !empty($s['code']) ? '<span style="color:#64748b;font-size:10px">(' . h($s['code']) . ')</span>' : '' ?>
+                    <form method="post" style="display:inline" onsubmit="return confirm('Remove section <?= h($s['name']) ?>?')">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="act" value="del_master">
+                      <input type="hidden" name="type" value="sec">
+                      <input type="hidden" name="item_id" value="<?= $s['id'] ?>">
+                      <button style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:11px;padding:0;line-height:1" title="Delete section">✕</button>
+                    </form>
+                  </span>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </div>
+          </div>
         <?php endforeach; ?>
+        
+        <?php if (!empty($sectionsByDept[0])): ?>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">
+            <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">General / Unassigned</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <?php foreach ($sectionsByDept[0] as $s): ?>
+                <span style="display:inline-flex;align-items:center;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:12px;gap:6px">
+                  <span><?= h($s['name']) ?></span>
+                  <form method="post" style="display:inline" onsubmit="return confirm('Remove section?')">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="act" value="del_master">
+                    <input type="hidden" name="type" value="sec">
+                    <input type="hidden" name="item_id" value="<?= $s['id'] ?>">
+                    <button style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:11px;padding:0;line-height:1">✕</button>
+                  </form>
+                </span>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        <?php endif; ?>
       </div>
     </div>
 
@@ -403,21 +467,109 @@ layout_start('Staff & Organization Management', 'staff.php');
 </div>
 
 <script>
-function filterSectionsByDept() {
-  var deptId = document.getElementById('user-dept').value;
+var allSections = <?= json_encode(array_values(array_map(function($s) {
+  return [
+    'id' => (int)$s['id'],
+    'name' => $s['name'],
+    'code' => $s['code'] ?? '',
+    'dept_id' => (int)($s['department_id'] ?? 0),
+    'dept_name' => $s['dept_name'] ?? 'General'
+  ];
+}, $sections))) ?>;
+
+function updateSectionDropdown(deptId, selectedSecId) {
   var secSelect = document.getElementById('user-sec');
-  var options = secSelect.getElementsByTagName('option');
+  if (!secSelect) return;
   
-  for (var i = 1; i < options.length; i++) {
-    var opt = options[i];
-    var optDept = opt.getAttribute('data-dept');
-    if (!deptId || !optDept || optDept === deptId) {
-      opt.style.display = '';
-    } else {
-      opt.style.display = 'none';
-      if (opt.selected) secSelect.value = '';
+  var previousVal = (selectedSecId !== undefined && selectedSecId !== null && selectedSecId !== '') 
+    ? String(selectedSecId) 
+    : secSelect.value;
+    
+  secSelect.innerHTML = '<option value="">Select Section...</option>';
+  
+  var filtered = deptId 
+    ? allSections.filter(function(s) { return String(s.dept_id) === String(deptId); })
+    : allSections;
+    
+  filtered.forEach(function(s) {
+    var opt = document.createElement('option');
+    opt.value = s.id;
+    opt.setAttribute('data-dept', s.dept_id);
+    var label = s.name + (s.code ? ' (' + s.code + ')' : '');
+    if (!deptId && s.dept_name) {
+      label += ' [' + s.dept_name + ']';
+    }
+    opt.textContent = label;
+    if (previousVal && String(s.id) === previousVal) {
+      opt.selected = true;
+    }
+    secSelect.appendChild(opt);
+  });
+}
+
+function onUserSecChange() {
+  var secSelect = document.getElementById('user-sec');
+  if (!secSelect) return;
+  var secId = secSelect.value;
+  if (!secId) return;
+  
+  var sec = allSections.find(function(s) { return String(s.id) === String(secId); });
+  if (sec && sec.dept_id) {
+    var deptSelect = document.getElementById('user-dept');
+    if (deptSelect) {
+      deptSelect.value = sec.dept_id;
+      // Filter section list to this department, keeping current section selected
+      updateSectionDropdown(sec.dept_id, secId);
+      
+      // Visual feedback highlight
+      deptSelect.style.borderColor = '#10b981';
+      deptSelect.style.backgroundColor = '#ecfdf5';
+      setTimeout(function() {
+        deptSelect.style.borderColor = '#cbd5e1';
+        deptSelect.style.backgroundColor = '';
+      }, 1000);
     }
   }
 }
+
+function onUserDeptChange() {
+  var deptSelect = document.getElementById('user-dept');
+  if (!deptSelect) return;
+  var deptId = deptSelect.value;
+  var secSelect = document.getElementById('user-sec');
+  var currentSecId = secSelect ? secSelect.value : '';
+  
+  var stillValid = allSections.some(function(s) { 
+    return String(s.id) === String(currentSecId) && String(s.dept_id) === String(deptId); 
+  });
+  updateSectionDropdown(deptId, stillValid ? currentSecId : '');
+}
+
+function onFilterDeptChange() {
+  var secSelect = document.getElementById('filter-sec');
+  if (secSelect) secSelect.value = '';
+  document.getElementById('staff-filter-form').submit();
+}
+
+function onFilterSecChange() {
+  var secSelect = document.getElementById('filter-sec');
+  if (!secSelect) return;
+  var secId = secSelect.value;
+  if (secId) {
+    var found = allSections.find(function(s) { return String(s.id) === String(secId); });
+    if (found && found.dept_id) {
+      var filterDept = document.getElementById('filter-dept');
+      if (filterDept) filterDept.value = found.dept_id;
+    }
+  }
+  document.getElementById('staff-filter-form').submit();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var deptEl = document.getElementById('user-dept');
+  var currentDept = deptEl ? deptEl.value : '';
+  var currentSec = "<?= (int)($edit['section_id'] ?? 0) ?>";
+  updateSectionDropdown(currentDept, currentSec);
+});
 </script>
 <?php layout_end();

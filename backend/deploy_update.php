@@ -485,13 +485,15 @@ try {
     $results[] = ["✅ Database: Ensured photo_delete_logs audit trail table exists", "color:#10b981"];
 } catch (Throwable $e) {}
 
-// Update latest app version & build in settings table
+// Update latest app version & build in settings table using bootstrap set_setting
 try {
-    $pdo->exec("INSERT INTO settings (`key`, `val`) VALUES ('latest_app_version', '1.3.5') ON DUPLICATE KEY UPDATE `val`='1.3.5'");
-    $pdo->exec("INSERT INTO settings (`key`, `val`) VALUES ('latest_app_build', '19') ON DUPLICATE KEY UPDATE `val`='19'");
-    $pdo->exec("INSERT INTO settings (`key`, `val`) VALUES ('app_update_changelog', '• Green boundary plantation plot identification\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Enhanced 24/7 background tracking') ON DUPLICATE KEY UPDATE `val`=VALUES(`val`)");
+    set_setting('latest_app_version', '1.3.5');
+    set_setting('latest_app_build', '19');
+    set_setting('app_update_changelog', "• Single clean green boundary plantation plot identification matching field\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Enhanced 24/7 background tracking");
     $results[] = ["✅ Settings: Updated latest_app_version to 1.3.5 build 19", "color:#10b981;font-weight:bold"];
-} catch (Throwable $e) {}
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
+}
 
 // Speed telemetry points are recorded directly in km/h by mobile app and Teltonika GPS
 

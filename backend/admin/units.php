@@ -23,6 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $driver_id = !empty($_POST['driver_id']) ? (int)$_POST['driver_id'] : null;
             $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
             $section_id = !empty($_POST['section_id']) ? (int)$_POST['section_id'] : null;
+            if ($section_id) {
+                $pDept = q("SELECT department_id FROM sections WHERE id=?", [$section_id])->fetchColumn();
+                if ($pDept) $department_id = (int)$pDept;
+            }
 
             if (empty($name)) throw new Exception("Unit name is required");
 
@@ -460,7 +464,7 @@ layout_start('Fleet Units', 'units.php');
         </div>
         <div>
           <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Section</label>
-          <select name="section_id" id="unit_sec" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <select name="section_id" id="unit_sec" onchange="onUnitSecChange()" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
             <option value="">-- No Section --</option>
             <?php foreach ($sections as $s): ?>
               <option value="<?= $s['id'] ?>" data-dept="<?= $s['department_id'] ?>">🌾 <?= h($s['name']) ?></option>
@@ -520,6 +524,19 @@ function editUnit(u) {
   filterUnitSections();
   document.getElementById('unit_sec').value = u.section_id || '';
   document.getElementById('unit-modal').style.display = 'flex';
+}
+
+function onUnitSecChange() {
+  const secSelect = document.getElementById('unit_sec');
+  const secId = secSelect.value;
+  if (!secId) return;
+  const opt = secSelect.options[secSelect.selectedIndex];
+  const deptId = opt ? opt.getAttribute('data-dept') : null;
+  if (deptId) {
+    document.getElementById('unit_dept').value = deptId;
+    filterUnitSections();
+    secSelect.value = secId;
+  }
 }
 
 function filterUnitSections() {

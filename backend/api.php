@@ -53,8 +53,8 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.2.0');
-    $latestBuild = (int)setting('latest_app_build', 12);
+    $latestVersion = setting('latest_app_version', '1.3.5');
+    $latestBuild = (int)setting('latest_app_build', 19);
     return [
         'location_interval' => (int)setting('location_interval', 60),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
@@ -74,10 +74,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.3.3');
-        $latestBuild = (int)setting('latest_app_build', 16);
+        $latestVersion = setting('latest_app_version', '1.3.5');
+        $latestBuild = (int)setting('latest_app_build', 19);
         $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
-        $changelog = setting('app_update_changelog', "• Anti-Drift: Stabilized GPS under solar panels & metal roofs (eliminates false walking/moving alerts)\n• Enhanced stationary anchor (< 25m locked to 0 km/h)\n• Instant Emergency SOS Panic Button\n• Full-screen pinch-to-zoom field photo gallery");
+        $changelog = setting('app_update_changelog', "• Green boundary plantation plot identification\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Enhanced 24/7 background tracking");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));

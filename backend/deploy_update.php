@@ -62,6 +62,52 @@ if (isset($_GET['diag_duty'])) {
     exit;
 }
 
+if (isset($_GET['clean_duplicate_plots'])) {
+    header('Content-Type: application/json');
+    $pdo = db();
+    $beforeTotal = (int)q("SELECT COUNT(*) FROM geofences")->fetchColumn();
+    $distinctCount = (int)q("SELECT COUNT(DISTINCT name, group_name) FROM geofences")->fetchColumn();
+
+    // 1. Re-link any tasks pointing to duplicate geofence IDs to the lowest ID
+    try {
+        @$pdo->exec("UPDATE tasks t 
+            JOIN geofences g_old ON t.geofence_id = g_old.id 
+            JOIN geofences g_keep ON g_old.name = g_keep.name AND COALESCE(g_old.group_name,'') = COALESCE(g_keep.group_name,'') 
+            SET t.geofence_id = g_keep.id 
+            WHERE g_old.id > g_keep.id");
+    } catch (Throwable $e) {}
+
+    // 2. Delete duplicate geofence rows keeping the lowest id
+    $del = $pdo->exec("DELETE g1 FROM geofences g1
+                       INNER JOIN geofences g2 
+                       ON g1.name = g2.name 
+                          AND COALESCE(g1.group_name, '') = COALESCE(g2.group_name, '')
+                          AND g1.id > g2.id");
+
+    // 3. Ensure all remaining plots have spatial center coordinates populated
+    @$pdo->exec("UPDATE `geofences` 
+        SET `center_lat` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][0]')) AS DECIMAL(10,6)),
+            `center_lng` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][1]')) AS DECIMAL(10,6))
+        WHERE (center_lat IS NULL OR center_lat = 0) AND `coordinates` LIKE '[[%'");
+
+    $afterTotal = (int)q("SELECT COUNT(*) FROM geofences")->fetchColumn();
+
+    // 4. Add unique index so duplicates can never occur again
+    try {
+        @$pdo->exec("ALTER TABLE geofences ADD UNIQUE KEY uniq_plot (name, group_name)");
+    } catch (Throwable $e) {}
+
+    echo json_encode([
+        'ok' => true,
+        'message' => "Successfully removed duplicate plots!",
+        'before_total' => $beforeTotal,
+        'distinct_plots' => $distinctCount,
+        'deleted_duplicates' => (int)$del,
+        'after_total' => $afterTotal,
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
+
 if (isset($_GET['test_ai'])) {
     if (session_status() === PHP_SESSION_NONE) {
         session_name('stafftrack_admin');

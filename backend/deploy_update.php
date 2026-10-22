@@ -413,10 +413,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.3.7');
-    set_setting('latest_app_build', '22');
-    set_setting('app_update_changelog', "• Auto-focus camera on current location upon app opening\n• Ultra-fast 10ms indexed spatial plot detection\n• Camera stays centered on your position when checking current plot\n• Accurate plot identification and boundary polygons in plantation\n• Field photo tag shows 'Outside Plantation Area' when in town");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.7 (Build 22)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.8');
+    set_setting('latest_app_build', '23');
+    set_setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.8 (Build 23)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -682,10 +682,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.3.7');
-    set_setting('latest_app_build', '22');
-    set_setting('app_update_changelog', "• Auto-focus camera on current location upon app opening\n• Ultra-fast 10ms indexed spatial plot detection\n• Camera stays centered on your position when checking current plot\n• Accurate plot identification and boundary polygons in plantation\n• Field photo tag shows 'Outside Plantation Area' when in town");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.7 build 22", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.8');
+    set_setting('latest_app_build', '23');
+    set_setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.8 build 23", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

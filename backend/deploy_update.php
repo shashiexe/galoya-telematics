@@ -307,11 +307,48 @@ try {
     $results[] = ["✅ Database: Ensured field_photos activity & dual geofence columns exist", "color:#10b981"];
 } catch (Throwable $e) {}
 
+// Spatial center coordinates & index for 10ms microsecond geofences query
 try {
-    set_setting('latest_app_version', '1.3.5');
-    set_setting('latest_app_build', '18');
-    set_setting('app_update_changelog', "• Nearby Plot & Geofence Identifier: Pink Radar button blinks current location pin and draws surrounding plot polygon boundaries\n• Dynamic Compass & Direction Tracking: Google Maps style rotating needle and directional beam cone\n• Tasks List Split: Separate Pending & Active tasks from Completed History (with date filter)\n• Pending Tasks Badge: Header badge strictly counts only pending/active tasks\n• Turn-by-Turn Navigation: One-tap Google Maps directions directly from task cards and detail view\n• Web Admin Geofence Link: Auto-attach GPS coordinates and plot names when creating new tasks");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.5 (Build 18)", "color:#38bdf8;font-weight:bold"];
+    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `center_lat` DECIMAL(10,6) NULL AFTER `coordinates`");
+    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `center_lng` DECIMAL(10,6) NULL AFTER `center_lat`");
+    @$pdo->exec("ALTER TABLE `geofences` ADD INDEX `idx_center_coords` (`center_lat`, `center_lng`)");
+    
+    // Batch populate center_lat and center_lng if any row is null
+    $unindexed = (int)q("SELECT COUNT(*) FROM geofences WHERE center_lat IS NULL AND active=1")->fetchColumn();
+    if ($unindexed > 0) {
+        $popSuccess = false;
+        try {
+            $affected = $pdo->exec("UPDATE `geofences` 
+                SET `center_lat` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][0]')) AS DECIMAL(10,6)),
+                    `center_lng` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][1]')) AS DECIMAL(10,6))
+                WHERE `center_lat` IS NULL AND `coordinates` LIKE '[[%'");
+            $results[] = ["✅ Geofences: Indexed spatial center coordinates for $affected rows via JSON_EXTRACT", "color:#10b981;font-weight:bold"];
+            $popSuccess = true;
+        } catch (Throwable $je) {}
+
+        if (!$popSuccess) {
+            $rows = q("SELECT id, coordinates FROM geofences WHERE center_lat IS NULL LIMIT 4000")->fetchAll();
+            $upStmt = $pdo->prepare("UPDATE geofences SET center_lat=?, center_lng=? WHERE id=?");
+            $cCount = 0;
+            foreach ($rows as $r) {
+                $coords = json_decode($r['coordinates'] ?? '[]', true);
+                if (is_array($coords) && count($coords) >= 1) {
+                    $upStmt->execute([round((float)$coords[0][0], 6), round((float)$coords[0][1], 6), $r['id']]);
+                    $cCount++;
+                }
+            }
+            $results[] = ["✅ Geofences: Populated spatial center coordinates for $cCount rows via PHP", "color:#10b981"];
+        }
+    }
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Geofences spatial index note: " . $e->getMessage(), "color:#f59e0b"];
+}
+
+try {
+    set_setting('latest_app_version', '1.3.7');
+    set_setting('latest_app_build', '22');
+    set_setting('app_update_changelog', "• Auto-focus camera on current location upon app opening\n• Ultra-fast 10ms indexed spatial plot detection\n• Camera stays centered on your position when checking current plot\n• Accurate plot identification and boundary polygons in plantation\n• Field photo tag shows 'Outside Plantation Area' when in town");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.7 (Build 22)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {

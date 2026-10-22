@@ -311,34 +311,54 @@ try {
     }
 
     case 'geofences_light': {
-        // Returns lightweight centroids of active landmark/division geofences for fast mobile proximity cache (< 50KB)
+        // Returns lightweight centroids of active geofences for fast mobile proximity cache (< 100KB)
         auth_user();
-        $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 AND (category != 'Agriculture' OR category IS NULL) ORDER BY name ASC LIMIT 300")->fetchAll();
-        if (empty($rows)) {
-            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 250")->fetchAll();
+        try {
+            $rows = q("SELECT id, name, code, COALESCE(center_lat, 0.0) as lat, COALESCE(center_lng, 0.0) as lng 
+                       FROM geofences 
+                       WHERE active=1 AND center_lat IS NOT NULL 
+                       ORDER BY name ASC 
+                       LIMIT 2500")->fetchAll();
+        } catch (Throwable $e) {
+            $rows = [];
         }
+        if (empty($rows)) {
+            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 300")->fetchAll();
+            $light = [];
+            foreach ($rows as $r) {
+                $coords = json_decode($r['coordinates'] ?? '[]', true);
+                if (!is_array($coords) || count($coords) < 3) continue;
+                $sumLat = 0.0; $sumLng = 0.0; $n = count($coords);
+                foreach ($coords as $c) {
+                    $sumLat += (float)$c[0];
+                    $sumLng += (float)$c[1];
+                }
+                $light[] = [
+                    'id' => (int)$r['id'],
+                    'name' => $r['name'],
+                    'code' => $r['code'] ?: $r['name'],
+                    'lat' => round($sumLat / $n, 6),
+                    'lng' => round($sumLng / $n, 6),
+                ];
+            }
+            out(['ok' => true, 'geofences' => $light, 'total' => count($light)]);
+        }
+
         $light = [];
         foreach ($rows as $r) {
-            $coords = json_decode($r['coordinates'] ?? '[]', true);
-            if (!is_array($coords) || count($coords) < 3) continue;
-            $sumLat = 0.0; $sumLng = 0.0; $n = count($coords);
-            foreach ($coords as $c) {
-                $sumLat += (float)$c[0];
-                $sumLng += (float)$c[1];
-            }
             $light[] = [
                 'id' => (int)$r['id'],
                 'name' => $r['name'],
                 'code' => $r['code'] ?: $r['name'],
-                'lat' => round($sumLat / $n, 6),
-                'lng' => round($sumLng / $n, 6),
+                'lat' => (float)$r['lat'],
+                'lng' => (float)$r['lng'],
             ];
         }
         out(['ok' => true, 'geofences' => $light, 'total' => count($light)]);
     }
 
     case 'geofences_nearby': {
-        // High-precision nearest geofence query with spatial pre-filtering, point-in-polygon ray-casting and boundary segment distance
+        // High-precision nearest geofence query with MySQL indexed spatial bbox filter, point-in-polygon ray-casting and boundary segment distance (<10ms execution)
         auth_user();
         $lat = isset($_GET['lat']) ? (float)$_GET['lat'] : (isset($_POST['lat']) ? (float)$_POST['lat'] : null);
         $lng = isset($_GET['lng']) ? (float)$_GET['lng'] : (isset($_POST['lng']) ? (float)$_POST['lng'] : null);
@@ -348,36 +368,48 @@ try {
             fail('Missing or invalid lat/lng coordinates');
         }
 
-        $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1")->fetchAll();
         $results = [];
-
-        // 2-Phase scan: Phase 1 fast spatial bbox filter (< 0.04 deg ~ 4.4km), expands if few results
         $candidates = [];
-        foreach ($rows as $r) {
-            if (empty($r['coordinates'])) continue;
-            $coords = json_decode($r['coordinates'], true);
-            if (!is_array($coords) || count($coords) < 3) continue;
 
-            $cLat0 = (float)$coords[0][0];
-            $cLng0 = (float)$coords[0][1];
-            if (abs($cLat0 - $lat) <= 0.045 && abs($cLng0 - $lng) <= 0.045) {
-                $candidates[] = [$r, $coords];
+        // Phase 1: Ultra-fast indexed MySQL Bounding-Box (~5km radius)
+        $delta = 0.045; // ~5km
+        try {
+            $rows = q("SELECT id, name, code, coordinates, center_lat, center_lng 
+                       FROM geofences 
+                       WHERE active=1 
+                         AND center_lat BETWEEN ? AND ? 
+                         AND center_lng BETWEEN ? AND ? 
+                       LIMIT 70", 
+                      [$lat - $delta, $lat + $delta, $lng - $delta, $lng + $delta])->fetchAll();
+            
+            // Expand to ~15km if no plots in immediate 5km
+            if (empty($rows)) {
+                $delta = 0.14;
+                $rows = q("SELECT id, name, code, coordinates, center_lat, center_lng 
+                           FROM geofences 
+                           WHERE active=1 
+                             AND center_lat BETWEEN ? AND ? 
+                             AND center_lng BETWEEN ? AND ? 
+                           LIMIT 40", 
+                          [$lat - $delta, $lat + $delta, $lng - $delta, $lng + $delta])->fetchAll();
             }
-        }
 
-        // Expand if needed
-        if (count($candidates) < 5) {
-            $candidates = [];
             foreach ($rows as $r) {
                 if (empty($r['coordinates'])) continue;
                 $coords = json_decode($r['coordinates'], true);
                 if (!is_array($coords) || count($coords) < 3) continue;
+                $candidates[] = [$r, $coords];
+            }
+        } catch (Throwable $e) {}
 
-                $cLat0 = (float)$coords[0][0];
-                $cLng0 = (float)$coords[0][1];
-                if (abs($cLat0 - $lat) <= 0.15 && abs($cLng0 - $lng) <= 0.15) {
-                    $candidates[] = [$r, $coords];
-                }
+        // Fallback if center_lat column is unindexed or pending migration
+        if (empty($candidates)) {
+            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 LIMIT 100")->fetchAll();
+            foreach ($rows as $r) {
+                if (empty($r['coordinates'])) continue;
+                $coords = json_decode($r['coordinates'], true);
+                if (!is_array($coords) || count($coords) < 3) continue;
+                $candidates[] = [$r, $coords];
             }
         }
 

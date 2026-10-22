@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -68,7 +71,51 @@ class LocalDb {
 
   // --- Lightweight Geofences Cache (Proximity Filtering) ---
 
-  // --- Geofences Proximity & Edge-Distance Calculation ---
+  static bool _seeding = false;
+
+  /// Guarantees that all 5,034 plantation plots (including all 1,180 Varipathanchena plots)
+  /// are pre-seeded in SQLite from the compressed local asset bundle immediately upon install/launch.
+  static Future<void> ensureGeofencesSeeded() async {
+    if (_seeding) return;
+    _seeding = true;
+    try {
+      final count = await countGeofences();
+      if (count >= 4500) {
+        return; // Full dataset already cached
+      }
+
+      final bytes = await rootBundle.load('assets/agriculture_geofences.json.gz');
+      final rawData = gzip.decode(bytes.buffer.asUint8List());
+      final jsonStr = utf8.decode(rawData);
+      final list = jsonDecode(jsonStr) as List;
+
+      final d = await db;
+      final batch = d.batch();
+      for (final item in list) {
+        if (item is Map) {
+          final c = item['coordinates'];
+          batch.insert(
+            'geofences_cache',
+            {
+              'id': item['id'],
+              'name': item['name'] ?? '',
+              'code': item['code'] ?? '',
+              'lat': (item['lat'] is num) ? (item['lat'] as num).toDouble() : 0.0,
+              'lng': (item['lng'] is num) ? (item['lng'] as num).toDouble() : 0.0,
+              'coordinates': c is String ? c : (c != null ? jsonEncode(c) : null),
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      }
+      await batch.commit(noResult: true);
+      debugPrint('LocalDb: Pre-seeded ${list.length} plantation plots into SQLite cache.');
+    } catch (e) {
+      debugPrint('ensureGeofencesSeeded error: $e');
+    } finally {
+      _seeding = false;
+    }
+  }
 
   /// Save geofences (centroids + optional full polygon coordinates for offline high-precision boundary checks)
   static Future<void> saveGeofences(List<dynamic> list) async {

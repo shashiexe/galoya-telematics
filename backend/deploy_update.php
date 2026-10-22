@@ -59,6 +59,25 @@ if (isset($_GET['diag_duty'])) {
         'first_pts' => $firstPts,
         'last_pts' => $lastPts,
     ], JSON_PRETTY_PRINT);
+if (isset($_GET['diag_varipath'])) {
+    header('Content-Type: application/json');
+    $groups = q("SELECT group_name, COUNT(*) as total, 
+                        SUM(CASE WHEN center_lat IS NOT NULL AND center_lat != 0 THEN 1 ELSE 0 END) as indexed_count 
+                 FROM geofences GROUP BY group_name")->fetchAll();
+    $vPlots = q("SELECT id, name, group_name, block_name, center_lat, center_lng, SUBSTRING(coordinates, 1, 60) as coords_preview 
+                 FROM geofences WHERE group_name LIKE '%Varipath%' OR name LIKE 'V/%' LIMIT 15")->fetchAll();
+    $vCount = q("SELECT COUNT(*) FROM geofences WHERE group_name LIKE '%Varipath%' OR name LIKE 'V/%'")->fetchColumn();
+    $chamikaNear = q("SELECT id, name, group_name, center_lat, center_lng 
+                      FROM geofences 
+                      WHERE center_lat BETWEEN 7.2228 - 0.05 AND 7.2228 + 0.05 
+                        AND center_lng BETWEEN 81.6751 - 0.05 AND 81.6751 + 0.05 
+                      LIMIT 20")->fetchAll();
+    echo json_encode([
+        'groups' => $groups,
+        'varipath_total' => (int)$vCount,
+        'varipath_samples' => $vPlots,
+        'near_chamika' => $chamikaNear,
+    ], JSON_PRETTY_PRINT);
     exit;
 }
 

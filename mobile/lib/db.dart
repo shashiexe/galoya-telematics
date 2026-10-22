@@ -204,8 +204,14 @@ class LocalDb {
       limit: 60,
     );
     if (rows.isEmpty) {
-      // Fallback: query closest 25 if outside bbox
-      rows = await d.query('geofences_cache', limit: 25);
+      // Expand slightly to ~15 km
+      const double deltaWide = 0.14;
+      rows = await d.query(
+        'geofences_cache',
+        where: 'lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?',
+        whereArgs: [lat - deltaWide, lat + deltaWide, lng - deltaWide, lng + deltaWide],
+        limit: 30,
+      );
       if (rows.isEmpty) return [];
     }
 

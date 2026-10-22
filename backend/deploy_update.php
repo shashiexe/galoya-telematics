@@ -59,6 +59,9 @@ if (isset($_GET['diag_duty'])) {
         'first_pts' => $firstPts,
         'last_pts' => $lastPts,
     ], JSON_PRETTY_PRINT);
+    exit;
+}
+
 if (isset($_GET['diag_varipath'])) {
     header('Content-Type: application/json');
     $groups = q("SELECT group_name, COUNT(*) as total, 

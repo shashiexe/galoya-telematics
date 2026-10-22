@@ -49,8 +49,14 @@ class Sync {
       final count = await LocalDb.countGeofences();
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      if (!force && count > 0 && (now - lastSync < 6 * 3600 * 1000)) {
+      // If full dataset (>= 4500 plots) already cached, don't re-download within 12 hours
+      if (!force && count >= 4500 && (now - lastSync < 12 * 3600 * 1000)) {
         return; // fresh enough
+      }
+
+      // If missing full dataset, ensure local pre-seeded asset is applied first
+      if (count < 4500) {
+        await LocalDb.ensureGeofencesSeeded();
       }
 
       final res = await Api.get('geofences_light');

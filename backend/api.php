@@ -317,6 +317,8 @@ try {
             $rows = q("SELECT id, name, code, COALESCE(center_lat, 0.0) as lat, COALESCE(center_lng, 0.0) as lng 
                        FROM geofences 
                        WHERE active=1 AND center_lat IS NOT NULL 
+                         AND NOT (name='D/207/01' AND (center_lat < 7.2059 OR center_lng < 81.700))
+                         AND name != 'Untitled Polygon' AND name NOT LIKE 'Test%'
                        ORDER BY name ASC 
                        LIMIT 10000")->fetchAll();
             
@@ -329,6 +331,8 @@ try {
                 $rows = q("SELECT id, name, code, COALESCE(center_lat, 0.0) as lat, COALESCE(center_lng, 0.0) as lng 
                            FROM geofences 
                            WHERE active=1 AND center_lat IS NOT NULL 
+                             AND NOT (name='D/207/01' AND (center_lat < 7.2059 OR center_lng < 81.700))
+                             AND name != 'Untitled Polygon' AND name NOT LIKE 'Test%'
                            ORDER BY name ASC 
                            LIMIT 10000")->fetchAll();
             }
@@ -336,7 +340,7 @@ try {
             $rows = [];
         }
         if (empty($rows)) {
-            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 500")->fetchAll();
+            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 AND NOT (name='D/207/01' AND center_lat < 7.2059) ORDER BY name ASC LIMIT 500")->fetchAll();
             $light = [];
             foreach ($rows as $r) {
                 $coords = json_decode($r['coordinates'] ?? '[]', true);
@@ -384,14 +388,18 @@ try {
         $results = [];
         $candidates = [];
 
-        // Phase 1: Ultra-fast indexed MySQL Bounding-Box (~5km radius)
+        // Phase 1: Ultra-fast indexed MySQL Bounding-Box with Proximity Ordering (~5km radius)
         $delta = 0.045; // ~5km
+        $distSql = "((center_lat - $lat)*(center_lat - $lat) + (center_lng - $lng)*(center_lng - $lng))";
         try {
             $rows = q("SELECT id, name, code, coordinates, center_lat, center_lng 
                        FROM geofences 
                        WHERE active=1 
                          AND center_lat BETWEEN ? AND ? 
                          AND center_lng BETWEEN ? AND ? 
+                         AND NOT (name='D/207/01' AND (center_lat < 7.2059 OR center_lng < 81.700))
+                         AND name != 'Untitled Polygon' AND name NOT LIKE 'Test%'
+                       ORDER BY $distSql ASC 
                        LIMIT 70", 
                       [$lat - $delta, $lat + $delta, $lng - $delta, $lng + $delta])->fetchAll();
             
@@ -403,6 +411,9 @@ try {
                            WHERE active=1 
                              AND center_lat BETWEEN ? AND ? 
                              AND center_lng BETWEEN ? AND ? 
+                             AND NOT (name='D/207/01' AND (center_lat < 7.2059 OR center_lng < 81.700))
+                             AND name != 'Untitled Polygon' AND name NOT LIKE 'Test%'
+                           ORDER BY $distSql ASC 
                            LIMIT 50", 
                           [$lat - $delta, $lat + $delta, $lng - $delta, $lng + $delta])->fetchAll();
             }

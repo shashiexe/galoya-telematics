@@ -84,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   // Compass & Heading Direction Follow Mode
   double _mapRotation = 0.0;
   bool _isHeadingFollowMode = false;
+  bool _hasInitiallyCentered = false;
 
   // Visual Blinking & Nearby Plot Polygons
   late AnimationController _locationBlinkCtrl;
@@ -210,6 +211,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
 
     _loadBattery();
+
+    // Immediately focus camera on user's last known location upon app launch
+    try {
+      final lastPos = await Geolocator.getLastKnownPosition();
+      if (lastPos != null && mounted) {
+        setState(() {
+          _currentPosition = lastPos;
+          _speed = lastPos.speed >= 0 ? lastPos.speed : 0.0;
+          _accuracy = lastPos.accuracy;
+        });
+        _mapController.move(LatLng(lastPos.latitude, lastPos.longitude), 16.5);
+        _hasInitiallyCentered = true;
+      }
+    } catch (_) {}
+
     _fetchLiveLocation();
     _loadTasks();
 
@@ -276,6 +292,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           _speed = pos.speed >= 0 ? pos.speed : 0.0;
           _accuracy = pos.accuracy;
         });
+        if (!_hasInitiallyCentered) {
+          _hasInitiallyCentered = true;
+          _mapController.move(LatLng(pos.latitude, pos.longitude), 16.5);
+        }
         if (_isHeadingFollowMode && pos.heading >= 0) {
           _mapController.rotate(pos.heading);
         }
@@ -345,11 +365,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     final lat = _currentPosition?.latitude ?? _defaultCenter.latitude;
     final lng = _currentPosition?.longitude ?? _defaultCenter.longitude;
 
-    // 3. Query nearby plots from online sync or local cache
+    // ALWAYS keep camera focused directly on USER'S position
+    _mapController.move(LatLng(lat, lng), 17.0);
+
+    // 3. Query nearby plots from fast online sync or local cache
     List<Map<String, dynamic>> nearbyList = [];
     try {
       final online = await Sync.refreshNearbyGeofences(lat, lng)
-          .timeout(const Duration(milliseconds: 1800), onTimeout: () => null);
+          .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
       if (online != null && online.isNotEmpty) {
         nearbyList = online;
       } else {
@@ -368,13 +391,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       }
     }
     final target = insidePlot ?? (nearbyList.isNotEmpty ? nearbyList.first : null);
+    final targetDist = (target?['distance'] as num?)?.toDouble() ?? double.infinity;
 
-    // 5. Build clean green polygons and centered name badges for nearby plots
+    // 5. Build clean green polygons and centered name badges ONLY for plots within 1500m
     final polygons = <Polygon>[];
     final markers = <Marker>[];
-    final allPointsForBounds = <LatLng>[];
+    final relevantPlots = nearbyList.where((p) {
+      final d = (p['distance'] as num?)?.toDouble() ?? 0.0;
+      return p['is_inside'] == true || d <= 1500;
+    }).toList();
 
-    for (final p in nearbyList) {
+    for (final p in relevantPlots) {
       final isTarget = (target != null && (p['name'] == target['name'] || p['id'] == target['id']));
       final polyCoords = p['coordinates'];
       final pts = <LatLng>[];
@@ -398,7 +425,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
               isFilled: true,
             ),
           );
-          if (isTarget) allPointsForBounds.addAll(pts);
         }
       }
 
@@ -463,27 +489,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
     if (mounted) {
       setState(() {
-        _targetPlot = target;
+        _targetPlot = (target != null && targetDist <= 1500) ? target : null;
         _targetPolygonPoints = [];
-        _nearbyIdentifiedPlots = nearbyList;
+        _nearbyIdentifiedPlots = relevantPlots;
         _nearbyIdentifiedPolygons = polygons;
         _nearbyIdentifiedMarkers = markers;
       });
 
-      if (allPointsForBounds.isNotEmpty) {
-        final bounds = LatLngBounds.fromPoints(allPointsForBounds);
-        _mapController.fitCamera(CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)));
-      } else if (target != null) {
-        final tLat = (target['lat'] as num?)?.toDouble() ?? lat;
-        final tLng = (target['lng'] as num?)?.toDouble() ?? lng;
-        _mapController.move(LatLng(tLat, tLng), 16.5);
-      }
+      // Keep camera centered on the user
+      _mapController.move(LatLng(lat, lng), 17.0);
 
-      final msg = insidePlot != null
-          ? '📍 Inside: ${insidePlot['name']}'
-          : (target != null
-              ? '📍 Nearest: ${target['name']} (${(target['distance'] as num?)?.round() ?? 0}m)'
-              : '📍 No plots found nearby');
+      String msg;
+      if (insidePlot != null) {
+        msg = '📍 Inside: ${insidePlot['name']}';
+      } else if (target != null && targetDist <= 1500) {
+        msg = '📍 Nearest: ${target['name']} (${targetDist.round()}m)';
+      } else {
+        msg = '📍 Outside Plantation Area (No plots within 1.5 km)';
+      }
 
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1003,7 +1026,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       List<Map<String, dynamic>> nearbyPlots = [];
       try {
         final onlinePlots = await Sync.refreshNearbyGeofences(lat, lng)
-            .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
+            .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
         if (onlinePlots != null && onlinePlots.isNotEmpty) {
           nearbyPlots = onlinePlots.take(8).toList();
         } else {
@@ -1021,12 +1044,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         final edgeMeters = (closest['edge_distance'] as num?)?.round() ?? (closest['distance'] as num?)?.round() ?? 0;
         if (isInside || edgeMeters <= 10) {
           autoGeofence = 'Inside ${closest['name']}';
-        } else if (edgeMeters < 1000) {
+          selectedGeofence = closest['name']?.toString() ?? '';
+        } else if (edgeMeters <= 500) {
           autoGeofence = 'Near ${closest['name']} (${edgeMeters}m)';
-        } else {
+          selectedGeofence = closest['name']?.toString() ?? '';
+        } else if (edgeMeters <= 1500) {
           autoGeofence = 'Near ${closest['name']} (${(edgeMeters / 1000).toStringAsFixed(1)}km)';
+          selectedGeofence = closest['name']?.toString() ?? '';
+        } else {
+          autoGeofence = 'Outside Plantation Area';
+          selectedGeofence = 'Office / External Area';
         }
-        selectedGeofence = closest['name']?.toString() ?? '';
+      } else {
+        autoGeofence = 'Outside Plantation Area';
+        selectedGeofence = 'Office / External Area';
       }
 
       String selectedActivity = 'Field Visit';
@@ -1119,42 +1150,70 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                           ),
                           const SizedBox(height: 8),
 
-                          if (nearbyPlots.isNotEmpty) ...[
-                            const Text('Select / Confirm Plot (Nearby Only):',
-                                style: TextStyle(color: Colors.white60, fontSize: 11)),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xff0f172a),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xff334155)),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: nearbyPlots.any((p) => p['name'] == secGf)
-                                      ? secGf
-                                      : nearbyPlots.first['name'].toString(),
-                                  dropdownColor: const Color(0xff0f172a),
-                                  isExpanded: true,
-                                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                                  items: nearbyPlots.map((p) {
-                                    final d = (p['distance'] as num?)?.round() ?? 0;
-                                    final tag = d <= 25 ? '(Inside / 0m)' : '(${d}m away)';
-                                    return DropdownMenuItem<String>(
-                                      value: p['name'].toString(),
-                                      child: Text('${p['name']} $tag',
-                                          style: const TextStyle(color: Colors.white)),
-                                    );
-                                  }).toList(),
-                                  onChanged: (v) {
-                                    if (v != null) setDlgState(() => secGf = v);
-                                  },
+                          () {
+                            final validNearbyPlots = nearbyPlots.where((p) {
+                              final d = (p['distance'] as num?)?.toDouble() ?? 0.0;
+                              return p['is_inside'] == true || d <= 2000;
+                            }).toList();
+
+                            final dropdownItems = <String>[
+                              ...validNearbyPlots.map((p) => p['name'].toString()),
+                              if (!validNearbyPlots.any((p) => p['name'] == 'Office / External Area'))
+                                'Office / External Area',
+                            ];
+
+                            final currentVal = dropdownItems.contains(secGf)
+                                ? secGf
+                                : (dropdownItems.isNotEmpty ? dropdownItems.first : 'Office / External Area');
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  validNearbyPlots.isNotEmpty
+                                      ? 'Select / Confirm Plot (Nearby Only):'
+                                      : 'Confirm Location Area:',
+                                  style: const TextStyle(color: Colors.white60, fontSize: 11),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff0f172a),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xff334155)),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: currentVal,
+                                      dropdownColor: const Color(0xff0f172a),
+                                      isExpanded: true,
+                                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                                      items: dropdownItems.map((val) {
+                                        final matched = validNearbyPlots.firstWhere(
+                                          (p) => p['name'] == val,
+                                          orElse: () => <String, dynamic>{},
+                                        );
+                                        String tag = '';
+                                        if (matched.isNotEmpty) {
+                                          final d = (matched['distance'] as num?)?.round() ?? 0;
+                                          tag = d <= 25 ? ' (Inside / 0m)' : ' (${d}m away)';
+                                        }
+                                        return DropdownMenuItem<String>(
+                                          value: val,
+                                          child: Text('$val$tag', style: const TextStyle(color: Colors.white)),
+                                        );
+                                      }).toList(),
+                                      onChanged: (v) {
+                                        if (v != null) setDlgState(() => secGf = v);
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                            );
+                          }(),
 
                           // 3. Optional Remarks
                           const Text('3. Optional Remarks / Note:',
@@ -2868,7 +2927,7 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
         List<Map<String, dynamic>> list = [];
         try {
           final online = await Sync.refreshNearbyGeofences(lat, lng)
-              .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
+              .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
           if (online != null && online.isNotEmpty) {
             list = online.take(15).toList();
           } else {
@@ -2878,9 +2937,16 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
           list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
         }
         if (mounted) {
+          final firstDist = list.isNotEmpty ? ((list.first['distance'] as num?)?.round() ?? 0) : 0;
           setState(() {
             _results = list;
-            _modeLabel = 'Nearest Plots Around You (${list.length})';
+            if (list.isEmpty) {
+              _modeLabel = 'No Plantation Plots Nearby';
+            } else if (firstDist > 2500) {
+              _modeLabel = 'Plantation Plots (Nearest: ${(firstDist / 1000).toStringAsFixed(1)}km)';
+            } else {
+              _modeLabel = 'Nearest Plots Around You (${list.length})';
+            }
             _loading = false;
           });
         }

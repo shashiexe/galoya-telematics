@@ -109,8 +109,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       curve: Curves.easeInOut,
     );
     WidgetsBinding.instance.addObserver(this);
+
+    // Fast Camera: Instantly center on last saved GPS coordinates to prevent Damana jump
+    _initFastCamera();
+
     _bootstrap();
-    WidgetsBinding.instance.addPostFrameCallback((_) => AppUpdater.checkOnLaunch(context));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppUpdater.checkOnLaunch(context);
+      _checkPermissionsInBackground();
+      LocalDb.ensureGeofencesSeeded();
+    });
+  }
+
+  void _initFastCamera() {
+    SharedPreferences.getInstance().then((sp) {
+      final lastLat = sp.getDouble('last_lat');
+      final lastLng = sp.getDouble('last_lng');
+      if (lastLat != null && lastLng != null && lastLat != 0.0 && mounted) {
+        if (_currentPosition == null) {
+          setState(() {
+            _currentPosition = Position(
+              latitude: lastLat,
+              longitude: lastLng,
+              timestamp: DateTime.now(),
+              accuracy: 10.0,
+              altitude: 0.0,
+              altitudeAccuracy: 0.0,
+              heading: 0.0,
+              headingAccuracy: 0.0,
+              speed: 0.0,
+              speedAccuracy: 0.0,
+            );
+          });
+        }
+        if (!_hasInitiallyCentered) {
+          _mapController.move(LatLng(lastLat, lastLng), 16.5);
+          _hasInitiallyCentered = true;
+        }
+      }
+    });
+  }
+
+  Future<void> _checkPermissionsInBackground() async {
+    try {
+      await Tracker.ensurePermissions();
+      await _refreshDaemonStatus();
+    } catch (_) {}
   }
 
   @override
@@ -177,11 +221,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   Future<void> _bootstrap() async {
     final sp = await SharedPreferences.getInstance();
-    await sp.reload();
-    
-    // Request all permissions upfront including battery optimization
-    await Tracker.ensurePermissions();
-    await _refreshDaemonStatus();
     
     // Default to true so tracking runs like a background daemon (Facebook-style)
     final tracking = sp.getBool('tracking') ?? true;
@@ -197,22 +236,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       sp.setString('code', '');
     }
 
-    setState(() {
-      _tracking = tracking;
-      _name = name;
-      _code = code;
-      _unitType = unitType;
-      _designation = designation;
-      _interval = interval;
-    });
+    if (mounted) {
+      setState(() {
+        _tracking = tracking;
+        _name = name;
+        _code = code;
+        _unitType = unitType;
+        _designation = designation;
+        _interval = interval;
+      });
+    }
 
     if (tracking) {
-      await Tracker.start();
+      Tracker.start();
     }
 
     _loadBattery();
 
-    // Immediately focus camera on user's last known location upon app launch
+    // Focus camera immediately on user's last known location
     try {
       final lastPos = await Geolocator.getLastKnownPosition();
       if (lastPos != null && mounted) {
@@ -221,13 +262,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           _speed = lastPos.speed >= 0 ? lastPos.speed : 0.0;
           _accuracy = lastPos.accuracy;
         });
-        _mapController.move(LatLng(lastPos.latitude, lastPos.longitude), 16.5);
-        _hasInitiallyCentered = true;
+        if (!_hasInitiallyCentered) {
+          _mapController.move(LatLng(lastPos.latitude, lastPos.longitude), 16.5);
+          _hasInitiallyCentered = true;
+        }
+        sp.setDouble('last_lat', lastPos.latitude);
+        sp.setDouble('last_lng', lastPos.longitude);
       }
     } catch (_) {}
 
+    // Async background location and task loading (non-blocking)
     _fetchLiveLocation();
-    _loadTasks();
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) _loadTasks();
+    });
 
     // Log App Launch
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -244,7 +292,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         't': now,
       }),
     );
-    Sync.run();
+    
+    // Defer network sync to allow UI and map tiles to render smoothly first
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) Sync.run();
+    });
 
     // High frequency UI location updates
     _locationTimer = Timer.periodic(const Duration(seconds: 4), (_) => _fetchLiveLocation());
@@ -299,6 +351,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         if (_isHeadingFollowMode && pos.heading >= 0) {
           _mapController.rotate(pos.heading);
         }
+        SharedPreferences.getInstance().then((sp) {
+          sp.setDouble('last_lat', pos.latitude);
+          sp.setDouble('last_lng', pos.longitude);
+        });
       }
     } catch (_) {}
   }
@@ -368,18 +424,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // ALWAYS keep camera focused directly on USER'S position
     _mapController.move(LatLng(lat, lng), 17.0);
 
-    // 3. Query nearby plots from fast online sync or local cache
-    List<Map<String, dynamic>> nearbyList = [];
-    try {
-      final online = await Sync.refreshNearbyGeofences(lat, lng)
-          .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
-      if (online != null && online.isNotEmpty) {
-        nearbyList = online;
-      } else {
-        nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
-      }
-    } catch (_) {
-      nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
+    // 3. Ultra-fast local SQLite query (< 5ms) from pre-seeded 5,034 plantation plots
+    List<Map<String, dynamic>> nearbyList = await LocalDb.getNearbyGeofences(lat, lng, limit: 12);
+    
+    // Background online refresh (or fallback if local cache was not ready)
+    if (nearbyList.isEmpty) {
+      try {
+        final online = await Sync.refreshNearbyGeofences(lat, lng)
+            .timeout(const Duration(milliseconds: 2500), onTimeout: () => null);
+        if (online != null && online.isNotEmpty) {
+          nearbyList = online;
+        }
+      } catch (_) {}
+    } else {
+      Sync.refreshNearbyGeofences(lat, lng).catchError((_) => null);
     }
 
     // 4. Find the plot officer is inside, or the closest plot
@@ -1023,17 +1081,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       }
 
       // 1. Proximity query for nearest plots (sorted by boundary edge distance)
-      List<Map<String, dynamic>> nearbyPlots = [];
-      try {
-        final onlinePlots = await Sync.refreshNearbyGeofences(lat, lng)
-            .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
-        if (onlinePlots != null && onlinePlots.isNotEmpty) {
-          nearbyPlots = onlinePlots.take(8).toList();
-        } else {
-          nearbyPlots = await LocalDb.getNearbyGeofences(lat, lng, limit: 8);
-        }
-      } catch (_) {
-        nearbyPlots = await LocalDb.getNearbyGeofences(lat, lng, limit: 8);
+      List<Map<String, dynamic>> nearbyPlots = await LocalDb.getNearbyGeofences(lat, lng, limit: 8);
+      if (nearbyPlots.isEmpty) {
+        try {
+          final onlinePlots = await Sync.refreshNearbyGeofences(lat, lng)
+              .timeout(const Duration(milliseconds: 2000), onTimeout: () => null);
+          if (onlinePlots != null && onlinePlots.isNotEmpty) {
+            nearbyPlots = onlinePlots.take(8).toList();
+          }
+        } catch (_) {}
       }
 
       String autoGeofence = 'Field Area';
@@ -2003,8 +2059,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 children: [
                   TileLayer(
                     urlTemplate: _isSatellite
-                        ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                        ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    subdomains: const ['0', '1', '2', '3'],
                     userAgentPackageName: 'lk.galoya.stafftrack',
                     maxZoom: 20,
                   ),
@@ -2924,31 +2981,35 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
       if (widget.currentPosition != null) {
         final lat = widget.currentPosition!.latitude;
         final lng = widget.currentPosition!.longitude;
-        List<Map<String, dynamic>> list = [];
-        try {
-          final online = await Sync.refreshNearbyGeofences(lat, lng)
-              .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
-          if (online != null && online.isNotEmpty) {
-            list = online.take(15).toList();
-          } else {
-            list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
-          }
-        } catch (_) {
-          list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
-        }
-        if (mounted) {
-          final firstDist = list.isNotEmpty ? ((list.first['distance'] as num?)?.round() ?? 0) : 0;
+        // 1. Immediately query fast local SQLite cache (< 5ms)
+        List<Map<String, dynamic>> list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
+        if (mounted && list.isNotEmpty) {
+          final firstDist = ((list.first['distance'] as num?)?.round() ?? 0);
           setState(() {
             _results = list;
-            if (list.isEmpty) {
-              _modeLabel = 'No Plantation Plots Nearby';
-            } else if (firstDist > 2500) {
-              _modeLabel = 'Plantation Plots (Nearest: ${(firstDist / 1000).toStringAsFixed(1)}km)';
-            } else {
-              _modeLabel = 'Nearest Plots Around You (${list.length})';
-            }
+            _modeLabel = firstDist > 2500
+                ? 'Plantation Plots (Nearest: ${(firstDist / 1000).toStringAsFixed(1)}km)'
+                : 'Nearest Plots Around You (${list.length})';
             _loading = false;
           });
+        }
+
+        // 2. Background check online if local list was empty
+        if (list.isEmpty) {
+          try {
+            final online = await Sync.refreshNearbyGeofences(lat, lng)
+                .timeout(const Duration(milliseconds: 2000), onTimeout: () => null);
+            if (online != null && online.isNotEmpty && mounted) {
+              final firstDist = ((online.first['distance'] as num?)?.round() ?? 0);
+              setState(() {
+                _results = online.take(15).toList();
+                _modeLabel = firstDist > 2500
+                    ? 'Plantation Plots (Nearest: ${(firstDist / 1000).toStringAsFixed(1)}km)'
+                    : 'Nearest Plots Around You (${_results.length})';
+                _loading = false;
+              });
+            }
+          } catch (_) {}
         }
       } else {
         final list = await LocalDb.searchGeofences('', limit: 15);

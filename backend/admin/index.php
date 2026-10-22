@@ -157,6 +157,24 @@ layout_start('Monitoring', 'index.php', true);
     transition: transform 0.4s ease-out !important;
   }
 
+  /* Offline Employee / Unit Dimming (Live online employees pop vibrant and clear on the map) */
+  .w-wialon-marker-wrap.is-offline-marker {
+    opacity: 0.40;
+    filter: grayscale(75%);
+    transition: opacity 0.3s ease, filter 0.3s ease;
+  }
+  .w-wialon-marker-wrap.is-offline-marker .w-unit-name-label {
+    background: rgba(241, 245, 249, 0.85);
+    color: #64748b;
+    border-color: rgba(148, 163, 184, 0.4);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+  .w-wialon-marker-wrap.is-offline-marker:hover {
+    opacity: 1 !important;
+    filter: none !important;
+    z-index: 2500 !important;
+  }
+
   /* Emergency SOS Alert Top Banner */
   .w-sos-container {
     position: absolute;
@@ -1600,7 +1618,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       const markerHtml = `
-        <div class="w-wialon-marker-wrap" data-id="${u.id}">
+        <div class="w-wialon-marker-wrap ${!isOnline ? 'is-offline-marker' : ''}" data-id="${u.id}">
           ${isSos ? '<div class="w-sos-marker-ring"></div>' : ''}
           <div class="w-vehicle-icon-box" style="transform: rotate(${vehicleRotation}deg); transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);">
             ${arrowHtml}
@@ -1639,10 +1657,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (unitMarkers[id]) {
         unitMarkers[id].setLatLng([lat, lng]);
         unitMarkers[id].setIcon(customIcon);
+        unitMarkers[id].setZIndexOffset(isSos ? 2000 : (isOnline ? 1000 : 0));
         unitMarkers[id].setPopupContent(popupContent);
         if (!map.hasLayer(unitMarkers[id])) map.addLayer(unitMarkers[id]);
       } else {
-        const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
+        const marker = L.marker([lat, lng], { 
+          icon: customIcon,
+          zIndexOffset: isSos ? 2000 : (isOnline ? 1000 : 0)
+        }).addTo(map);
         marker.bindPopup(popupContent);
         marker.on('mouseover', (e) => showUnitHoverCard(u, e.originalEvent));
         marker.on('mouseout', hideUnitHoverCard);

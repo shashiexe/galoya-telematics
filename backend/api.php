@@ -53,8 +53,8 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.3.5');
-    $latestBuild = (int)setting('latest_app_build', 20);
+    $latestVersion = setting('latest_app_version', '1.3.8');
+    $latestBuild = (int)setting('latest_app_build', 23);
     return [
         'location_interval' => (int)setting('location_interval', 60),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
@@ -74,10 +74,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.3.5');
-        $latestBuild = (int)setting('latest_app_build', 20);
+        $latestVersion = setting('latest_app_version', '1.3.8');
+        $latestBuild = (int)setting('latest_app_build', 23);
         $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
-        $changelog = setting('app_update_changelog', "• Green boundary plantation plot identification\n• Standard plot details (e.g. D/15/14) and direct Google Maps navigation\n• Instant location pulse pin locator\n• Enhanced 24/7 background tracking");
+        $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
@@ -311,19 +311,32 @@ try {
     }
 
     case 'geofences_light': {
-        // Returns lightweight centroids of active geofences for fast mobile proximity cache (< 100KB)
+        // Returns lightweight centroids of active geofences for fast mobile proximity cache (< 150KB)
         auth_user();
         try {
             $rows = q("SELECT id, name, code, COALESCE(center_lat, 0.0) as lat, COALESCE(center_lng, 0.0) as lng 
                        FROM geofences 
                        WHERE active=1 AND center_lat IS NOT NULL 
                        ORDER BY name ASC 
-                       LIMIT 2500")->fetchAll();
+                       LIMIT 10000")->fetchAll();
+            
+            // Auto-heal missing center coordinates directly from polygon coordinates if less than 4500 plots indexed
+            if (count($rows) < 4500) {
+                @db()->exec("UPDATE `geofences` 
+                    SET `center_lat` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][0]')) AS DECIMAL(10,6)),
+                        `center_lng` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][1]')) AS DECIMAL(10,6))
+                    WHERE (center_lat IS NULL OR center_lat = 0) AND `coordinates` LIKE '[[%'");
+                $rows = q("SELECT id, name, code, COALESCE(center_lat, 0.0) as lat, COALESCE(center_lng, 0.0) as lng 
+                           FROM geofences 
+                           WHERE active=1 AND center_lat IS NOT NULL 
+                           ORDER BY name ASC 
+                           LIMIT 10000")->fetchAll();
+            }
         } catch (Throwable $e) {
             $rows = [];
         }
         if (empty($rows)) {
-            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 300")->fetchAll();
+            $rows = q("SELECT id, name, code, coordinates FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 500")->fetchAll();
             $light = [];
             foreach ($rows as $r) {
                 $coords = json_decode($r['coordinates'] ?? '[]', true);
@@ -390,8 +403,25 @@ try {
                            WHERE active=1 
                              AND center_lat BETWEEN ? AND ? 
                              AND center_lng BETWEEN ? AND ? 
-                           LIMIT 40", 
+                           LIMIT 50", 
                           [$lat - $delta, $lat + $delta, $lng - $delta, $lng + $delta])->fetchAll();
+            }
+
+            // If still empty, check if unindexed plots exist and auto-index them
+            if (empty($rows)) {
+                try {
+                    @db()->exec("UPDATE `geofences` 
+                        SET `center_lat` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][0]')) AS DECIMAL(10,6)),
+                            `center_lng` = CAST(JSON_UNQUOTE(JSON_EXTRACT(`coordinates`, '$[0][1]')) AS DECIMAL(10,6))
+                        WHERE (center_lat IS NULL OR center_lat = 0) AND `coordinates` LIKE '[[%'");
+                    $rows = q("SELECT id, name, code, coordinates, center_lat, center_lng 
+                               FROM geofences 
+                               WHERE active=1 
+                                 AND center_lat BETWEEN ? AND ? 
+                                 AND center_lng BETWEEN ? AND ? 
+                               LIMIT 50", 
+                              [$lat - $delta, $lat + $delta, $lng - $delta, $lng + $delta])->fetchAll();
+                } catch (Throwable $e) {}
             }
 
             foreach ($rows as $r) {

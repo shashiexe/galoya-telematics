@@ -54,8 +54,12 @@ class Tracker {
 
   static Future<bool> ensurePermissions() async {
     try {
-      await Permission.notification.request();
-      await Permission.camera.request();
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
+      if (!await Permission.camera.isGranted) {
+        await Permission.camera.request();
+      }
       if (!await Permission.ignoreBatteryOptimizations.isGranted) {
         await Permission.ignoreBatteryOptimizations.request();
       }
@@ -69,7 +73,9 @@ class Tracker {
     if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
     if (p == LocationPermission.whileInUse) {
       try {
-        await Permission.locationAlways.request();
+        if (!await Permission.locationAlways.isGranted) {
+          await Permission.locationAlways.request();
+        }
       } catch (_) {
         p = await Geolocator.requestPermission();
       }

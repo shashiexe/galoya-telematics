@@ -1,7 +1,7 @@
 name: stafftrack
 description: Staff GPS tracking and task (before/after photo) app.
 publish_to: 'none'
-version: 1.3.6+21
+version: 1.3.7+22
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

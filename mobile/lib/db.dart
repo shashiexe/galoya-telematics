@@ -117,12 +117,42 @@ class LocalDb {
     }
   }
 
+  /// Clean dummy test rows or untitled test polygons from SQLite cache
+  static Future<void> cleanDummyGeofences() async {
+    try {
+      final d = await db;
+      // Delete dummy test row D/207/01 placed near Damana/Hingurana (lat ~7.2085, lng ~81.6605)
+      // Real D/207/01 is at lat 7.2063, lng 81.7561 (Deegawapiya Zone)
+      await d.delete(
+        'geofences_cache',
+        where: "name = 'D/207/01' AND lng < 81.700",
+      );
+      // Delete any untitled polygon or test plot
+      await d.delete(
+        'geofences_cache',
+        where: "name = '' OR name = 'Untitled Polygon' OR name LIKE 'Test%'",
+      );
+    } catch (_) {}
+  }
+
   /// Save geofences (centroids + optional full polygon coordinates for offline high-precision boundary checks)
   static Future<void> saveGeofences(List<dynamic> list) async {
     final d = await db;
     final batch = d.batch();
     for (final item in list) {
       if (item is Map) {
+        final name = (item['name'] ?? '').toString().trim();
+        final lng = (item['lng'] is num) ? (item['lng'] as num).toDouble() : 0.0;
+        final lat = (item['lat'] is num) ? (item['lat'] as num).toDouble() : 0.0;
+
+        // Skip dummy test D/207/01 with fake Hingurana coordinates (real D/207/01 is at lng > 81.700)
+        if (name == 'D/207/01' && lng < 81.700) {
+          continue;
+        }
+        if (name.isEmpty || name == 'Untitled Polygon' || name.startsWith('Test')) {
+          continue;
+        }
+
         String? coordsStr;
         if (item['coordinates'] is String) {
           coordsStr = item['coordinates'] as String;
@@ -136,10 +166,10 @@ class LocalDb {
           'geofences_cache',
           {
             'id': item['id'],
-            'name': item['name'] ?? '',
-            'code': item['code'] ?? '',
-            'lat': (item['lat'] is num) ? (item['lat'] as num).toDouble() : 0.0,
-            'lng': (item['lng'] is num) ? (item['lng'] as num).toDouble() : 0.0,
+            'name': name,
+            'code': item['code'] ?? name,
+            'lat': lat,
+            'lng': lng,
             'coordinates': coordsStr,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
@@ -147,6 +177,7 @@ class LocalDb {
       }
     }
     await batch.commit(noResult: true);
+    await cleanDummyGeofences();
   }
 
   static Future<int> countGeofences() async =>
@@ -240,27 +271,40 @@ class LocalDb {
 
   /// Get nearest plots close to the current location, sorted by TRUE BOUNDARY EDGE distance.
   /// Inside plots (point-in-polygon) and boundary proximity (~5m) are prioritized over centroids.
-  static Future<List<Map<String, dynamic>>> getNearbyGeofences(double lat, double lng, {int limit = 8}) async {
+  static Future<List<Map<String, dynamic>>> getNearbyGeofences(double lat, double lng, {int limit = 15}) async {
     final d = await db;
-    // Step 1: Pre-filter by bounding box in SQLite (~10 km radius) so we only fetch nearby candidates, NOT 5,000!
-    const double delta = 0.09; // ~10 km
-    List<Map<String, Object?>> rows = await d.query(
-      'geofences_cache',
-      where: 'lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?',
-      whereArgs: [lat - delta, lat + delta, lng - delta, lng + delta],
-      limit: 60,
+    await cleanDummyGeofences();
+
+    // Step 1: Pre-filter by bounding box in SQLite with PROXIMITY ORDERING.
+    // Euclidean squared distance monotonic approximation: ((lat - ?)*(lat - ?) + (lng - ?)*(lng - ?))
+    // This guarantees SQLite returns the ACTUAL CLOSEST candidates, never truncated prematurely by insertion order!
+    final distSql = '((lat - ($lat)) * (lat - ($lat)) + (lng - ($lng)) * (lng - ($lng)))';
+
+    // Start with a 4.5 km bounding box (~0.04 degrees)
+    double delta = 0.04;
+    List<Map<String, Object?>> rows = await d.rawQuery(
+      'SELECT * FROM geofences_cache WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? ORDER BY $distSql ASC LIMIT 60',
+      [lat - delta, lat + delta, lng - delta, lng + delta],
     );
-    if (rows.isEmpty) {
-      // Expand slightly to ~15 km
-      const double deltaWide = 0.14;
-      rows = await d.query(
-        'geofences_cache',
-        where: 'lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?',
-        whereArgs: [lat - deltaWide, lat + deltaWide, lng - deltaWide, lng + deltaWide],
-        limit: 30,
+
+    // If fewer than 10 plots found nearby, expand to 12 km (~0.11 degrees)
+    if (rows.length < 10) {
+      delta = 0.11;
+      rows = await d.rawQuery(
+        'SELECT * FROM geofences_cache WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? ORDER BY $distSql ASC LIMIT 60',
+        [lat - delta, lat + delta, lng - delta, lng + delta],
       );
-      if (rows.isEmpty) return [];
     }
+
+    // If still empty (e.g. user is testing far from plantation), expand to 35 km (~0.32 degrees)
+    if (rows.isEmpty) {
+      delta = 0.32;
+      rows = await d.rawQuery(
+        'SELECT * FROM geofences_cache WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? ORDER BY $distSql ASC LIMIT 60',
+        [lat - delta, lat + delta, lng - delta, lng + delta],
+      );
+    }
+    if (rows.isEmpty) return [];
 
     final candidates = <Map<String, dynamic>>[];
     for (final r in rows) {
@@ -275,9 +319,9 @@ class LocalDb {
       });
     }
 
-    // Sort by centroid to examine the closest 30 candidates for edge calculations
+    // Sort candidates by centroid distance to take the closest 40 for micro-edge calculation
     candidates.sort((a, b) => (a['cDist'] as double).compareTo(b['cDist'] as double));
-    final topCandidates = candidates.take(30).toList();
+    final topCandidates = candidates.take(40).toList();
 
     // Step 2: Compute true boundary edge distance and point-in-polygon ray-casting
     final list = <Map<String, dynamic>>[];
@@ -329,10 +373,11 @@ class LocalDb {
   /// Search any plot by name or code with optional boundary edge distance calculation
   static Future<List<Map<String, dynamic>>> searchGeofences(String query, {double? userLat, double? userLng, int limit = 20}) async {
     final d = await db;
+    await cleanDummyGeofences();
     final q = '%${query.trim()}%';
     final rows = await d.query(
       'geofences_cache',
-      where: 'name LIKE ? OR code LIKE ?',
+      where: '(name LIKE ? OR code LIKE ?) AND name != \'Untitled Polygon\' AND name NOT LIKE \'Test%\'',
       whereArgs: [q, q],
       limit: limit * 2,
     );

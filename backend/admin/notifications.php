@@ -125,9 +125,11 @@ layout_start('Notifications & Alarms', 'notifications.php');
           </button>
         </form>
       <?php endif; ?>
-      <button class="btn ghost sm" onclick="document.getElementById('test-modal').style.display='flex'" style="display:flex;align-items:center;gap:6px">
-        <span>⚡</span> <span>Trigger Test Alarm</span>
-      </button>
+      <?php if (($me['role'] ?? '') === 'admin'): ?>
+        <button class="btn ghost sm" onclick="document.getElementById('test-modal').style.display='flex'" style="display:flex;align-items:center;gap:6px">
+          <span>⚡</span> <span>Trigger Test Alarm</span>
+        </button>
+      <?php endif; ?>
       <form method="post" style="margin:0" onsubmit="return confirm('Clear all acknowledged history?')">
         <?= csrf_field() ?>
         <input type="hidden" name="act" value="delete_all_read">

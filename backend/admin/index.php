@@ -1275,9 +1275,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const gpsHtml = `<span class="w-gps-dot ${isOnline ? 'online' : ''}" style="${isOnline ? 'background:#22c55e;box-shadow:0 0 6px #22c55e' : 'background:#94a3b8'}" title="${isOnline ? 'GPS Online (Live Signal)' : 'GPS Offline'}"></span>`;
 
       // Battery
-      const batVal = u.battery !== null ? u.battery : 85;
-      const batColor = !isOnline ? '#94a3b8' : (batVal < 20 ? '#dc2626' : (batVal < 50 ? '#f59e0b' : '#16a34a'));
-      const batHtml = `<span style="font-weight:700;color:${batColor}">${batVal}%</span>`;
+      const hasBat = (u.battery !== null && u.battery !== undefined && u.battery !== '');
+      const batVal = hasBat ? parseInt(u.battery, 10) : null;
+      const batColor = (!isOnline || batVal === null) ? '#94a3b8' : (batVal < 20 ? '#dc2626' : (batVal < 50 ? '#f59e0b' : '#16a34a'));
+      const batHtml = `<span style="font-weight:700;color:${batColor}">${batVal !== null ? batVal + '%' : '—'}</span>`;
 
       return `
         <tr class="w-unit-row ${isMoving ? 'is-moving' : ''}" data-id="${u.id}" 
@@ -1645,7 +1646,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div>Speed: <strong>${Math.round(u.speed || 0)} km/h</strong></div>
           <div>Driver: <strong>${u.driver_name || 'Unassigned'}</strong></div>
           <div>Ignition: <strong>${(u.ignition && isOnline) ? 'ON' : 'OFF'}</strong></div>
-          <div>Battery: <strong>${u.battery !== null ? u.battery + '%' : '85%'}</strong></div>
+          <div>Battery: <strong>${(u.battery !== null && u.battery !== undefined && u.battery !== '') ? u.battery + '%' : '—'}</strong></div>
           <div>Coordinates: <code>${lat.toFixed(5)}, ${lng.toFixed(5)}</code></div>
           <div style="margin-top:8px;display:flex;gap:6px">
             <a href="history.php?user=${u.id}" class="w-icon-btn primary" style="font-size:11px;padding:3px 8px">Track Route History</a>

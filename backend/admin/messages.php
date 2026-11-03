@@ -2,9 +2,14 @@
 require __DIR__ . '/_common.php';
 $me = require_admin();
 
-// Fetch units for dropdown
-$units = q("SELECT id, name, code, unit_type, device_type FROM users WHERE role='staff' AND active=1 ORDER BY name ASC")->fetchAll();
-$selected_unit_id = (int)($_GET['unit_id'] ?? ($units[0]['id'] ?? 2));
+$secScopeUsers = user_section_scope_sql('users');
+// Fetch units for dropdown (scoped to user's subordinates)
+$units = q("SELECT id, name, code, unit_type, device_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
+$allowedIds = array_map(fn($u) => (int)$u['id'], $units);
+$selected_unit_id = (int)($_GET['unit_id'] ?? ($units[0]['id'] ?? 0));
+if (!in_array($selected_unit_id, $allowedIds, true)) {
+    $selected_unit_id = (int)($units[0]['id'] ?? 0);
+}
 $period = $_GET['period'] ?? 'today';
 $msg_type = $_GET['msg_type'] ?? 'data';
 

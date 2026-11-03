@@ -1,6 +1,13 @@
 <?php
 require __DIR__ . '/_common.php';
 require_admin();
+if (!can('dashboard', 'view')) {
+    $fallback = first_allowed_page();
+    if ($fallback !== 'dashboard.php' && $fallback !== 'logout.php') {
+        header('Location: ' . $fallback);
+        exit;
+    }
+}
 require_perm('dashboard', 'view');
 
 $secScopeUsers = user_section_scope_sql('users');

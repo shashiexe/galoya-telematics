@@ -174,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       if (_tracking) {
         Tracker.start();
       }
+      _loadBattery();
       LocalDb.enqueue(
         'duty',
         jsonEncode({
@@ -189,20 +190,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       );
       Sync.run();
     } else if (state == AppLifecycleState.resumed) {
-      LocalDb.enqueue(
-        'duty',
-        jsonEncode({
-          'client_id': 'open_$now',
-          'status': _tracking ? 'on' : 'off',
-          'event_type': 'app_open',
-          'note': 'App Restored to Foreground',
-          'lat': _currentPosition?.latitude,
-          'lng': _currentPosition?.longitude,
-          'battery': _batteryLevel,
-          't': now,
-        }),
-      );
-      Sync.run();
+      _loadBattery().then((_) {
+        LocalDb.enqueue(
+          'duty',
+          jsonEncode({
+            'client_id': 'open_$now',
+            'status': _tracking ? 'on' : 'off',
+            'event_type': 'app_open',
+            'note': 'App Restored to Foreground',
+            'lat': _currentPosition?.latitude,
+            'lng': _currentPosition?.longitude,
+            'battery': _batteryLevel,
+            't': now,
+          }),
+        );
+        Sync.run();
+      });
       _fetchLiveLocation();
       _refreshDaemonStatus();
     }
@@ -251,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       Tracker.start();
     }
 
-    _loadBattery();
+    await _loadBattery();
 
     // Focus camera immediately on user's last known location
     try {
@@ -322,6 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   Future<void> _refreshStatus() async {
+    _loadBattery();
     final pts = await LocalDb.countPoints();
     final interval = await effectiveInterval();
     if (mounted) {

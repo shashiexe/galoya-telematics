@@ -184,6 +184,10 @@ $filesToUpdate = [
     'admin/staff.php' => 'backend/admin/staff.php',
     'admin/users.php' => 'backend/admin/users.php',
     'admin/tasks.php' => 'backend/admin/tasks.php',
+    'admin/task.php' => 'backend/admin/task.php',
+    'admin/drivers.php' => 'backend/admin/drivers.php',
+    'admin/messages.php' => 'backend/admin/messages.php',
+    'admin/notifications.php' => 'backend/admin/notifications.php',
     'admin/dashboard.php' => 'backend/admin/dashboard.php',
     'admin/assets/app.js' => 'backend/admin/assets/app.js',
     'admin/assets/style.css' => 'backend/admin/assets/style.css',
@@ -414,9 +418,9 @@ try {
 
 try {
     set_setting('latest_app_version', '1.3.8');
-    set_setting('latest_app_build', '23');
+    set_setting('latest_app_build', '24');
     set_setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.8 (Build 23)", "color:#38bdf8;font-weight:bold"];
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.8 (Build 24)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -683,9 +687,9 @@ try {
     }
 
     set_setting('latest_app_version', '1.3.8');
-    set_setting('latest_app_build', '23');
+    set_setting('latest_app_build', '24');
     set_setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.8 build 23", "color:#10b981;font-weight:bold"];
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.8 build 24", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

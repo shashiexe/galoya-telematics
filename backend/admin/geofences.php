@@ -214,50 +214,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Helper: Parse KML string into geofences
+// Helper: Parse KML string into geofences (supports CDATA, ExtendedData/SimpleData, Folders, MultiGeometry)
 function parse_kml_to_geofences(string $kmlContent, string $fallbackName = 'Sector'): array {
     $zones = [];
-    preg_match_all('/<Placemark\b[^>]*>(.*?)<\/Placemark>/is', $kmlContent, $placemarkMatches);
+    $cleanText = static function (string $s): string {
+        $s = preg_replace('/<!\[CDATA\[(.*?)\]\]>/is', '$1', $s);
+        return trim(html_entity_decode(strip_tags($s), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+    };
 
+    preg_match_all('/<Placemark\b[^>]*>(.*?)<\/Placemark>/is', $kmlContent, $placemarkMatches);
     if (!empty($placemarkMatches[1])) {
         foreach ($placemarkMatches[1] as $idx => $pm) {
             $name = '';
             if (preg_match('/<name\b[^>]*>(.*?)<\/name>/is', $pm, $nm)) {
-                $name = trim(strip_tags($nm[1]));
+                $name = $cleanText($nm[1]);
+            }
+            if (!$name && preg_match_all('/<(?:SimpleData|Data)\b[^>]*name=["\']([^"\']+)["\'][^>]*>(.*?)<\/(?:SimpleData|Data)>/is', $pm, $sd, PREG_SET_ORDER)) {
+                foreach ($sd as $m) {
+                    if (preg_match('/^(plot|plot_no|field|sector|name|code|id|lot|block)/i', $m[1])) {
+                        $v = $cleanText($m[2]);
+                        if ($v !== '') { $name = $v; break; }
+                    }
+                }
             }
             if (!$name) $name = $fallbackName . ' ' . ($idx + 1);
 
             $desc = '';
             if (preg_match('/<description\b[^>]*>(.*?)<\/description>/is', $pm, $dm)) {
-                $desc = trim(strip_tags($dm[1]));
+                $desc = mb_substr($cleanText($dm[1]), 0, 250);
             }
 
-            if (preg_match_all('/<coordinates\b[^>]*>(.*?)<\/coordinates>/is', $pm, $coordMatches)) {
-                foreach ($coordMatches[1] as $rawCoordStr) {
-                    $tokens = preg_split('/[\s\r\n]+/', trim($rawCoordStr));
-                    $points = [];
-                    foreach ($tokens as $tk) {
-                        $tk = trim($tk);
-                        if (!$tk) continue;
-                        $c = explode(',', $tk);
-                        if (count($c) >= 2) {
-                            $lng = (float)$c[0];
-                            $lat = (float)$c[1];
-                            if ($lat != 0 && $lng != 0 && abs($lat) <= 90 && abs($lng) <= 180) {
-                                $points[] = [round($lat, 7), round($lng, 7)];
-                            }
+            // Prefer outerBoundaryIs coordinates if present, otherwise all <coordinates>
+            $coordBlocks = [];
+            if (preg_match_all('/<outerBoundaryIs\b[^>]*>.*?<coordinates\b[^>]*>(.*?)<\/coordinates>.*?<\/outerBoundaryIs>/is', $pm, $ob) && !empty($ob[1])) {
+                $coordBlocks = $ob[1];
+            } elseif (preg_match_all('/<coordinates\b[^>]*>(.*?)<\/coordinates>/is', $pm, $coordMatches)) {
+                $coordBlocks = $coordMatches[1];
+            }
+
+            $partIdx = 0;
+            foreach ($coordBlocks as $rawCoordStr) {
+                $tokens = preg_split('/[\s\r\n]+/', trim($rawCoordStr));
+                $points = [];
+                $sLat = 0.0; $sLng = 0.0;
+                foreach ($tokens as $tk) {
+                    $tk = trim($tk);
+                    if ($tk === '') continue;
+                    $c = explode(',', $tk);
+                    if (count($c) >= 2 && is_numeric($c[0]) && is_numeric($c[1])) {
+                        $lng = (float)$c[0];
+                        $lat = (float)$c[1];
+                        if ($lat != 0 && $lng != 0 && abs($lat) <= 90 && abs($lng) <= 180) {
+                            $points[] = [round($lat, 7), round($lng, 7)];
+                            $sLat += $lat; $sLng += $lng;
                         }
                     }
-                    if (count($points) >= 3) {
-                        $zones[] = [
-                            'name' => $name,
-                            'code' => $name,
-                            'type' => 'polygon',
-                            'coordinates' => json_encode($points),
-                            'description' => $desc,
-                        ];
-                        break;
-                    }
+                }
+                if (count($points) >= 3) {
+                    $partIdx++;
+                    $n = count($points);
+                    $zName = $partIdx > 1 ? ($name . ' (' . $partIdx . ')') : $name;
+                    $zones[] = [
+                        'name' => $zName,
+                        'code' => $name,
+                        'type' => 'polygon',
+                        'coordinates' => json_encode($points),
+                        'center_lat' => round($sLat / $n, 6),
+                        'center_lng' => round($sLng / $n, 6),
+                        'description' => $desc,
+                    ];
                 }
             }
         }
@@ -269,19 +294,17 @@ function parse_kml_to_geofences(string $kmlContent, string $fallbackName = 'Sect
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'import_kml') {
     check_csrf();
     require_perm('geofences', 'create');
+    @set_time_limit(300);
     $cat = trim($_POST['category'] ?? 'Plantation');
     $targetGroup = trim($_POST['target_group'] ?? '');
+    if ($targetGroup === '__new__') $targetGroup = '';
+    $newGroupName = trim($_POST['new_group_name'] ?? '');
+    if ($newGroupName !== '') $targetGroup = $newGroupName;
     $customColor = trim($_POST['color'] ?? '');
     $files = $_FILES['kml_files'] ?? null;
     $importedCount = 0;
     $importedNames = [];
-
-    // Ensure group exists if specified
-    if ($targetGroup) {
-        q("INSERT IGNORE INTO geofence_groups (category, name, code, color, description) 
-           VALUES (?, ?, ?, ?, 'Imported Zone')",
-          [$cat, $targetGroup, strtoupper(substr($targetGroup, 0, 3)), $customColor ?: '#10b981']);
-    }
+    $groupsTouched = [];
 
     if ($files && is_array($files['name'])) {
         for ($fIdx = 0; $fIdx < count($files['name']); $fIdx++) {
@@ -309,9 +332,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $fileZones = parse_kml_to_geofences($kmlData, $blockName);
             }
 
-            // Determine zone name
+            if (empty($fileZones)) continue;
+
+            // Determine zone name & ensure group exists in geofence_groups
             $assignedGroup = $targetGroup ?: $blockName;
             $color = $customColor ?: '#10b981';
+            if ($assignedGroup && empty($groupsTouched[$assignedGroup])) {
+                q("INSERT IGNORE INTO geofence_groups (category, name, code, color, description, active) 
+                   VALUES (?, ?, ?, ?, 'Imported KML Zone', 1)",
+                  [$cat, $assignedGroup, strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $assignedGroup), 0, 4) ?: 'ZON'), $color]);
+                $groupsTouched[$assignedGroup] = true;
+            }
 
             foreach ($fileZones as $z) {
                 if (!empty($_POST['overwrite'])) {
@@ -321,6 +352,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                    ON DUPLICATE KEY UPDATE coordinates=VALUES(coordinates), group_name=VALUES(group_name), block_name=VALUES(block_name), color=VALUES(color)",
                   [$cat, $assignedGroup, $blockName, $z['name'], $z['code'], $z['type'], $z['coordinates'], $color, $z['description'] ?: ($assignedGroup . ' | ' . $blockName)]);
+                $insId = (int)$pdo->lastInsertId();
+                if ($insId > 0 && isset($z['center_lat'], $z['center_lng'])) {
+                    try { @q("UPDATE geofences SET center_lat=?, center_lng=? WHERE id=?", [$z['center_lat'], $z['center_lng'], $insId]); } catch (Throwable $e) {}
+                } elseif (!empty($_POST['overwrite']) && isset($z['center_lat'], $z['center_lng'])) {
+                    try { @q("UPDATE geofences SET center_lat=?, center_lng=? WHERE name=? AND group_name=?", [$z['center_lat'], $z['center_lng'], $z['name'], $assignedGroup]); } catch (Throwable $e) {}
+                }
                 $importedCount++;
                 if (count($importedNames) < 5) $importedNames[] = $z['name'];
             }
@@ -328,10 +365,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     if ($importedCount > 0) {
+        $zoneList = implode(', ', array_keys($groupsTouched));
         $extra = count($importedNames) ? " (" . implode(', ', $importedNames) . (count($importedNames) < $importedCount ? '...' : '') . ")" : "";
-        flash("🎉 Successfully imported $importedCount Geofence sector(s)$extra into '$targetGroup'!");
+        flash("🎉 Successfully imported $importedCount Geofence sector(s)$extra into Zone '$zoneList'!");
     } else {
-        flash("⚠️ No valid polygon zones found in the uploaded KML file(s).");
+        flash("⚠️ No valid polygon zones found in the uploaded KML/KMZ file(s). Please check that the file contains Polygon or LineString coordinates.");
     }
     header('Location: geofences.php');
     exit;
@@ -1202,20 +1240,31 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
 
         <div class="w-form-group">
           <label>Target Zone / Group</label>
-          <select name="target_group" id="kml-target-group" class="w-form-control">
-            <option value="">-- Auto-Assign by KML Block Filename --</option>
+          <select name="target_group" id="kml-target-group" class="w-form-control" onchange="document.getElementById('kml-new-group-wrap').style.display=(this.value==='__new__'?'block':'none')">
+            <option value="">-- Auto-Assign by KML Filename --</option>
+            <option value="__new__">➕ Create New Zone / Group...</option>
             <?php foreach ($groupsData as $g): ?>
               <option value="<?= h($g['name']) ?>" data-color="<?= h($g['color']) ?>"><?= h($g['name']) ?> (<?= h($g['category']) ?>)</option>
             <?php endforeach; ?>
           </select>
         </div>
 
+        <div class="w-form-group" id="kml-new-group-wrap" style="display:none">
+          <label>New Zone / Group Name</label>
+          <input type="text" name="new_group_name" id="kml-new-group-input" class="w-form-control" placeholder="e.g. Hingurana Block B">
+        </div>
+
         <div class="w-form-group">
           <label>Select KML or KMZ Files (Multi-Select Allowed)</label>
-          <div style="border:2px dashed #cbd5e1;border-radius:6px;padding:20px;text-align:center;background:#f8fafc;cursor:pointer" onclick="document.getElementById('kml-file-input').click()">
+          <div id="kml-drop-zone"
+               style="border:2px dashed #cbd5e1;border-radius:6px;padding:20px;text-align:center;background:#f8fafc;cursor:pointer;transition:all .15s"
+               onclick="document.getElementById('kml-file-input').click()"
+               ondragover="event.preventDefault();this.style.borderColor='#0284c7';this.style.background='#eff6ff'"
+               ondragleave="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc'"
+               ondrop="event.preventDefault();this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';if(event.dataTransfer.files.length){const inp=document.getElementById('kml-file-input');inp.files=event.dataTransfer.files;updateKmlFilesLabel(inp);}">
             <div style="font-size:28px">📂</div>
             <div style="font-size:12.5px;font-weight:600;color:#1e293b;margin-top:6px" id="kml-file-label">Click to choose KML/KMZ files or Drag & Drop here</div>
-            <div style="font-size:11px;color:#64748b;margin-top:4px">Supports multiple .kml, .kmz files with polygons and placemarks</div>
+            <div style="font-size:11px;color:#64748b;margin-top:4px">Supports Google Earth / QGIS .kml & .kmz files (Polygons, MultiGeometry, ExtendedData)</div>
             <input type="file" id="kml-file-input" name="kml_files[]" multiple accept=".kml,.kmz,.xml" style="display:none" onchange="updateKmlFilesLabel(this)">
           </div>
         </div>

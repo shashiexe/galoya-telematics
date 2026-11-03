@@ -27,6 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $secIdsStr = !empty($secIds) ? implode(',', $secIds) : null;
             $primarySecId = !empty($secIds[0]) ? $secIds[0] : null;
 
+            // Handle explicit subordinate staff selection
+            $staffIds = $_POST['staff_ids'] ?? [];
+            if (!is_array($staffIds) && $staffIds !== '') $staffIds = explode(',', (string)$staffIds);
+            $staffIds = array_values(array_filter(array_map('intval', (array)$staffIds), fn($id) => $id > 0));
+            $staffIdsStr = !empty($staffIds) ? implode(',', $staffIds) : null;
+
             if (empty($name)) throw new Exception("Full name is required.");
             if (empty($username)) throw new Exception("Username / Phone login is required.");
 
@@ -36,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Process permissions matrix
             $perms = [];
-            if ($role === 'admin') {
+            if (in_array($role, ['admin', 'super_user'], true)) {
                 $perms = ['*' => true];
             } else {
                 $modules = ['monitoring', 'dashboard', 'history', 'photos', 'units', 'geofences', 'reports', 'tasks', 'drivers', 'messages', 'notifications', 'staff', 'users', 'settings'];
@@ -55,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($id > 0) {
                 // Update existing user
-                q("UPDATE users SET name=?, phone=?, role=?, web_access=1, department_id=?, section_id=?, section_ids=?, active=?, permissions_json=? WHERE id=?",
-                  [$name, $username, $role, $deptId, $primarySecId, $secIdsStr, $active, $permsJson, $id]);
+                q("UPDATE users SET name=?, phone=?, role=?, web_access=1, department_id=?, section_id=?, section_ids=?, staff_ids=?, active=?, permissions_json=? WHERE id=?",
+                  [$name, $username, $role, $deptId, $primarySecId, $secIdsStr, $staffIdsStr, $active, $permsJson, $id]);
 
                 if (!empty($password)) {
                     if (strlen($password) < 4) throw new Exception("Password must be at least 4 characters.");
@@ -69,9 +75,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($password)) throw new Exception("Password is required for new accounts.");
                 if (strlen($password) < 4) throw new Exception("Password must be at least 4 characters.");
 
-                q("INSERT INTO users (name, code, phone, password_hash, role, web_access, unit_type, department_id, section_id, section_ids, active, permissions_json)
-                   VALUES (?,?,?,?,?,1,'staff',?,?,?,?,?)",
-                  [$name, 'WEB-' . time(), $username, password_hash($password, PASSWORD_DEFAULT), $role, $deptId, $primarySecId, $secIdsStr, $active, $permsJson]);
+                q("INSERT INTO users (name, code, phone, password_hash, role, web_access, unit_type, department_id, section_id, section_ids, staff_ids, active, permissions_json)
+                   VALUES (?,?,?,?,?,1,'staff',?,?,?,?,?,?)",
+                  [$name, 'WEB-' . time(), $username, password_hash($password, PASSWORD_DEFAULT), $role, $deptId, $primarySecId, $secIdsStr, $staffIdsStr, $active, $permsJson]);
 
                 flash("New web user '{$name}' created successfully with customized permissions.");
             }
@@ -97,12 +103,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// Fetch departments & sections for scoping
+// Fetch departments, sections & mobile staff for scoping
 $departments = q("SELECT id, name FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
 $sections = q("SELECT id, department_id, name, code FROM sections WHERE active=1 ORDER BY department_id ASC, name ASC")->fetchAll();
 $sectionsById = [];
 foreach ($sections as $s) {
     $sectionsById[$s['id']] = $s;
+}
+$allStaffList = q("SELECT id, name, code, phone, department_id, section_id FROM users WHERE role='staff' AND active=1 ORDER BY name ASC")->fetchAll();
+$staffById = [];
+foreach ($allStaffList as $st) {
+    $staffById[$st['id']] = $st;
 }
 
 // Filters & Search
@@ -139,7 +150,7 @@ $users = q($sql, $params)->fetchAll();
 
 // KPI counts
 $total_web_users = count($users);
-$admin_count = count(array_filter($users, fn($u) => $u['role'] === 'admin'));
+$admin_count = count(array_filter($users, fn($u) => in_array($u['role'], ['admin', 'super_user'], true)));
 $active_count = count(array_filter($users, fn($u) => $u['active'] == 1));
 $manager_count = count(array_filter($users, fn($u) => in_array($u['role'], ['manager', 'supervisor'])));
 
@@ -198,6 +209,7 @@ layout_start('Web User Management', 'users.php');
       <select name="role" style="width:160px;font-size:12px;padding:4px 8px;height:32px" onchange="this.form.submit()">
         <option value="all" <?= $role_filter === 'all' ? 'selected' : '' ?>>All Roles</option>
         <option value="admin" <?= $role_filter === 'admin' ? 'selected' : '' ?>>Super Admin</option>
+        <option value="super_user" <?= $role_filter === 'super_user' ? 'selected' : '' ?>>Super User (All Data)</option>
         <option value="manager" <?= $role_filter === 'manager' ? 'selected' : '' ?>>General Manager</option>
         <option value="supervisor" <?= $role_filter === 'supervisor' ? 'selected' : '' ?>>Field Supervisor</option>
         <option value="operator" <?= $role_filter === 'operator' ? 'selected' : '' ?>>Fleet Operator</option>
@@ -239,11 +251,12 @@ layout_start('Web User Management', 'users.php');
       <tbody>
         <?php foreach ($users as $idx => $u): 
           $roleKey = $u['role'] ?? 'custom';
-          $isSuper = ($roleKey === 'admin');
+          $isSuper = in_array($roleKey, ['admin', 'super_user'], true);
           $perms = !empty($u['permissions_json']) ? json_decode($u['permissions_json'], true) : [];
           $modCount = is_array($perms) ? count(array_filter($perms, fn($v) => !empty($v))) : 0;
           $roleBadge = match($roleKey) {
               'admin'      => ['background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8', '👑 SUPER ADMIN'],
+              'super_user' => ['background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe', '🌟 SUPER USER'],
               'manager'    => ['background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe', '👔 GENERAL MANAGER'],
               'supervisor' => ['background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0', '👷 FIELD SUPERVISOR'],
               'operator'   => ['background:#fffbeb;color:#92400e;border:1px solid #fde68a', '🚜 FLEET OPERATOR'],
@@ -278,8 +291,14 @@ layout_start('Web User Management', 'users.php');
                 } elseif (!empty($u['section_id'])) {
                     $userSecIds = [(int)$u['section_id']];
                 }
+                $userStaffIds = [];
+                if (!empty($u['staff_ids'])) {
+                    $userStaffIds = array_values(array_filter(array_map('intval', explode(',', $u['staff_ids'])), fn($id) => $id > 0));
+                }
               ?>
-              <?php if (!empty($u['dept_name']) || !empty($userSecIds)): ?>
+              <?php if ($isSuper): ?>
+                <span style="color:#059669;font-weight:700;font-size:11px">🌐 All Divisions, Sections & Staff (Global)</span>
+              <?php elseif (!empty($u['dept_name']) || !empty($userSecIds) || !empty($userStaffIds)): ?>
                 <?php if (!empty($u['dept_name'])): ?>
                   <div style="font-weight:700;color:#0369a1;font-size:11.5px">🏢 <?= h($u['dept_name']) ?></div>
                 <?php endif; ?>
@@ -294,11 +313,14 @@ layout_start('Web User Management', 'users.php');
                       </span>
                     <?php endforeach; ?>
                   </div>
-                <?php else: ?>
-                  <span style="color:#64748b;font-size:10.5px">🌐 All Sections in Division</span>
+                <?php endif; ?>
+                <?php if (!empty($userStaffIds)): ?>
+                  <div style="margin-top:3px;font-size:10.5px;color:#0f766e;font-weight:700">
+                    👥 <?= count($userStaffIds) ?> Subordinate Staff Assigned
+                  </div>
                 <?php endif; ?>
               <?php else: ?>
-                <span style="color:#94a3b8;font-size:11px">🌐 All Divisions & Sections (Global)</span>
+                <span style="color:#dc2626;font-size:11px;font-weight:600">⚠️ No Subordinates Assigned (Sees none)</span>
               <?php endif; ?>
             </td>
             <td style="padding:10px 14px">
@@ -415,17 +437,18 @@ layout_start('Web User Management', 'users.php');
           <label style="display:block;font-size:11.5px;font-weight:700;color:#334155;margin-bottom:4px">System Role Preset *</label>
           <select name="role" id="f-role" onchange="applyRolePreset(this.value)" style="width:100%;padding:6px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600">
             <option value="admin">👑 Super Administrator (Full Access to Everything)</option>
-            <option value="manager" selected>👔 General Manager (Executive Views, Reports, Tasks)</option>
-            <option value="supervisor">👷 Field Supervisor (Map, Tasks, Photos, Geofences)</option>
-            <option value="operator">🚜 Fleet Operator (Units, Drivers, Machinery)</option>
-            <option value="viewer">📋 Read-Only Auditor (View Analytics & Reports Only)</option>
-            <option value="custom">⚙️ Custom Permissions (Choose Manually Below)</option>
+            <option value="super_user">🌟 Super User (Sees All Divisions, Staff & Reports)</option>
+            <option value="manager" selected>👔 General Manager (Scoped to Assigned Subordinates)</option>
+            <option value="supervisor">👷 Field Supervisor (Scoped to Assigned Subordinates)</option>
+            <option value="operator">🚜 Fleet Operator (Scoped to Assigned Subordinates)</option>
+            <option value="viewer">📋 Read-Only Auditor (Scoped to Assigned Subordinates)</option>
+            <option value="custom">⚙️ Custom Permissions (Scoped to Assigned Subordinates)</option>
           </select>
         </div>
         <div>
           <label style="display:block;font-size:11.5px;font-weight:700;color:#334155;margin-bottom:4px">Estate Division Scope</label>
           <select name="department_id" id="f-dept" onchange="filterSectionCheckboxesByDept(this.value)" style="width:100%;padding:6px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px">
-            <option value="">Global / All Estate Divisions</option>
+            <option value="">-- Select Division (or choose Sections / Staff below) --</option>
             <?php foreach ($departments as $d): ?>
               <option value="<?= $d['id'] ?>"><?= h($d['name']) ?></option>
             <?php endforeach; ?>
@@ -444,23 +467,43 @@ layout_start('Web User Management', 'users.php');
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
           <div>
             <div style="font-weight:700;font-size:12px;color:#1e293b;text-transform:uppercase;letter-spacing:0.3px;display:flex;align-items:center;gap:6px">
-              <span>🌾</span> <span>Field Officer & Unit Section Scope (Data Access)</span>
+              <span>🌾</span> <span>Subordinate Sections & Staff Scope (Who lives under this user)</span>
             </div>
             <div style="font-size:11px;color:#64748b">
-              Units & Field Officers will be filtered so this user <strong>only sees staff/units in their assigned section(s)</strong>. Leave all unselected for Global / All Sections.
+              Only <strong>Super Admin</strong> & <strong>Super User</strong> see everyone. For all other web users, select the <strong>Division, Section(s), or specific Staff/Units</strong> under them — Dashboard, Map, Reports, Photos & Tasks will only show those subordinates.
             </div>
           </div>
           <div style="display:flex;gap:6px">
-            <button type="button" class="btn sm ghost" onclick="toggleAllSections(true)" style="padding:2px 8px;font-size:11px">Select All</button>
-            <button type="button" class="btn sm ghost" onclick="toggleAllSections(false)" style="padding:2px 8px;font-size:11px">Clear / Global</button>
+            <button type="button" class="btn sm ghost" onclick="toggleAllSections(true)" style="padding:2px 8px;font-size:11px">Select All Sections</button>
+            <button type="button" class="btn sm ghost" onclick="toggleAllSections(false)" style="padding:2px 8px;font-size:11px">Clear Sections</button>
           </div>
         </div>
 
-        <div id="sec-checkboxes-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:6px;max-height:130px;overflow-y:auto;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:8px">
+        <div id="sec-checkboxes-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:6px;max-height:120px;overflow-y:auto;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:8px">
           <?php foreach ($sections as $s): ?>
             <label class="sec-cb-item" data-dept="<?= $s['department_id'] ?>" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#334155;cursor:pointer;padding:4px 6px;border-radius:4px;border:1px solid #f1f5f9;background:#fafafa">
-              <input type="checkbox" name="section_ids[]" value="<?= $s['id'] ?>" class="f-sec-cb" style="accent-color:#0284c7">
+              <input type="checkbox" name="section_ids[]" value="<?= $s['id'] ?>" class="f-sec-cb" onchange="filterStaffByScope()" style="accent-color:#0284c7">
               <span><strong><?= h($s['name']) ?></strong> <?= !empty($s['code']) ? '<span style="color:#94a3b8;font-size:10px">(' . h($s['code']) . ')</span>' : '' ?></span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+
+        <!-- Specific Subordinate Staff / Units Selector -->
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="font-weight:700;font-size:11.5px;color:#1e293b">
+            👥 Specific Subordinate Staff / Units under this user <span style="font-weight:normal;color:#64748b">(optional — pick individual officers or leave unchecked to include all in selected section/division)</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="text" id="staff-cb-search" placeholder="Filter staff..." oninput="filterStaffByScope()" style="font-size:11px;padding:2px 7px;border:1px solid #cbd5e1;border-radius:4px;width:140px">
+            <button type="button" class="btn sm ghost" onclick="toggleAllStaff(true)" style="padding:2px 8px;font-size:11px">Select Visible</button>
+            <button type="button" class="btn sm ghost" onclick="toggleAllStaff(false)" style="padding:2px 8px;font-size:11px">Clear Staff</button>
+          </div>
+        </div>
+        <div id="staff-checkboxes-container" style="margin-top:6px;display:grid;grid-template-columns:repeat(auto-fill, minmax(195px, 1fr));gap:5px;max-height:135px;overflow-y:auto;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:8px">
+          <?php foreach ($allStaffList as $st): ?>
+            <label class="staff-cb-item" data-dept="<?= (int)$st['department_id'] ?>" data-sec="<?= (int)$st['section_id'] ?>" data-name="<?= strtolower(h($st['name'] . ' ' . ($st['code'] ?? '') . ' ' . ($st['phone'] ?? ''))) ?>" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#334155;cursor:pointer;padding:3px 6px;border-radius:4px;border:1px solid #f1f5f9;background:#fafafa">
+              <input type="checkbox" name="staff_ids[]" value="<?= $st['id'] ?>" class="f-staff-cb" style="accent-color:#0f766e">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong><?= h($st['name']) ?></strong> <?= !empty($st['code']) ? '<span style="color:#64748b">(' . h($st['code']) . ')</span>' : '' ?></span>
             </label>
           <?php endforeach; ?>
         </div>
@@ -586,6 +629,36 @@ function toggleAllSections(checked) {
       cb.checked = checked;
     }
   });
+  filterStaffByScope();
+}
+
+function toggleAllStaff(checked) {
+  document.querySelectorAll('.f-staff-cb').forEach(function(cb) {
+    var label = cb.closest('.staff-cb-item');
+    if (!label || label.style.display !== 'none') {
+      cb.checked = checked;
+    }
+  });
+}
+
+function filterStaffByScope() {
+  var q = (document.getElementById('staff-cb-search')?.value || '').toLowerCase().trim();
+  var deptId = document.getElementById('f-dept').value;
+  var checkedSecs = Array.from(document.querySelectorAll('.f-sec-cb:checked')).map(function(c) { return String(c.value); });
+  document.querySelectorAll('.staff-cb-item').forEach(function(lbl) {
+    var d = lbl.getAttribute('data-dept');
+    var s = lbl.getAttribute('data-sec');
+    var nm = lbl.getAttribute('data-name') || '';
+    var cb = lbl.querySelector('.f-staff-cb');
+    var matchDept = (!deptId || d === String(deptId));
+    var matchSec = (checkedSecs.length === 0 || checkedSecs.indexOf(String(s)) !== -1);
+    var matchQ = (!q || nm.indexOf(q) !== -1);
+    if ((matchDept && matchSec && matchQ) || (cb && cb.checked)) {
+      lbl.style.display = 'flex';
+    } else {
+      lbl.style.display = 'none';
+    }
+  });
 }
 
 function filterSectionCheckboxesByDept(deptId) {
@@ -599,6 +672,7 @@ function filterSectionCheckboxesByDept(deptId) {
       if (cb) cb.checked = false;
     }
   });
+  filterStaffByScope();
 }
 
 function openUserModal() {
@@ -612,6 +686,8 @@ function openUserModal() {
   document.getElementById('f-dept').value = '';
   document.getElementById('f-active').checked = true;
   document.getElementById('f-role').value = 'manager';
+  if (document.getElementById('staff-cb-search')) document.getElementById('staff-cb-search').value = '';
+  document.querySelectorAll('.f-staff-cb').forEach(function(cb) { cb.checked = false; });
   filterSectionCheckboxesByDept('');
   toggleAllSections(false);
   applyRolePreset('manager');
@@ -649,9 +725,17 @@ function editUser(u) {
     cb.checked = (secIds.indexOf(String(cb.value)) !== -1);
   });
 
+  // Populate subordinate staff checkboxes
+  var stIds = u.staff_ids ? String(u.staff_ids).split(',').map(function(s) { return s.trim(); }) : [];
+  document.querySelectorAll('.f-staff-cb').forEach(function(cb) {
+    cb.checked = (stIds.indexOf(String(cb.value)) !== -1);
+  });
+  if (document.getElementById('staff-cb-search')) document.getElementById('staff-cb-search').value = '';
+  filterStaffByScope();
+
   toggleAllPerms(false);
 
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'super_user') {
     toggleAllPerms(true);
   } else if (u.permissions_json) {
     try {
@@ -696,7 +780,7 @@ function updateRowAllCheckboxes() {
 function applyRolePreset(role) {
   toggleAllPerms(false);
 
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'super_user') {
     toggleAllPerms(true);
   } else if (role === 'manager') {
     // General Manager: View monitoring, dashboard, history, photos, fleet, geofences, reports (with export), tasks (all), drivers, messages, alarms

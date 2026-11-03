@@ -116,6 +116,7 @@ if (isset($_GET['feed'])) {
     $units = q("SELECT id, name, code, phone, role, unit_type, device_type, unique_id, sensors_json, properties_json, on_duty, active,
                        department_id, section_id,
                        last_lat lat, last_lng lng, last_battery battery, speed, ignition, motion_state, sos_active, last_seen,
+                       TIMESTAMPDIFF(SECOND, last_seen, NOW()) secs_ago,
                        TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago,
                        (SELECT name FROM drivers WHERE assigned_unit_id=users.id LIMIT 1) driver_name,
                        (SELECT COUNT(*) FROM tasks WHERE assigned_to=users.id AND status='in_progress') active_tasks
@@ -1706,6 +1707,38 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ==================== WIALON HOVER / INFO CARD LOGIC (SCREENSHOT 1) ====================
+  function formatTimeAgoCategorized(secsRaw, minsRaw, lastSeen, isOnline) {
+    if (!lastSeen) return 'No signal';
+    let secs = (secsRaw !== undefined && secsRaw !== null && secsRaw !== '') ? parseInt(secsRaw, 10) : (parseInt(minsRaw || 0, 10) * 60);
+    if (isNaN(secs) || secs < 0) secs = 0;
+
+    if (secs < 60) {
+      if (isOnline && secs <= 5) return 'Just now';
+      return `${secs}s ago`;
+    }
+    if (secs < 3600) {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return s > 0 ? `${m}m ${s}s ago` : `${m}m ago`;
+    }
+    if (secs < 86400) {
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
+    }
+    if (secs < 31536000) {
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      if (h > 0) return `${d}d ${h}h ago`;
+      if (m > 0) return `${d}d ${m}m ago`;
+      return `${d}d ago`;
+    }
+    const y = Math.floor(secs / 31536000);
+    const d = Math.floor((secs % 31536000) / 86400);
+    return d > 0 ? `${y}y ${d}d ago` : `${y}y ago`;
+  }
+
   window.showUnitHoverCardById = function(unitId, event) {
     const u = unitsData.find(x => parseInt(x.id) === parseInt(unitId));
     if (u) showUnitHoverCard(u, event);
@@ -1740,8 +1773,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Name & Status Header
     document.getElementById('hc-name').textContent = u.name + (u.code ? ` (${u.code})` : '');
     const isOnline = !!u.is_online;
-    const minsAgo = parseInt(u.mins_ago || 0);
-    const timeText = isOnline ? (minsAgo <= 0 ? '🟢 Online (Just now)' : `🟢 Online (${minsAgo}m ago)`) : `⚪ Offline (${minsAgo > 0 ? minsAgo + 'm ago' : 'No signal'})`;
+    const agoFormatted = formatTimeAgoCategorized(u.secs_ago, u.mins_ago, u.last_seen, isOnline);
+    const timeText = isOnline ? `🟢 Online (${agoFormatted})` : `⚪ Offline (${agoFormatted})`;
     document.getElementById('hc-time-ago').innerHTML = timeText;
     document.getElementById('hc-datetime').textContent = u.last_seen || 'No connection yet';
 

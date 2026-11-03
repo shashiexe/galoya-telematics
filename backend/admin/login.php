@@ -459,7 +459,7 @@ if ($attempts >= $maxAttempts && (time() - $lastAttemptTime) < $lockoutTime) {
           <label class="form-label" for="user">Username / Staff ID</label>
           <div class="input-wrapper">
             <span class="input-icon">👤</span>
-            <input class="form-input" id="user" name="user" value="galoyap.admin" required autofocus placeholder="Enter your username">
+            <input class="form-input" id="user" name="user" value="" autocomplete="username" required autofocus placeholder="Enter your username">
           </div>
         </div>
 
@@ -467,7 +467,7 @@ if ($attempts >= $maxAttempts && (time() - $lastAttemptTime) < $lockoutTime) {
           <label class="form-label" for="password">Password</label>
           <div class="input-wrapper">
             <span class="input-icon">🔒</span>
-            <input class="form-input" id="password" type="password" name="password" value="admin123" required placeholder="Enter your password">
+            <input class="form-input" id="password" type="password" name="password" value="" autocomplete="current-password" required placeholder="Enter your password">
           </div>
         </div>
 

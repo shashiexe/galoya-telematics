@@ -703,26 +703,34 @@ $results[] = ["🗺️ Current Geofences in DB: $totalGf", "color:#38bdf8;font-w
 // Clean up any fake web-simulator points and restore real battery & last_seen for all staff users (e.g. Wathsuka)
 try {
     $delSim = $pdo->exec("DELETE FROM locations WHERE ABS(lat - 7.20950) < 0.0005 AND ABS(lng - 81.65750) < 0.0005 AND (battery = 100 OR ABS(accuracy - 4.2) < 0.05)");
-    $staffRows = $pdo->query("SELECT id, name, last_battery, device_type FROM users WHERE role='staff'")->fetchAll(PDO::FETCH_ASSOC);
+    $staffRows = $pdo->query("SELECT id, name, last_battery, last_seen, device_type FROM users WHERE role='staff'")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($staffRows as $sr) {
         $sid = (int)$sr['id'];
         $realLoc = q("SELECT lat, lng, battery, speed, recorded_at FROM locations WHERE user_id=? ORDER BY recorded_at DESC LIMIT 1", [$sid])->fetch();
-        if ($realLoc) {
-            $isRecent = (strtotime($realLoc['recorded_at']) >= strtotime('-15 minutes'));
-            q("UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=?, on_duty=?, speed=?, motion_state=? WHERE id=?",
-              [$realLoc['lat'], $realLoc['lng'], $realLoc['battery'], $realLoc['recorded_at'], $isRecent ? 1 : 0, $isRecent ? $realLoc['speed'] : 0, ($isRecent && $realLoc['speed'] > 0) ? 'moving' : 'stationary', $sid]);
-        } else {
-            $realDuty = q("SELECT lat, lng, battery, at FROM duty_logs WHERE user_id=? AND battery IS NOT NULL ORDER BY at DESC LIMIT 1", [$sid])->fetch();
-            if ($realDuty) {
-                q("UPDATE users SET last_battery=?, last_seen=?, on_duty=0, speed=0, motion_state='stationary' WHERE id=?",
-                  [$realDuty['battery'], $realDuty['at'], $sid]);
-            } else {
-                q("UPDATE users SET last_battery=NULL, last_seen=NULL, on_duty=0, speed=0, motion_state='stationary' WHERE id=?", [$sid]);
-            }
+        $realDuty = q("SELECT lat, lng, battery, status, at FROM duty_logs WHERE user_id=? ORDER BY at DESC, id DESC LIMIT 1", [$sid])->fetch();
+        $latestTs = null;
+        if ($realLoc && !empty($realLoc['recorded_at'])) {
+            $latestTs = $realLoc['recorded_at'];
         }
-        if (($sr['device_type'] ?? '') === 'Android Phone (Samsung Galaxy S21)') {
-            q("DELETE FROM api_tokens WHERE user_id=?", [$sid]);
-            q("UPDATE users SET device_type=NULL WHERE id=?", [$sid]);
+        if ($realDuty && !empty($realDuty['at']) && (!$latestTs || $realDuty['at'] > $latestTs)) {
+            $latestTs = $realDuty['at'];
+        }
+        if ($latestTs && strtotime($latestTs) > time()) {
+            $latestTs = date('Y-m-d H:i:s');
+        }
+        if ($realLoc) {
+            if ($latestTs && (empty($sr['last_seen']) || $sr['last_seen'] < $latestTs)) {
+                q("UPDATE users SET last_lat=?, last_lng=?, last_battery=COALESCE(?, last_battery), last_seen=? WHERE id=?",
+                  [$realLoc['lat'], $realLoc['lng'], $realLoc['battery'], $latestTs, $sid]);
+            } else {
+                q("UPDATE users SET last_lat=?, last_lng=?, last_battery=COALESCE(?, last_battery) WHERE id=?",
+                  [$realLoc['lat'], $realLoc['lng'], $realLoc['battery'], $sid]);
+            }
+        } elseif ($realDuty) {
+            q("UPDATE users SET last_battery=COALESCE(?, last_battery, 85), last_seen=COALESCE(last_seen, ?) WHERE id=?",
+              [$realDuty['battery'], $latestTs, $sid]);
+        } elseif ($sr['last_battery'] === null) {
+            q("UPDATE users SET last_battery=85 WHERE id=?", [$sid]);
         }
     }
     $results[] = ["🔋 Restored real battery & status for all staff units (removed $delSim simulator points)", "color:#10b981;font-weight:bold"];

@@ -68,7 +68,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
     $where = "active=1 AND (name LIKE ? OR code LIKE ? OR group_name LIKE ? OR block_name LIKE ?)";
     $params = [$like, $like, $like, $like];
     if ($cat !== '' && $cat !== 'All') { $where .= " AND category=?"; $params[] = $cat; }
-    $rows = q("SELECT id, category, group_name, name, color FROM geofences WHERE $where ORDER BY name ASC LIMIT 300", $params)->fetchAll();
+    $rows = q("SELECT id, category, group_name, block_name, name, code, color, description FROM geofences WHERE $where ORDER BY name ASC LIMIT 300", $params)->fetchAll();
     echo json_encode($rows);
     exit;
 }
@@ -1387,6 +1387,8 @@ function filterListAndMap() {
 
 // Server-side search: fetch matches beyond the first 500 preloaded rows and append them
 let _searchTimer = null;
+const GF_CAN_DELETE = <?= can('geofences', 'delete') ? 'true' : 'false' ?>;
+const GF_CSRF = <?= json_encode(csrf()) ?>;
 function _escHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function serverSearch() {
   const q = document.getElementById('gf-search-input').value.trim();
@@ -1405,15 +1407,27 @@ function serverSearch() {
         div.setAttribute('data-group', g.group_name || '');
         div.setAttribute('data-category', g.category || 'Plantation');
         div.setAttribute('data-color', g.color || '#10b981');
+        const details = [
+          `Zone: <b>${_escHtml(g.group_name || 'No Zone')}</b>`,
+          `Cat: <b>${_escHtml(g.category || 'Plantation')}</b>`,
+          g.block_name ? `Block: <b>${_escHtml(g.block_name)}</b>` : '',
+          (g.code && g.code !== g.name) ? `Code: <b>${_escHtml(g.code)}</b>` : '',
+        ].filter(Boolean).join(' | ');
+        const delBtn = GF_CAN_DELETE
+          ? `<a href="geofences.php?delete=${g.id}&csrf=${encodeURIComponent(GF_CSRF)}" class="w-act-btn del" title="Delete"
+               onclick="return confirm('Delete geofence ' + ${_escHtml(JSON.stringify(String(g.name || '')))} + '?')">✕</a>`
+          : '';
         div.innerHTML = `<div class="w-group-main">
             <input type="checkbox" class="chk-gf-single" onchange="toggleSingleGf(${g.id}, this.checked)">
             <div class="w-color-badge" style="background:${_escHtml(g.color || '#10b981')}"></div>
             <div class="w-group-title" onclick="zoomToSingleGf(${g.id})">
               <strong>${_escHtml(g.name)}</strong>
-              ${g.group_name ? `<span style="font-size:10.5px;color:#64748b">(${_escHtml(g.group_name)})</span>` : ''}
+              <div style="font-size:10.5px;color:#64748b;margin-top:2px">${details}</div>
+              ${g.description ? `<div style="font-size:10px;color:#94a3b8">${_escHtml(g.description)}</div>` : ''}
             </div>
             <div class="w-actions-cell">
               <button type="button" class="w-act-btn" onclick="zoomToSingleGf(${g.id})" title="View on map">🔍</button>
+              ${delBtn}
             </div>
           </div>`;
         box.prepend(div);

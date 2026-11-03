@@ -147,16 +147,9 @@ try {
     case 'set_offline': {
         // Explicitly marks the unit as offline & stationary immediately
         $u = get_auth_user();
-        if (!$u) {
-            $b = body();
-            $simId = (int)($b['unit_id'] ?? ($_GET['unit_id'] ?? 0));
-            if ($simId > 0) {
-                $u = q('SELECT * FROM users WHERE id=? AND role="staff"', [$simId])->fetch();
-            }
-        }
         if ($u) {
             q("UPDATE users SET 
-                last_seen = DATE_SUB(NOW(), INTERVAL 30 MINUTE),
+                last_seen = NOW(),
                 speed = 0,
                 ignition = 0,
                 motion_state = 'stationary',
@@ -224,16 +217,16 @@ try {
             $trafficKb = isset($b['data_traffic_kb']) ? (int)$b['data_traffic_kb'] : null;
 
             if ($devModel && $devId) {
-                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=?, unique_id=? WHERE id=?',
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=COALESCE(?, last_battery), last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=?, unique_id=? WHERE id=?',
                   [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devModel, $devId, $u['id']]);
             } elseif ($devModel) {
-                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=? WHERE id=?',
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=COALESCE(?, last_battery), last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, device_type=? WHERE id=?',
                   [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devModel, $u['id']]);
             } elseif ($devId) {
-                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, unique_id=? WHERE id=?',
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=COALESCE(?, last_battery), last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1, unique_id=? WHERE id=?',
                   [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $devId, $u['id']]);
             } else {
-                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=?, last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1 WHERE id=?',
+                q('UPDATE users SET last_lat=?, last_lng=?, last_battery=COALESCE(?, last_battery), last_seen=NOW(), speed=?, motion_state=?, ignition=?, on_duty=1 WHERE id=?',
                   [$latest['lat'], $latest['lng'], $latest['battery'], $spd, $motion, $ign, $u['id']]);
             }
 
@@ -267,7 +260,11 @@ try {
 
         if ($ins->rowCount()) {
             $last = q('SELECT status FROM duty_logs WHERE user_id=? ORDER BY at DESC, id DESC LIMIT 1', [$u['id']])->fetchColumn();
-            q('UPDATE users SET on_duty=? WHERE id=?', [$last === 'on' ? 1 : 0, $u['id']]);
+            if ($bat !== null && $bat > 0) {
+                q('UPDATE users SET on_duty=?, last_battery=?, last_seen=NOW() WHERE id=?', [$last === 'on' ? 1 : 0, $bat, $u['id']]);
+            } else {
+                q('UPDATE users SET on_duty=?, last_seen=NOW() WHERE id=?', [$last === 'on' ? 1 : 0, $u['id']]);
+            }
         }
         out(['ok' => true]);
     }

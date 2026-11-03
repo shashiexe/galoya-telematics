@@ -1,8 +1,10 @@
 <?php
 require __DIR__ . '/_common.php';
 require_admin();
+require_perm('tasks', 'view');
 $id = (int)($_GET['id'] ?? 0);
-$t = q('SELECT t.*, u.name staff, u.phone, u.code staff_code FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.id=?', [$id])->fetch();
+$secScopeU = user_section_scope_sql('u');
+$t = q("SELECT t.*, u.name staff, u.phone, u.code staff_code FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.id=? AND $secScopeU", [$id])->fetch();
 if (!$t) { http_response_code(404); exit('Task not found'); }
 $photos = q('SELECT * FROM task_photos WHERE task_id=? ORDER BY taken_at', [$id])->fetchAll();
 $by = ['before' => [], 'after' => []];

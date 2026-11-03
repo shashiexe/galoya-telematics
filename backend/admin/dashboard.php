@@ -15,8 +15,33 @@ $secScopeU = user_section_scope_sql('u');
 
 // Fetch telematics data for dashboard (scoped to user's subordinates)
 $all_units = q("SELECT id, name, code, unit_type, motion_state, speed, ignition, last_battery, last_lat, last_seen,
+                TIMESTAMPDIFF(SECOND, last_seen, NOW()) secs_ago,
                 TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago
                 FROM users WHERE role='staff' AND active=1 AND $secScopeUsers")->fetchAll();
+
+function format_ago_categorized($secsRaw, $lastSeen): string {
+    if (empty($lastSeen) || $secsRaw === null) return 'Never';
+    $secs = max(0, (int)$secsRaw);
+    if ($secs < 60) return $secs <= 5 ? 'Just now' : "{$secs}s ago";
+    if ($secs < 3600) {
+        $m = intdiv($secs, 60);
+        $s = $secs % 60;
+        return $s > 0 ? "{$m}m {$s}s ago" : "{$m}m ago";
+    }
+    if ($secs < 86400) {
+        $h = intdiv($secs, 3600);
+        $m = intdiv($secs % 3600, 60);
+        return $m > 0 ? "{$h}h {$m}m ago" : "{$h}h ago";
+    }
+    if ($secs < 31536000) {
+        $d = intdiv($secs, 86400);
+        $h = intdiv($secs % 86400, 3600);
+        return $h > 0 ? "{$d}d {$h}h ago" : "{$d}d ago";
+    }
+    $y = intdiv($secs, 31536000);
+    $d = intdiv($secs % 31536000, 86400);
+    return $d > 0 ? "{$y}y {$d}d ago" : "{$y}y ago";
+}
 
 $total_units = count($all_units);
 
@@ -354,7 +379,7 @@ layout_start('Dashboard', 'dashboard.php');
               <?php endif; ?>
             </td>
             <td><?= $u['last_battery'] !== null ? $u['last_battery'] . '%' : '–' ?></td>
-            <td><?= $u['mins_ago'] === null ? 'Never' : ((int)$u['mins_ago'] < 1 ? 'Just now' : (int)$u['mins_ago'] . ' min ago') ?></td>
+            <td><?= h(format_ago_categorized($u['secs_ago'] ?? null, $u['last_seen'] ?? null)) ?></td>
             <td>
               <a href="history.php?user=<?= $u['id'] ?>" class="w-icon-btn" style="padding:2px 8px;font-size:11px">Track</a>
             </td>

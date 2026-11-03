@@ -12,22 +12,29 @@ function ensure_web_user_columns(): void {
         $pdo = db();
         $cols = $pdo->query("SHOW COLUMNS FROM users LIKE 'web_access'")->fetchAll();
         if (empty($cols)) {
-            @$pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'");
-            @$pdo->exec("ALTER TABLE users ADD COLUMN web_access TINYINT(1) NOT NULL DEFAULT 0 AFTER role");
-            @$pdo->exec("ALTER TABLE users ADD COLUMN permissions_json LONGTEXT NULL");
-            @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME NULL");
-            @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45) NULL");
-            @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'");
+            try { @$pdo->exec("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'staff'"); } catch (Throwable $e) {}
+            try { @$pdo->exec("ALTER TABLE users ADD COLUMN web_access TINYINT(1) NOT NULL DEFAULT 0 AFTER role"); } catch (Throwable $e) {}
+            try { @$pdo->exec("ALTER TABLE users ADD COLUMN permissions_json LONGTEXT NULL"); } catch (Throwable $e) {}
+            try { @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME NULL"); } catch (Throwable $e) {}
+            try { @$pdo->exec("ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45) NULL"); } catch (Throwable $e) {}
+            try { @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'"); } catch (Throwable $e) {}
         }
-        @$pdo->exec("ALTER TABLE users ADD COLUMN section_ids VARCHAR(255) NULL AFTER section_id");
-        @$pdo->exec("ALTER TABLE users ADD COLUMN staff_ids TEXT NULL AFTER section_ids");
+        try { @$pdo->exec("ALTER TABLE users ADD COLUMN section_ids VARCHAR(255) NULL AFTER section_id"); } catch (Throwable $e) {}
+        try { @$pdo->exec("ALTER TABLE users ADD COLUMN staff_ids TEXT NULL AFTER section_ids"); } catch (Throwable $e) {}
     } catch (Throwable $e) {}
 }
 
 function admin(): ?array {
     if (empty($_SESSION['admin_id'])) return null;
     ensure_web_user_columns();
-    return q("SELECT * FROM users WHERE id=? AND active=1 AND (role='admin' OR web_access=1)", [$_SESSION['admin_id']])->fetch() ?: null;
+    static $cachedAdmin = null;
+    static $cachedId = null;
+    if ($cachedAdmin !== null && $cachedId === $_SESSION['admin_id']) {
+        return $cachedAdmin;
+    }
+    $cachedId = $_SESSION['admin_id'];
+    $cachedAdmin = q("SELECT * FROM users WHERE id=? AND active=1 AND (role='admin' OR web_access=1)", [$_SESSION['admin_id']])->fetch() ?: null;
+    return $cachedAdmin;
 }
 
 function require_admin(): array {
@@ -52,13 +59,32 @@ function user_permissions(): array {
     if (!$u) return [];
     if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return ['*' => true];
 
-    if (isset($_SESSION['admin_perms']) && is_array($_SESSION['admin_perms'])) {
-        return $_SESSION['admin_perms'];
-    }
-
     $perms = !empty($u['permissions_json']) ? json_decode($u['permissions_json'], true) : [];
     $_SESSION['admin_perms'] = is_array($perms) ? $perms : [];
     return $_SESSION['admin_perms'];
+}
+
+function first_allowed_page(): string {
+    $pages = [
+        'dashboard.php'     => 'dashboard',
+        'index.php'         => 'monitoring',
+        'geofences.php'     => 'geofences',
+        'reports.php'       => 'reports',
+        'tasks.php'         => 'tasks',
+        'photos.php'        => 'photos',
+        'units.php'         => 'units',
+        'history.php'       => 'history',
+        'drivers.php'       => 'drivers',
+        'messages.php'      => 'messages',
+        'notifications.php' => 'notifications',
+        'staff.php'         => 'staff',
+        'users.php'         => 'users',
+        'settings.php'      => 'settings',
+    ];
+    foreach ($pages as $file => $mod) {
+        if (can($mod, 'view')) return $file;
+    }
+    return 'logout.php';
 }
 
 function can(string $module, string $action = 'view'): bool {
@@ -156,6 +182,7 @@ function user_section_scope_sql(string $alias = 'users'): string {
 function require_perm(string $module, string $action = 'view'): void {
     if (!can($module, $action)) {
         http_response_code(403);
+        $fallbackUrl = first_allowed_page();
         ?>
         <!doctype html>
         <html lang="en">
@@ -169,6 +196,7 @@ function require_perm(string $module, string $action = 'view'): void {
             h2 { margin: 0 0 10px; color: #f87171; font-size: 20px; }
             p { color: #94a3b8; font-size: 13.5px; line-height: 1.6; margin-bottom: 24px; }
             .btn { display: inline-block; padding: 10px 24px; background: #10b981; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 13px; }
+            .btn-out { display: inline-block; padding: 10px 18px; background: #334155; color: #e2e8f0; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 13px; margin-left: 8px; }
           </style>
         </head>
         <body>
@@ -177,7 +205,12 @@ function require_perm(string $module, string $action = 'view'): void {
             <div class="badge">PERMISSION RESTRICTED</div>
             <h2>Access Restricted</h2>
             <p>Your user account does not have permission to access <strong><?= htmlspecialchars(strtoupper($module)) ?> (<?= htmlspecialchars($action) ?>)</strong>.<br>Please contact a GalOya Super Administrator to request permission.</p>
-            <a href="dashboard.php" class="btn">Return to Dashboard</a>
+            <div>
+              <a href="<?= htmlspecialchars($fallbackUrl) ?>" class="btn"><?= $fallbackUrl === 'logout.php' ? 'Sign Out' : 'Go to Home Portal' ?></a>
+              <?php if ($fallbackUrl !== 'logout.php'): ?>
+                <a href="logout.php" class="btn-out">Logout</a>
+              <?php endif; ?>
+            </div>
           </div>
         </body>
         </html>
@@ -323,8 +356,10 @@ function layout_start(string $title, string $active, bool $map = false): void {
   </header>
 
   <!-- Flash Message -->
-  <?php if ($m = flash()): ?>
-    <div style="background:#e8f5e9;border-bottom:1px solid #c8e6c9;color:#2e7d32;padding:8px 16px;font-size:12px;font-weight:600">
+  <?php if ($m = flash()): 
+    $isErr = stripos($m, 'Error') === 0 || stripos($m, 'Failed') === 0;
+  ?>
+    <div style="<?= $isErr ? 'background:#fef2f2;border-bottom:1px solid #fecaca;color:#dc2626' : 'background:#e8f5e9;border-bottom:1px solid #c8e6c9;color:#2e7d32' ?>;padding:8px 16px;font-size:12px;font-weight:600">
       <?= h($m) ?>
     </div>
   <?php endif; ?>

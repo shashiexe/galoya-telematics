@@ -426,14 +426,15 @@ if (empty($groupsData)) {
 $geofences = q("SELECT id, category, group_name, block_name, name, code, type, color, description FROM geofences WHERE active=1 ORDER BY name ASC LIMIT 500")->fetchAll();
 $totalGeofences = (int)q("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn();
 
-// Fetch active field officers/vehicles to show live on map
+// Fetch active field officers/vehicles to show live on map (scoped to user's subordinates)
 try {
+    $secScopeU = user_section_scope_sql('u');
     $liveUnits = q("
         SELECT u.id, u.name, u.role, u.code, u.unit_type, u.sos_active, u.on_duty,
                l.lat, l.lng, l.speed, l.accuracy, l.created_at AS last_time
         FROM users u
         JOIN locations l ON l.id = (SELECT id FROM locations WHERE user_id = u.id ORDER BY id DESC LIMIT 1)
-        WHERE u.active = 1
+        WHERE u.active = 1 AND $secScopeU
     ")->fetchAll();
 } catch (Throwable $e) {
     $liveUnits = [];

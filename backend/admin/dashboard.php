@@ -1,11 +1,15 @@
 <?php
 require __DIR__ . '/_common.php';
 require_admin();
+require_perm('dashboard', 'view');
 
-// Fetch telematics data for dashboard
+$secScopeUsers = user_section_scope_sql('users');
+$secScopeU = user_section_scope_sql('u');
+
+// Fetch telematics data for dashboard (scoped to user's subordinates)
 $all_units = q("SELECT id, name, code, unit_type, motion_state, speed, ignition, last_battery, last_lat, last_seen,
                 TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago
-                FROM users WHERE role='staff' AND active=1")->fetchAll();
+                FROM users WHERE role='staff' AND active=1 AND $secScopeUsers")->fetchAll();
 
 $total_units = count($all_units);
 
@@ -53,10 +57,10 @@ foreach ($all_units as $u) {
     }
 }
 
-// Tasks summary
-$tasks_prog = (int)q("SELECT COUNT(*) FROM tasks WHERE status='in_progress'")->fetchColumn();
-$tasks_done = (int)q("SELECT COUNT(*) FROM tasks WHERE status='done' AND DATE(completed_at)=CURDATE()")->fetchColumn();
-$tasks_pend = (int)q("SELECT COUNT(*) FROM tasks WHERE status='pending'")->fetchColumn();
+// Tasks summary (scoped to user's subordinates)
+$tasks_prog = (int)q("SELECT COUNT(*) FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.status='in_progress' AND $secScopeU")->fetchColumn();
+$tasks_done = (int)q("SELECT COUNT(*) FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.status='done' AND DATE(t.completed_at)=CURDATE() AND $secScopeU")->fetchColumn();
+$tasks_pend = (int)q("SELECT COUNT(*) FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.status='pending' AND $secScopeU")->fetchColumn();
 
 // Helper to build SVG donut slice
 function svg_donut(array $slices, int $size = 140, int $stroke = 28): string {

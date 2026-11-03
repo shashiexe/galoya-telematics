@@ -690,6 +690,77 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
   gap: 12px;
 }
 
+/* Wialon Left Floating Map Toolbar (Screenshot Matching) */
+.w-map-tools {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.w-mt-group {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+}
+.w-mt-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  position: relative;
+  padding: 0;
+}
+.w-mt-btn:last-child { border-bottom: none; }
+.w-mt-btn:hover, .w-mt-btn.active { background: #eff6ff; color: #0284c7; }
+.w-mt-popup {
+  display: none;
+  position: absolute;
+  left: 34px;
+  top: 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+  min-width: 175px;
+  padding: 4px 0;
+  z-index: 1005;
+  text-align: left;
+}
+.w-mt-popup.open { display: block; }
+.w-mt-item {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #1e293b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+.w-mt-item:hover { background: #f1f5f9; }
+.w-mt-item.selected { background: #e2e8f0; font-weight: 700; color: #0f172a; }
+.w-zoom-right {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+}
+.w-zoom-right .w-mt-btn { font-size: 18px; font-weight: 700; }
+
 /* Modal Styling */
 .w-modal-overlay {
   display: none;
@@ -999,6 +1070,54 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
   <!-- Right Map View -->
   <div class="w-gf-map-wrap">
     <div id="map"></div>
+
+    <!-- Wialon Left Floating Map Toolbar (Screenshot Matching) -->
+    <div class="w-map-tools">
+      <div class="w-mt-group">
+        <button type="button" class="w-mt-btn" title="Search on map" onclick="wmtTogglePopup('wmt-search-pop')">🔍</button>
+        <div class="w-mt-popup" id="wmt-search-pop" style="padding:6px;min-width:210px">
+          <input type="text" class="w-form-control" placeholder="Find geofence or lat,lng..." style="font-size:11.5px;padding:4px 7px" onkeydown="if(event.key==='Enter'){event.preventDefault();wmtQuickFind(this.value)}">
+        </div>
+      </div>
+
+      <div class="w-mt-group">
+        <button type="button" class="w-mt-btn active" id="wmt-btn-vis" title="Visible layers" onclick="wmtTogglePopup('wmt-vis-pop')">👁</button>
+        <div class="w-mt-popup" id="wmt-vis-pop">
+          <label class="w-mt-item"><input type="checkbox" checked onchange="wmtToggleUnitsLayer(this.checked)"> <span style="flex:1;margin-left:6px">Units on map</span></label>
+          <label class="w-mt-item"><input type="checkbox" checked onchange="wmtToggleLabelsLayer(this.checked)"> <span style="flex:1;margin-left:6px">Geofence labels</span></label>
+        </div>
+
+        <button type="button" class="w-mt-btn" id="wmt-btn-maps" title="Select map (Gurtam / Google / Satellite)" onclick="wmtTogglePopup('wmt-maps-pop')">🗺️</button>
+        <div class="w-mt-popup" id="wmt-maps-pop">
+          <div class="w-mt-item selected" data-map="Gurtam Maps" onclick="wmtSelectBaseMap('Gurtam Maps', this)">Gurtam Maps</div>
+          <div class="w-mt-item" data-map="Gurtam Maps modern" onclick="wmtSelectBaseMap('Gurtam Maps modern', this)">Gurtam Maps modern</div>
+          <div style="border-top:1px solid #e2e8f0;margin:3px 0"></div>
+          <div class="w-mt-item" data-map="Google Streets" onclick="wmtSelectBaseMap('Google Streets', this)">Google Streets</div>
+          <div class="w-mt-item" data-map="Google Hybrid" onclick="wmtSelectBaseMap('Google Hybrid', this)">Google Hybrid</div>
+          <div class="w-mt-item" data-map="Google Satellite" onclick="wmtSelectBaseMap('Google Satellite', this)">Google Satellite</div>
+          <div class="w-mt-item" data-map="Google Terrain" onclick="wmtSelectBaseMap('Google Terrain', this)">Google Terrain</div>
+          <div class="w-mt-item" data-map="Esri Satellite" onclick="wmtSelectBaseMap('Esri Satellite', this)">Esri Satellite</div>
+        </div>
+
+        <button type="button" class="w-mt-btn active" id="wmt-btn-units" title="Toggle live units" onclick="wmtQuickToggleUnits(this)">🚍</button>
+        <button type="button" class="w-mt-btn active" id="wmt-btn-labels" title="Toggle sector labels" onclick="wmtQuickToggleLabels(this)">🏷️</button>
+      </div>
+
+      <div class="w-mt-group">
+        <button type="button" class="w-mt-btn" id="wmt-btn-measure" title="Measure distance & area" onclick="wmtToggleMeasure(this)">📏</button>
+        <button type="button" class="w-mt-btn" title="Fit active zones on screen" onclick="wmtFitAll()">⛶</button>
+        <button type="button" class="w-mt-btn" title="Reset view to Galoya Estate" onclick="map.setView([7.2050, 81.6580], 13)">🎯</button>
+      </div>
+    </div>
+
+    <!-- Wialon Right-Center Zoom +/- Buttons -->
+    <div class="w-zoom-right">
+      <div class="w-mt-group">
+        <button type="button" class="w-mt-btn" title="Zoom in" onclick="map.zoomIn()">+</button>
+        <button type="button" class="w-mt-btn" title="Zoom out" onclick="map.zoomOut()">−</button>
+      </div>
+    </div>
+
     <!-- HUD Coordinate display -->
     <div class="w-gf-hud" id="hud-bar">
       <span id="hud-coords">N 07° 12.352' &nbsp; E 081° 39.547'</span>
@@ -1179,32 +1298,53 @@ function initMap() {
   map = L.map('map', {
     center: [7.2050, 81.6580],
     zoom: 13,
+    zoomControl: false,
     layers: [osm]
   });
 
+  L.control.scale({ position: 'bottomleft', imperial: true, metric: true }).addTo(map);
+
   baseLayers = {
-    "OpenStreetMap": osm,
+    "Gurtam Maps": osm,
+    "Gurtam Maps modern": cartoLight,
     "Google Streets": gRoad,
     "Google Satellite": gSat,
     "Google Hybrid": gHybrid,
     "Google Terrain": gTerrain,
-    "Esri Satellite": satellite,
-    "Clean Light": cartoLight
+    "Esri Satellite": satellite
   };
-  L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
+  window._currentBaseLayer = osm;
 
-  // HUD Mouse Movement Coordinates
-  map.on('mousemove', function(e) {
-    const lat = e.latlng.lat;
-    const lng = e.latlng.lng;
-    const latStr = (lat >= 0 ? 'N ' : 'S ') + Math.abs(lat).toFixed(4) + '°';
-    const lngStr = (lng >= 0 ? 'E ' : 'W ') + Math.abs(lng).toFixed(4) + '°';
-    const hud = document.getElementById('hud-coords');
-    if (hud) hud.innerHTML = `${latStr} &nbsp; ${lngStr}`;
+  // Close floating map popups when clicking on map canvas
+  map.on('click', function() {
+    document.querySelectorAll('.w-mt-popup.open').forEach(p => p.classList.remove('open'));
   });
 
-  // Map click for Wialon drawing (Polygon / Circle / Line)
+  // HUD Mouse Movement Coordinates (Wialon Degrees & Decimal Minutes format: N 07° 16.5422' E 081° 38.6147')
+  map.on('mousemove', function(e) {
+    const fmtDM = (v, pos, neg) => {
+      const a = Math.abs(v), d = Math.floor(a), m = ((a - d) * 60).toFixed(4).padStart(7, '0');
+      return `${v >= 0 ? pos : neg} ${String(d).padStart(pos === 'E' ? 3 : 2, '0')}° ${m}'`;
+    };
+    const hud = document.getElementById('hud-coords');
+    if (hud) hud.innerHTML = `${fmtDM(e.latlng.lat, 'N', 'S')} &nbsp; ${fmtDM(e.latlng.lng, 'E', 'W')}`;
+  });
+
+  // Map click for Wialon drawing (Polygon / Circle / Line) or Measure tool
   map.on('click', function(e) {
+    if (_measureOn && _measureLayer) {
+      const p = [e.latlng.lat, e.latlng.lng];
+      _measurePts.push(p);
+      _measureLayer.clearLayers();
+      _measurePts.forEach(pt => L.circleMarker(pt, { radius: 4, color: '#dc2626', fillColor: '#fff', fillOpacity: 1 }).addTo(_measureLayer));
+      if (_measurePts.length >= 2) {
+        const dM = wgpPerimeterM(_measurePts, false);
+        const aM2 = _measurePts.length >= 3 ? wgpPolygonAreaM2(_measurePts) : 0;
+        const pl = L.polyline(_measurePts, { color: '#dc2626', weight: 2, dashArray: '4,4' }).addTo(_measureLayer);
+        pl.bindTooltip(`Dist: ${(dM/1000).toFixed(3)} km (${Math.round(dM)} m)` + (aM2 ? ` • Area: ${(aM2/10000).toFixed(3)} ha` : ''), { permanent: true }).openTooltip();
+      }
+      return;
+    }
     if (!drawingMode) return;
     wgpAddPoint([e.latlng.lat, e.latlng.lng]);
   });
@@ -1214,7 +1354,10 @@ function initMap() {
 }
 
 // Render Live Vehicle / Officer Units
+let unitMarkersLayer = null;
 function renderLiveUnits() {
+  if (!unitMarkersLayer) unitMarkersLayer = L.layerGroup().addTo(map);
+  unitMarkersLayer.clearLayers();
   if (!liveUnits || !liveUnits.length) return;
   liveUnits.forEach(u => {
     if (!u.lat || !u.lng) return;
@@ -1225,7 +1368,7 @@ function renderLiveUnits() {
       </div>
     `;
     const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [26, 26], iconAnchor: [13, 13] });
-    const marker = L.marker([parseFloat(u.lat), parseFloat(u.lng)], { icon: icon }).addTo(map);
+    const marker = L.marker([parseFloat(u.lat), parseFloat(u.lng)], { icon: icon }).addTo(unitMarkersLayer);
     marker.bindPopup(`
       <div style="font-size:12px;line-height:1.4">
         <strong style="font-size:13px;color:#0f172a">${u.name}</strong><br>
@@ -1235,6 +1378,76 @@ function renderLiveUnits() {
       </div>
     `);
   });
+}
+
+// Wialon Left Floating Map Toolbar Helpers
+function wmtTogglePopup(id) {
+  document.querySelectorAll('.w-mt-popup').forEach(p => { if (p.id !== id) p.classList.remove('open'); });
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+function wmtSelectBaseMap(name, itemEl) {
+  const next = baseLayers[name];
+  if (!next) return;
+  if (window._currentBaseLayer) map.removeLayer(window._currentBaseLayer);
+  map.addLayer(next);
+  window._currentBaseLayer = next;
+  document.querySelectorAll('#wmt-maps-pop .w-mt-item').forEach(i => i.classList.remove('selected'));
+  if (itemEl) itemEl.classList.add('selected');
+  document.getElementById('wmt-maps-pop').classList.remove('open');
+}
+function wmtToggleUnitsLayer(show) {
+  if (!unitMarkersLayer) return;
+  if (show) map.addLayer(unitMarkersLayer); else map.removeLayer(unitMarkersLayer);
+  const b = document.getElementById('wmt-btn-units');
+  if (b) b.classList.toggle('active', show);
+}
+function wmtQuickToggleUnits(btn) {
+  const show = !btn.classList.contains('active');
+  wmtToggleUnitsLayer(show);
+}
+let _labelsHidden = false;
+function wmtToggleLabelsLayer(show) {
+  _labelsHidden = !show;
+  document.querySelectorAll('.sector-label').forEach(el => { el.style.display = show ? '' : 'none'; });
+  const b = document.getElementById('wmt-btn-labels');
+  if (b) b.classList.toggle('active', show);
+}
+function wmtQuickToggleLabels(btn) {
+  wmtToggleLabelsLayer(_labelsHidden);
+}
+function wmtFitAll() {
+  const bounds = L.latLngBounds([]);
+  Object.values(activeZoneLayers).forEach(lg => { if (map.hasLayer(lg) && lg.getBounds().isValid()) bounds.extend(lg.getBounds()); });
+  Object.values(singleGfLayers).forEach(ly => { if (map.hasLayer(ly) && ly.getBounds?.().isValid()) bounds.extend(ly.getBounds()); });
+  if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30] });
+}
+function wmtQuickFind(val) {
+  val = (val || '').trim();
+  if (!val) return;
+  const m = val.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (m) {
+    map.setView([parseFloat(m[1]), parseFloat(m[2])], 16);
+    document.getElementById('wmt-search-pop').classList.remove('open');
+    return;
+  }
+  const inp = document.getElementById('gf-search-input');
+  inp.value = val;
+  handleSearch(val);
+  document.getElementById('wmt-search-pop').classList.remove('open');
+}
+let _measureOn = false, _measurePts = [], _measureLayer = null;
+function wmtToggleMeasure(btn) {
+  _measureOn = !_measureOn;
+  btn.classList.toggle('active', _measureOn);
+  if (_measureLayer) { map.removeLayer(_measureLayer); _measureLayer = null; }
+  _measurePts = [];
+  if (_measureOn) {
+    _measureLayer = L.layerGroup().addTo(map);
+    map.getContainer().style.cursor = 'crosshair';
+  } else if (!drawingMode) {
+    map.getContainer().style.cursor = '';
+  }
 }
 
 // Toggle Group / Zone Visibility on Map

@@ -300,7 +300,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if ($targetGroup === '__new__') $targetGroup = '';
     $newGroupName = trim($_POST['new_group_name'] ?? '');
     if ($newGroupName !== '') $targetGroup = $newGroupName;
-    $customColor = trim($_POST['color'] ?? '');
+    $overrideColor = !empty($_POST['override_color']);
+    $customColor = $overrideColor ? trim($_POST['color'] ?? '') : '';
     $files = $_FILES['kml_files'] ?? null;
     $importedCount = 0;
     $importedNames = [];
@@ -336,22 +337,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
             // Determine zone name & ensure group exists in geofence_groups
             $assignedGroup = $targetGroup ?: $blockName;
-            $color = $customColor ?: '#10b981';
+            $existingGrpColor = '';
+            if ($assignedGroup) {
+                $existingGrpColor = (string)(q("SELECT color FROM geofence_groups WHERE name=? LIMIT 1", [$assignedGroup])->fetchColumn() ?: '');
+            }
+            $color = $customColor ?: ($existingGrpColor ?: '#10b981');
             if ($assignedGroup && empty($groupsTouched[$assignedGroup])) {
                 q("INSERT IGNORE INTO geofence_groups (category, name, code, color, description, active) 
                    VALUES (?, ?, ?, ?, 'Imported KML Zone', 1)",
                   [$cat, $assignedGroup, strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $assignedGroup), 0, 4) ?: 'ZON'), $color]);
+                if ($customColor !== '') {
+                    q("UPDATE geofence_groups SET color=? WHERE name=?", [$customColor, $assignedGroup]);
+                }
                 $groupsTouched[$assignedGroup] = true;
             }
 
             foreach ($fileZones as $z) {
+                $sectorColor = $customColor ?: ($existingGrpColor ?: ($z['color'] ?? '#10b981'));
                 if (!empty($_POST['overwrite'])) {
                     q("DELETE FROM geofences WHERE name=? AND group_name=?", [$z['name'], $assignedGroup]);
                 }
                 q("INSERT INTO geofences (category, group_name, block_name, name, code, type, coordinates, color, description, active) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                    ON DUPLICATE KEY UPDATE coordinates=VALUES(coordinates), group_name=VALUES(group_name), block_name=VALUES(block_name), color=VALUES(color)",
-                  [$cat, $assignedGroup, $blockName, $z['name'], $z['code'], $z['type'], $z['coordinates'], $color, $z['description'] ?: ($assignedGroup . ' | ' . $blockName)]);
+                  [$cat, $assignedGroup, $blockName, $z['name'], $z['code'], $z['type'], $z['coordinates'], $sectorColor, $z['description'] ?: ($assignedGroup . ' | ' . $blockName)]);
                 $insId = (int)$pdo->lastInsertId();
                 if ($insId > 0 && isset($z['center_lat'], $z['center_lng'])) {
                     try { @q("UPDATE geofences SET center_lat=?, center_lng=? WHERE id=?", [$z['center_lat'], $z['center_lng'], $insId]); } catch (Throwable $e) {}
@@ -1241,11 +1250,11 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
 
         <div class="w-form-group">
           <label>Target Zone / Group</label>
-          <select name="target_group" id="kml-target-group" class="w-form-control" onchange="document.getElementById('kml-new-group-wrap').style.display=(this.value==='__new__'?'block':'none')">
-            <option value="">-- Auto-Assign by KML Filename --</option>
-            <option value="__new__">➕ Create New Zone / Group...</option>
+          <select name="target_group" id="kml-target-group" class="w-form-control" onchange="onKmlTargetGroupChange(this)">
+            <option value="" data-color="#10b981">-- Auto-Assign by KML Filename --</option>
+            <option value="__new__" data-color="#10b981">➕ Create New Zone / Group...</option>
             <?php foreach ($groupsData as $g): ?>
-              <option value="<?= h($g['name']) ?>" data-color="<?= h($g['color']) ?>"><?= h($g['name']) ?> (<?= h($g['category']) ?>)</option>
+              <option value="<?= h($g['name']) ?>" data-color="<?= h($g['color'] ?: '#10b981') ?>"><?= h($g['name']) ?> (<?= h($g['category']) ?>)</option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -1270,13 +1279,25 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
           </div>
         </div>
 
-        <div style="display:flex;gap:12px;align-items:center">
-          <div class="w-form-group" style="flex:1">
-            <label>Override Zone Color (Optional)</label>
-            <input type="color" name="color" id="kml-color-input" class="w-form-control" value="#10b981" style="height:34px;padding:2px">
+        <div style="display:flex;gap:14px;align-items:center;justify-content:space-between;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#334155;font-weight:600" title="Current color of the selected Target Zone">
+              <span>Current Color:</span>
+              <span id="kml-current-color-swatch" style="display:inline-block;width:18px;height:18px;border-radius:4px;background:#10b981;border:1px solid #94a3b8;vertical-align:middle"></span>
+              <span id="kml-current-color-hex" style="font-family:monospace;font-size:11px;color:#64748b">#10b981</span>
+            </div>
+            <span style="color:#cbd5e1">|</span>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#334155;font-weight:600;cursor:pointer;margin:0">
+              <input type="checkbox" name="override_color" id="kml-override-color-chk" value="1" onchange="toggleKmlOverrideColor(this.checked)">
+              <span>Override Zone Color (Optional)</span>
+            </label>
+            <input type="color" name="color" id="kml-color-input" value="#10b981"
+                   onchange="document.getElementById('kml-override-color-chk').checked=true;toggleKmlOverrideColor(true)"
+                   style="width:38px;height:28px;padding:1px;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;opacity:0.45"
+                   title="Pick a new color to override the zone color">
           </div>
-          <div class="w-form-group" style="flex:1;padding-top:16px">
-            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer">
+          <div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;margin:0;white-space:nowrap">
               <input type="checkbox" name="overwrite" value="1" checked>
               <span>Update existing sectors</span>
             </label>
@@ -1730,13 +1751,51 @@ function confirmDeleteGroup(id, name) {
 }
 
 // KML Modal Handlers
+function onKmlTargetGroupChange(sel) {
+  if (!sel) sel = document.getElementById('kml-target-group');
+  const wrap = document.getElementById('kml-new-group-wrap');
+  if (wrap) wrap.style.display = (sel.value === '__new__' ? 'block' : 'none');
+
+  const opt = sel.options[sel.selectedIndex];
+  const curColor = (opt && opt.getAttribute('data-color')) ? opt.getAttribute('data-color') : '#10b981';
+  const swatch = document.getElementById('kml-current-color-swatch');
+  const hexLbl = document.getElementById('kml-current-color-hex');
+  const colorInp = document.getElementById('kml-color-input');
+  const chk = document.getElementById('kml-override-color-chk');
+
+  if (swatch) swatch.style.background = curColor;
+  if (hexLbl) hexLbl.textContent = curColor;
+  if (colorInp && (!chk || !chk.checked)) {
+    colorInp.value = curColor;
+  }
+}
+
+function toggleKmlOverrideColor(checked) {
+  const colorInp = document.getElementById('kml-color-input');
+  if (colorInp) {
+    colorInp.style.opacity = checked ? '1' : '0.45';
+    colorInp.style.borderColor = checked ? '#0284c7' : '#cbd5e1';
+  }
+  if (!checked) {
+    onKmlTargetGroupChange(document.getElementById('kml-target-group'));
+  }
+}
+
 function openKmlModal() {
+  const chk = document.getElementById('kml-override-color-chk');
+  if (chk) chk.checked = false;
+  toggleKmlOverrideColor(false);
+  onKmlTargetGroupChange(document.getElementById('kml-target-group'));
   openModal('modal-kml');
 }
 
 function openKmlModalForGroup(groupName, cat) {
   document.getElementById('kml-target-cat').value = cat || 'Plantation';
   document.getElementById('kml-target-group').value = groupName;
+  const chk = document.getElementById('kml-override-color-chk');
+  if (chk) chk.checked = false;
+  toggleKmlOverrideColor(false);
+  onKmlTargetGroupChange(document.getElementById('kml-target-group'));
   openModal('modal-kml');
 }
 

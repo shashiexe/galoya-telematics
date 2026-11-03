@@ -20,6 +20,7 @@ function ensure_web_user_columns(): void {
             @$pdo->exec("UPDATE users SET web_access=1 WHERE role='admin'");
         }
         @$pdo->exec("ALTER TABLE users ADD COLUMN section_ids VARCHAR(255) NULL AFTER section_id");
+        @$pdo->exec("ALTER TABLE users ADD COLUMN staff_ids TEXT NULL AFTER section_ids");
     } catch (Throwable $e) {}
 }
 
@@ -37,19 +38,19 @@ function require_admin(): array {
 
 function is_admin(): bool {
     $u = admin();
-    return $u && ($u['role'] ?? '') === 'admin';
+    return $u && in_array($u['role'] ?? '', ['admin', 'super_user'], true);
 }
 
 function is_super_admin(): bool {
     $u = admin();
     if (!$u) return false;
-    return ($u['role'] ?? '') === 'admin';
+    return in_array($u['role'] ?? '', ['admin', 'super_user'], true);
 }
 
 function user_permissions(): array {
     $u = admin();
     if (!$u) return [];
-    if (($u['role'] ?? '') === 'admin') return ['*' => true];
+    if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return ['*' => true];
 
     if (isset($_SESSION['admin_perms']) && is_array($_SESSION['admin_perms'])) {
         return $_SESSION['admin_perms'];
@@ -63,7 +64,7 @@ function user_permissions(): array {
 function can(string $module, string $action = 'view'): bool {
     $u = admin();
     if (!$u) return false;
-    if (($u['role'] ?? '') === 'admin') return true;
+    if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return true;
 
     $perms = user_permissions();
     if (!empty($perms['*'])) return true;
@@ -73,12 +74,28 @@ function can(string $module, string $action = 'view'): bool {
 }
 
 /**
+ * Returns array of explicitly assigned subordinate staff IDs, or NULL if not restricted by staff list.
+ */
+function user_accessible_staff_ids(): ?array {
+    $u = admin();
+    if (!$u) return [];
+    if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return null;
+
+    $raw = trim((string)($u['staff_ids'] ?? ''));
+    if ($raw !== '') {
+        $parts = array_values(array_filter(array_map('intval', explode(',', $raw)), fn($id) => $id > 0));
+        if (!empty($parts)) return $parts;
+    }
+    return null;
+}
+
+/**
  * Returns array of section IDs accessible to the current user, or NULL if global access.
  */
 function user_accessible_section_ids(): ?array {
     $u = admin();
     if (!$u) return [];
-    if (($u['role'] ?? '') === 'admin') return null;
+    if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return null;
 
     $rawIds = trim((string)($u['section_ids'] ?? ''));
     if ($rawIds !== '') {
@@ -91,7 +108,7 @@ function user_accessible_section_ids(): ?array {
         return [(int)$u['section_id']];
     }
 
-    return null; // Global access
+    return null; // Not restricted by section
 }
 
 /**
@@ -100,28 +117,40 @@ function user_accessible_section_ids(): ?array {
 function user_accessible_department_id(): ?int {
     $u = admin();
     if (!$u) return null;
-    if (($u['role'] ?? '') === 'admin') return null;
+    if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return null;
     return !empty($u['department_id']) ? (int)$u['department_id'] : null;
 }
 
 /**
- * Returns SQL condition for filtering records by user's assigned sections/department.
- * Example outputs: "users.section_id IN (1,2)", "users.department_id = 3", or "1=1"
+ * Returns SQL condition for filtering `users` records by subordinate scope.
+ * Super Admin (`admin`) and Super User (`super_user`) see ALL staff (`1=1`).
+ * Other web users ONLY see staff in their assigned Staff IDs, Sections, or Department (or themselves if none assigned).
  */
 function user_section_scope_sql(string $alias = 'users'): string {
+    $u = admin();
+    if (!$u) return "1=0";
+    if (in_array($u['role'] ?? '', ['admin', 'super_user'], true)) return "1=1";
+
+    $conds = [];
+    $staffIds = user_accessible_staff_ids();
+    if (!empty($staffIds)) {
+        $conds[] = "{$alias}.id IN (" . implode(',', $staffIds) . ")";
+    }
+
     $secIds = user_accessible_section_ids();
-    if ($secIds !== null) {
-        if (empty($secIds)) return "1=0"; // Restricted but has no sections assigned
-        $in = implode(',', $secIds);
-        return "({$alias}.section_id IN ($in))";
+    if (!empty($secIds)) {
+        $conds[] = "{$alias}.section_id IN (" . implode(',', $secIds) . ")";
+    } elseif ($deptId = user_accessible_department_id()) {
+        $conds[] = "{$alias}.department_id = $deptId";
     }
 
-    $deptId = user_accessible_department_id();
-    if ($deptId !== null) {
-        return "({$alias}.department_id = $deptId)";
+    if (!empty($conds)) {
+        return '(' . implode(' OR ', $conds) . ')';
     }
 
-    return "1=1";
+    // Non-admin/non-super_user without assigned subordinates only sees their own record
+    $myId = (int)($u['id'] ?? 0);
+    return "({$alias}.id = $myId)";
 }
 
 function require_perm(string $module, string $action = 'view'): void {
@@ -194,26 +223,28 @@ function map_assets(): string {
 function layout_start(string $title, string $active, bool $map = false): void {
     $a = require_admin();
     
-    // Count active tasks for badge
+    // Count active tasks for badge (scoped to user's subordinates)
+    $secScopeU = user_section_scope_sql('u');
+    $secScopeUsers = user_section_scope_sql('users');
     $task_count = 0;
     try {
-        $task_count = (int)q("SELECT COUNT(*) FROM tasks WHERE status IN ('pending', 'in_progress')")->fetchColumn();
+        $task_count = (int)q("SELECT COUNT(*) FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.status IN ('pending', 'in_progress') AND $secScopeU")->fetchColumn();
     } catch (Throwable $e) {}
 
-    // Count unread notifications
+    // Count unread notifications (scoped to user's subordinates)
     $unread_notifs = 0;
     try {
-        $unread_notifs = (int)q("SELECT COUNT(*) FROM notifications WHERE is_read=0")->fetchColumn();
+        $unread_notifs = (int)q("SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.unit_id WHERE n.is_read=0 AND $secScopeU")->fetchColumn();
     } catch (Throwable $e) {}
 
-    // Count online units (transmitting within timeout)
+    // Count online units (transmitting within timeout, scoped)
     global $CONFIG;
     $off_min = (int)($CONFIG['offline_after_min'] ?? 10);
     $online_units = 0;
     $total_units = 0;
     try {
-        $total_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1")->fetchColumn();
-        $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND on_duty=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)", [$off_min])->fetchColumn();
+        $total_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND $secScopeUsers")->fetchColumn();
+        $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND on_duty=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE) AND $secScopeUsers", [$off_min])->fetchColumn();
     } catch (Throwable $e) {}
 
     // Full Telematics Nav with Granular RBAC Permission Filtering
@@ -308,10 +339,12 @@ function layout_end(): void {
     $online_units = 0;
     $total_units = 0;
     $unread_notifs = 0;
+    $secScopeU = user_section_scope_sql('u');
+    $secScopeUsers = user_section_scope_sql('users');
     try {
-        $total_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1")->fetchColumn();
-        $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)", [$off_min])->fetchColumn();
-        $unread_notifs = (int)q("SELECT COUNT(*) FROM notifications WHERE is_read=0")->fetchColumn();
+        $total_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND $secScopeUsers")->fetchColumn();
+        $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE) AND $secScopeUsers", [$off_min])->fetchColumn();
+        $unread_notifs = (int)q("SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.unit_id WHERE n.is_read=0 AND $secScopeU")->fetchColumn();
     } catch (Throwable $e) {}
     ?>
   </main>

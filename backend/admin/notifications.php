@@ -58,10 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// Fetch Units for test dispatch
-$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY name ASC")->fetchAll();
+$secScopeUsers = user_section_scope_sql('users');
+$secScopeU = user_section_scope_sql('u');
+// Fetch Units for test dispatch (scoped)
+$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
 
-// Filter Notifications
+// Filter Notifications (scoped to user's subordinates)
 $type_filter = $_GET['type'] ?? 'all';
 $read_filter = $_GET['read'] ?? 'all';
 
@@ -69,7 +71,7 @@ $sql = "SELECT n.*, u.name as unit_name, u.code as unit_code, u.unit_type,
         (SELECT name FROM drivers WHERE assigned_unit_id = u.id LIMIT 1) as driver_name
         FROM notifications n
         LEFT JOIN users u ON n.unit_id = u.id
-        WHERE 1=1";
+        WHERE $secScopeU";
 $params = [];
 
 if ($type_filter !== 'all') {
@@ -86,13 +88,13 @@ if ($read_filter === 'unread') {
 $sql .= " ORDER BY n.created_at DESC LIMIT 100";
 $notifications = q($sql, $params)->fetchAll();
 
-// Counts
-$total_unread = (int)q("SELECT COUNT(*) FROM notifications WHERE is_read = 0")->fetchColumn();
-$count_speed = (int)q("SELECT COUNT(*) FROM notifications WHERE type = 'speed'")->fetchColumn();
-$count_geofence = (int)q("SELECT COUNT(*) FROM notifications WHERE type = 'geofence'")->fetchColumn();
-$count_sos = (int)q("SELECT COUNT(*) FROM notifications WHERE type = 'sos'")->fetchColumn();
-$count_fuel = (int)q("SELECT COUNT(*) FROM notifications WHERE type = 'fuel'")->fetchColumn();
-$count_battery = (int)q("SELECT COUNT(*) FROM notifications WHERE type = 'battery'")->fetchColumn();
+// Counts (scoped)
+$total_unread = (int)q("SELECT COUNT(*) FROM notifications n LEFT JOIN users u ON n.unit_id = u.id WHERE n.is_read = 0 AND $secScopeU")->fetchColumn();
+$count_speed = (int)q("SELECT COUNT(*) FROM notifications n LEFT JOIN users u ON n.unit_id = u.id WHERE n.type = 'speed' AND $secScopeU")->fetchColumn();
+$count_geofence = (int)q("SELECT COUNT(*) FROM notifications n LEFT JOIN users u ON n.unit_id = u.id WHERE n.type = 'geofence' AND $secScopeU")->fetchColumn();
+$count_sos = (int)q("SELECT COUNT(*) FROM notifications n LEFT JOIN users u ON n.unit_id = u.id WHERE n.type = 'sos' AND $secScopeU")->fetchColumn();
+$count_fuel = (int)q("SELECT COUNT(*) FROM notifications n LEFT JOIN users u ON n.unit_id = u.id WHERE n.type = 'fuel' AND $secScopeU")->fetchColumn();
+$count_battery = (int)q("SELECT COUNT(*) FROM notifications n LEFT JOIN users u ON n.unit_id = u.id WHERE n.type = 'battery' AND $secScopeU")->fetchColumn();
 
 layout_start('Notifications & Alarms', 'notifications.php');
 ?>

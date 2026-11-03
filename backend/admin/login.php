@@ -30,7 +30,7 @@ if ($attempts >= $maxAttempts && (time() - $lastAttemptTime) < $lockoutTime) {
               [$_SERVER['REMOTE_ADDR'] ?? '', $u['id']]);
         } catch (Throwable $e) {}
 
-        header('Location: dashboard.php'); 
+        header('Location: ' . first_allowed_page()); 
         exit;
     }
 

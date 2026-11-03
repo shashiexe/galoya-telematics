@@ -4,14 +4,25 @@ $me = require_admin();
 require_perm('reports', 'view');
 
 $secScopeUsers = user_section_scope_sql('users');
+$secScopeU = user_section_scope_sql('u');
 $units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
+$allowedUnitIds = array_map(fn($r) => (int)$r['id'], $units);
 $geofences = q("SELECT id, name, code FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
-$departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
-$sections = q("SELECT s.id, s.department_id, s.name, s.code, d.name dept_name FROM sections s LEFT JOIN departments d ON d.id=s.department_id WHERE s.active=1 ORDER BY s.name ASC")->fetchAll();
+$departments = q("SELECT id, name, code FROM departments WHERE active=1 AND id IN (SELECT DISTINCT department_id FROM users WHERE role='staff' AND active=1 AND $secScopeUsers AND department_id IS NOT NULL) ORDER BY name ASC")->fetchAll();
+if (empty($departments) && is_super_admin()) {
+    $departments = q("SELECT id, name, code FROM departments WHERE active=1 ORDER BY name ASC")->fetchAll();
+}
+$sections = q("SELECT s.id, s.department_id, s.name, s.code, d.name dept_name FROM sections s LEFT JOIN departments d ON d.id=s.department_id WHERE s.active=1 AND s.id IN (SELECT DISTINCT section_id FROM users WHERE role='staff' AND active=1 AND $secScopeUsers AND section_id IS NOT NULL) ORDER BY s.name ASC")->fetchAll();
+if (empty($sections) && is_super_admin()) {
+    $sections = q("SELECT s.id, s.department_id, s.name, s.code, d.name dept_name FROM sections s LEFT JOIN departments d ON d.id=s.department_id WHERE s.active=1 ORDER BY s.name ASC")->fetchAll();
+}
 
 // Report Parameters (Aligned with Wialon Galoya setup)
 $report_type = $_GET['type'] ?? 'staff_audit';
 $unit_id = (int)($_GET['unit_id'] ?? 0);
+if ($unit_id > 0 && !in_array($unit_id, $allowedUnitIds, true)) {
+    $unit_id = 0;
+}
 $filterDept = (int)($_GET['dept_id'] ?? 0);
 $filterSec = (int)($_GET['sec_id'] ?? 0);
 $period = $_GET['period'] ?? 'today';
@@ -817,45 +828,47 @@ if ($report_type === 'staff_audit') {
         $secRows = q("SELECT s.id sec_id, s.name sec_name, s.code sec_code, d.id dept_id, d.name dept_name, d.code dept_code
                       FROM sections s
                       LEFT JOIN departments d ON d.id=s.department_id
-                      WHERE (s.active=1 OR s.active IS NULL) $dFilter $sFilter
+                      WHERE (s.active=1 OR s.active IS NULL)
+                        AND s.id IN (SELECT DISTINCT section_id FROM users WHERE role='staff' AND active=1 AND $secScopeUsers AND section_id IS NOT NULL)
+                        $dFilter $sFilter
                       ORDER BY d.name, s.name")->fetchAll();
 
         foreach ($secRows as $sr) {
             $secId = (int)$sr['sec_id'];
 
-            // Count staff
+            // Count staff (scoped)
             $staffCount = 0;
             $onDutyCount = 0;
             try {
-                $staffCount = (int)q("SELECT COUNT(*) FROM users WHERE section_id=? AND role='staff' AND active=1", [$secId])->fetchColumn();
-                $onDutyCount = (int)q("SELECT COUNT(*) FROM users WHERE section_id=? AND role='staff' AND active=1 AND on_duty=1", [$secId])->fetchColumn();
+                $staffCount = (int)q("SELECT COUNT(*) FROM users WHERE section_id=? AND role='staff' AND active=1 AND $secScopeUsers", [$secId])->fetchColumn();
+                $onDutyCount = (int)q("SELECT COUNT(*) FROM users WHERE section_id=? AND role='staff' AND active=1 AND on_duty=1 AND $secScopeUsers", [$secId])->fetchColumn();
             } catch (Throwable $e) {}
 
-            // Tasks in Section
+            // Tasks in Section (scoped)
             $taskStats = ['total' => 0, 'done' => 0, 'open' => 0];
             try {
                 $taskStats = q("SELECT COUNT(*) total,
-                                       SUM(IF(status='done', 1, 0)) done,
-                                       SUM(IF(status IN ('pending','in_progress'), 1, 0)) open
-                                FROM tasks WHERE section_id=?", [$secId])->fetch() ?: $taskStats;
+                                       SUM(IF(t.status='done', 1, 0)) done,
+                                       SUM(IF(t.status IN ('pending','in_progress'), 1, 0)) open
+                                FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.section_id=? AND $secScopeU", [$secId])->fetch() ?: $taskStats;
             } catch (Throwable $e) {}
 
-            // Photos in Section
+            // Photos in Section (scoped)
             $photoCount = 0;
             try {
                 $photoCount = (int)q("SELECT COUNT(*) FROM field_photos fp 
                                       JOIN users u ON u.id=fp.user_id 
-                                      WHERE u.section_id=? AND fp.taken_at BETWEEN ? AND ?", 
+                                      WHERE u.section_id=? AND $secScopeU AND fp.taken_at BETWEEN ? AND ?", 
                                      [$secId, $date_from, $date_to])->fetchColumn();
             } catch (Throwable $e) {}
 
-            // Mileage & GPS points in Section
+            // Mileage & GPS points in Section (scoped)
             $secDist = 0;
             try {
                 $locStats = q("SELECT COUNT(*) pts, ROUND(SUM(speed * 0.005), 1) mileage, MAX(speed) top_spd
                                FROM locations l 
                                JOIN users u ON u.id=l.user_id 
-                               WHERE u.section_id=? AND l.recorded_at BETWEEN ? AND ?",
+                               WHERE u.section_id=? AND $secScopeU AND l.recorded_at BETWEEN ? AND ?",
                               [$secId, $date_from, $date_to])->fetch();
                 $secDist = (float)($locStats['mileage'] ?: ($onDutyCount * 14.5));
             } catch (Throwable $e) {
@@ -991,10 +1004,10 @@ if ($report_type === 'staff_audit') {
                                d.name as dept_name, s.name as sec_name,
                                'field' as photo_type
                         FROM field_photos fp
-                        LEFT JOIN users u ON u.id = fp.user_id
+                        JOIN users u ON u.id = fp.user_id
                         LEFT JOIN departments d ON d.id = u.department_id
                         LEFT JOIN sections s ON s.id = u.section_id
-                        WHERE fp.taken_at BETWEEN ? AND ? $extraWhere
+                        WHERE fp.taken_at BETWEEN ? AND ? AND $secScopeU $extraWhere
                         ORDER BY fp.taken_at DESC", $params)->fetchAll();
     } catch (Throwable $e) {}
 

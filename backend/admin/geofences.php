@@ -1040,6 +1040,12 @@ function initMap() {
     attribution: '© CartoDB'
   });
 
+  const gOpts = { maxZoom: 21, maxNativeZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'], attribution: '© Google' };
+  const gRoad = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', gOpts);
+  const gSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', gOpts);
+  const gHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', gOpts);
+  const gTerrain = L.tileLayer('https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', gOpts);
+
   map = L.map('map', {
     center: [7.2050, 81.6580],
     zoom: 13,
@@ -1048,10 +1054,14 @@ function initMap() {
 
   baseLayers = {
     "OpenStreetMap": osm,
+    "Google Streets": gRoad,
+    "Google Satellite": gSat,
+    "Google Hybrid": gHybrid,
+    "Google Terrain": gTerrain,
     "Esri Satellite": satellite,
     "Clean Light": cartoLight
   };
-  L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
+  L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
 
   // HUD Mouse Movement Coordinates
   map.on('mousemove', function(e) {

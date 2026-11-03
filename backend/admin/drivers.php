@@ -51,17 +51,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// Fetch all available units (machines/staff) for assignment dropdown
-$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY name ASC")->fetchAll();
+$secScopeUsers = user_section_scope_sql('users');
+$secScopeU = user_section_scope_sql('u');
+// Fetch all available units (machines/staff) for assignment dropdown (scoped)
+$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
 
-// Fetch drivers with assigned unit info
+// Fetch drivers with assigned unit info (scoped for non-super users)
 $search = trim($_GET['search'] ?? '');
 $filter_status = $_GET['status'] ?? 'all';
 
+$driverScopeSql = is_super_admin() ? "1=1" : "($secScopeU)";
 $sql = "SELECT d.*, u.name as unit_name, u.code as unit_code, u.unit_type 
         FROM drivers d 
         LEFT JOIN users u ON d.assigned_unit_id = u.id 
-        WHERE 1=1";
+        WHERE $driverScopeSql";
 $params = [];
 
 if ($search !== '') {

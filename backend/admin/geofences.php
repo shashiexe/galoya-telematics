@@ -58,6 +58,21 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'group_coords') {
     exit;
 }
 
+// Handle AJAX: Server-side search across ALL geofences (initial list only loads 500)
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
+    header('Content-Type: application/json; charset=utf-8');
+    $sq = trim($_GET['q'] ?? '');
+    $cat = trim($_GET['cat'] ?? '');
+    if ($sq === '') { echo '[]'; exit; }
+    $like = '%' . $sq . '%';
+    $where = "active=1 AND (name LIKE ? OR code LIKE ? OR group_name LIKE ? OR block_name LIKE ?)";
+    $params = [$like, $like, $like, $like];
+    if ($cat !== '' && $cat !== 'All') { $where .= " AND category=?"; $params[] = $cat; }
+    $rows = q("SELECT id, category, group_name, name, color FROM geofences WHERE $where ORDER BY name ASC LIMIT 300", $params)->fetchAll();
+    echo json_encode($rows);
+    exit;
+}
+
 // Handle AJAX: Fetch single geofence details
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'single_gf') {
     header('Content-Type: application/json; charset=utf-8');
@@ -1370,7 +1385,48 @@ function filterListAndMap() {
   });
 }
 
-function handleSearch(val) { filterListAndMap(); }
+// Server-side search: fetch matches beyond the first 500 preloaded rows and append them
+let _searchTimer = null;
+function _escHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function serverSearch() {
+  const q = document.getElementById('gf-search-input').value.trim();
+  const cat = document.getElementById('sel-category-filter').value;
+  if (q.length < 2) return;
+  fetch(`geofences.php?ajax=search&q=${encodeURIComponent(q)}&cat=${encodeURIComponent(cat)}`)
+    .then(r => r.json())
+    .then(rows => {
+      const box = document.getElementById('gf-list-container');
+      rows.forEach(g => {
+        if (box.querySelector(`.gf-row-item[data-id="${g.id}"]`)) return;
+        const div = document.createElement('div');
+        div.className = 'w-group-item gf-row-item';
+        div.setAttribute('data-id', g.id);
+        div.setAttribute('data-name', String(g.name || '').toLowerCase());
+        div.setAttribute('data-group', g.group_name || '');
+        div.setAttribute('data-category', g.category || 'Plantation');
+        div.setAttribute('data-color', g.color || '#10b981');
+        div.innerHTML = `<div class="w-group-main">
+            <input type="checkbox" class="chk-gf-single" onchange="toggleSingleGf(${g.id}, this.checked)">
+            <div class="w-color-badge" style="background:${_escHtml(g.color || '#10b981')}"></div>
+            <div class="w-group-title" onclick="zoomToSingleGf(${g.id})">
+              <strong>${_escHtml(g.name)}</strong>
+              ${g.group_name ? `<span style="font-size:10.5px;color:#64748b">(${_escHtml(g.group_name)})</span>` : ''}
+            </div>
+            <div class="w-actions-cell">
+              <button type="button" class="w-act-btn" onclick="zoomToSingleGf(${g.id})" title="View on map">🔍</button>
+            </div>
+          </div>`;
+        box.prepend(div);
+      });
+      filterListAndMap();
+    })
+    .catch(() => {});
+}
+function handleSearch(val) {
+  filterListAndMap();
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(serverSearch, 350);
+}
 function clearSearch() {
   document.getElementById('gf-search-input').value = '';
   filterListAndMap();
@@ -1397,19 +1453,52 @@ function finishDrawing() {
     alert('Please place at least 3 points on the map to create a zone.');
     return;
   }
-  const name = prompt('Enter a name for this new Geofence:');
-  if (!name) return;
-
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.innerHTML = `
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="save_geofence">
-    <input type="hidden" name="name" value="${encodeURIComponent(name)}">
-    <input type="hidden" name="coordinates" value='${JSON.stringify(drawnPoints)}'>
-  `;
-  document.body.appendChild(form);
-  form.submit();
+  const zones = <?= json_encode(array_map(fn($g) => ['name' => $g['name'], 'category' => $g['category'] ?? 'Plantation', 'color' => $g['color'] ?? '#10b981'], $groupsData)) ?>;
+  let ov = document.getElementById('draw-save-modal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'draw-save-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center';
+  ov.innerHTML = `
+    <form method="POST" style="background:#fff;border-radius:10px;padding:18px;width:360px;max-width:92vw;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_geofence">
+      <input type="hidden" name="coordinates" id="dsm-coords">
+      <h3 style="margin:0 0 12px;font-size:15px">Save New Geofence</h3>
+      <label style="display:block;margin-bottom:4px;font-weight:600">Geofence Name</label>
+      <input type="text" name="name" id="dsm-name" class="w-form-control" required style="width:100%;margin-bottom:10px">
+      <label style="display:block;margin-bottom:4px;font-weight:600">Category</label>
+      <select name="category" id="dsm-cat" class="w-form-control" style="width:100%;margin-bottom:10px">
+        <option value="Plantation">Plantation</option>
+        <option value="Outgrower">Outgrower</option>
+        <option value="Other">Other</option>
+      </select>
+      <label style="display:block;margin-bottom:4px;font-weight:600">Zone / Group</label>
+      <select name="group_name" id="dsm-zone" class="w-form-control" style="width:100%;margin-bottom:10px"></select>
+      <label style="display:block;margin-bottom:4px;font-weight:600">Color</label>
+      <input type="color" name="color" id="dsm-color" value="#10b981" style="width:60px;height:30px;margin-bottom:14px">
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="btn-wialon-light" onclick="document.getElementById('draw-save-modal').remove()">Cancel</button>
+        <button type="submit" class="btn-wialon-blue">Save Geofence</button>
+      </div>
+    </form>`;
+  document.body.appendChild(ov);
+  document.getElementById('dsm-coords').value = JSON.stringify(drawnPoints);
+  const catSel = document.getElementById('dsm-cat');
+  const zoneSel = document.getElementById('dsm-zone');
+  const colorIn = document.getElementById('dsm-color');
+  function fillZones() {
+    zoneSel.innerHTML = '<option value="">-- No Zone --</option>';
+    zones.filter(z => z.category === catSel.value).forEach(z => {
+      const o = document.createElement('option');
+      o.value = z.name; o.textContent = z.name; o.dataset.color = z.color;
+      zoneSel.appendChild(o);
+    });
+  }
+  catSel.onchange = fillZones;
+  zoneSel.onchange = () => { const c = zoneSel.selectedOptions[0]?.dataset.color; if (c) colorIn.value = c; };
+  fillZones();
+  document.getElementById('dsm-name').focus();
 }
 
 // Modal generic helpers

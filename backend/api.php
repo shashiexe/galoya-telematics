@@ -54,14 +54,14 @@ function auth_user(): array {
 
 function app_config(): array {
     $latestVersion = setting('latest_app_version', '1.3.8');
-    $latestBuild = (int)setting('latest_app_build', 23);
+    $latestBuild = (int)setting('latest_app_build', 24);
     return [
         'location_interval' => (int)setting('location_interval', 60),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
         'upload_batch_size' => (int)setting('upload_batch_size', 500),
         'app_version' => $latestVersion,
         'app_build' => $latestBuild,
-        'apk_url' => 'https://track.galoya.lk/Galoya-Telematics.apk',
+        'apk_url' => 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.3.8-b24/Galoya-Track360-v1.3.8-b24.apk',
         'created_by' => 'GOPL IT',
     ];
 }
@@ -75,8 +75,8 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.3.8');
-        $latestBuild = (int)setting('latest_app_build', 23);
-        $apkUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
+        $latestBuild = (int)setting('latest_app_build', 24);
+        $apkUrl = 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.3.8-b24/Galoya-Track360-v1.3.8-b24.apk';
         $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
@@ -140,43 +140,8 @@ try {
     }
 
     case 'simulator_auth': {
-        // Allows laptop test simulator to easily connect as any fleet machinery/staff unit
-        $uid = (int)($_GET['unit_id'] ?? ($_POST['unit_id'] ?? 2));
-        $u = q('SELECT * FROM users WHERE id=? AND role="staff" AND active=1', [$uid])->fetch();
-        if (!$u) {
-            $u = q('SELECT * FROM users WHERE role="staff" AND active=1 ORDER BY id ASC LIMIT 1')->fetch();
-        }
-        if (!$u) fail('No active staff units found', 404);
-        
-        $token = bin2hex(random_bytes(32));
-        q('INSERT INTO api_tokens (user_id, token_hash) VALUES (?,?)', [$u['id'], hash('sha256', $token)]);
-        
-        $devModel = trim($_REQUEST['device_model'] ?? ($_POST['device_model'] ?? ''));
-        $devId = trim($_REQUEST['unique_id'] ?? ($_POST['unique_id'] ?? ''));
-        if (!$devModel) {
-            $devModel = ($u['unit_type'] === 'staff') ? 'Android Phone (Samsung Galaxy S21)' : ($u['device_type'] ?: 'Teltonika FMB125');
-        }
-        if (!$devId) {
-            $devId = !empty($u['unique_id']) ? $u['unique_id'] : (($u['unit_type'] === 'staff' ? '8661920' : '3505445') . str_pad((string)$u['id'], 8, '0', STR_PAD_LEFT));
-        }
-
-        // Mark online immediately & update device info
-        q('UPDATE users SET last_seen=NOW(), on_duty=1, device_type=?, unique_id=? WHERE id=?', [$devModel, $devId, $u['id']]);
-        
-        out([
-            'ok' => true,
-            'token' => $token,
-            'user' => [
-                'id' => (int)$u['id'],
-                'name' => $u['name'],
-                'code' => $u['code'],
-                'phone' => $u['phone'],
-                'unit_type' => $u['unit_type'],
-                'device_type' => $devModel,
-                'unique_id' => $devId
-            ],
-            'config' => app_config()
-        ]);
+        // Disabled in production so test simulator never touches real staff accounts
+        out(['ok' => false, 'error' => 'Simulator disabled in production']);
     }
 
     case 'set_offline': {
@@ -210,13 +175,6 @@ try {
     case 'locations': {
         // body: {unit_id?, points:[{lat,lng,accuracy,speed,battery,t}]}
         $u = get_auth_user();
-        if (!$u) {
-            $b = body();
-            $simId = (int)($b['unit_id'] ?? ($_GET['unit_id'] ?? 0));
-            if ($simId > 0) {
-                $u = q('SELECT * FROM users WHERE id=? AND role="staff" AND active=1', [$simId])->fetch();
-            }
-        }
         if (!$u) fail('Unauthorized', 401);
 
         $pts = body()['points'] ?? [];
@@ -227,6 +185,10 @@ try {
         db()->beginTransaction();
         foreach (array_slice($pts, 0, 2000) as $p) {
             if (!isset($p['lat'], $p['lng'])) continue;
+            // Ignore any leftover web simulator dummy packets (lat=7.20950, lng=81.65750, accuracy=4.2)
+            if (abs((float)$p['lat'] - 7.20950) < 0.0005 && abs((float)$p['lng'] - 81.65750) < 0.0005 && abs((float)($p['accuracy'] ?? 0) - 4.2) < 0.05) {
+                continue;
+            }
             $dt = isset($p['t']) ? to_dt($p['t']) : date('Y-m-d H:i:s');
             $spd = (float)($p['speed'] ?? 0);
             $batt = isset($p['battery']) ? (int)$p['battery'] : null;

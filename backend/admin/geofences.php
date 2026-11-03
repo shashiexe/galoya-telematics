@@ -28,6 +28,22 @@ try {
     @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `block_name` VARCHAR(100) NULL AFTER `group_name`");
 } catch (Throwable $e) {}
 
+// Wialon-style geofence properties (label style, icon, fill toggle, zoom visibility, circle/line metadata)
+foreach ([
+    "`label_color` VARCHAR(20) NULL",
+    "`label_size` TINYINT UNSIGNED NULL",
+    "`icon` VARCHAR(16) NULL",
+    "`fill_enabled` TINYINT(1) NOT NULL DEFAULT 1",
+    "`min_zoom` TINYINT UNSIGNED NOT NULL DEFAULT 1",
+    "`max_zoom` TINYINT UNSIGNED NOT NULL DEFAULT 19",
+    "`radius` DOUBLE NULL",
+    "`line_width` DOUBLE NULL",
+    "`shape_points` MEDIUMTEXT NULL",
+] as $colDef) {
+    try { @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN $colDef"); } catch (Throwable $e) {}
+}
+const GF_EXTRA_COLS = "label_color, label_size, icon, fill_enabled, min_zoom, max_zoom, radius, line_width, shape_points";
+
 // Handle AJAX: Fetch geofence coordinates for a specific group or all active
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'group_coords') {
     header('Content-Type: application/json; charset=utf-8');
@@ -45,7 +61,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'group_coords') {
         $params[] = $cat;
     }
     
-    $sql = "SELECT id, category, group_name, block_name, name, code, type, coordinates, color, description 
+    $sql = "SELECT id, category, group_name, block_name, name, code, type, coordinates, color, description, " . GF_EXTRA_COLS . "
             FROM geofences WHERE " . implode(' AND ', $where) . " ORDER BY name ASC";
     $rows = q($sql, $params)->fetchAll();
     
@@ -68,7 +84,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
     $where = "active=1 AND (name LIKE ? OR code LIKE ? OR group_name LIKE ? OR block_name LIKE ?)";
     $params = [$like, $like, $like, $like];
     if ($cat !== '' && $cat !== 'All') { $where .= " AND category=?"; $params[] = $cat; }
-    $rows = q("SELECT id, category, group_name, block_name, name, code, color, description FROM geofences WHERE $where ORDER BY name ASC LIMIT 300", $params)->fetchAll();
+    $rows = q("SELECT id, category, group_name, block_name, name, code, type, color, description FROM geofences WHERE $where ORDER BY name ASC LIMIT 300", $params)->fetchAll();
     echo json_encode($rows);
     exit;
 }
@@ -77,7 +93,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'single_gf') {
     header('Content-Type: application/json; charset=utf-8');
     $id = (int)($_GET['id'] ?? 0);
-    $r = q("SELECT id, category, group_name, block_name, name, code, type, coordinates, color, description FROM geofences WHERE id=?", [$id])->fetch();
+    $r = q("SELECT id, category, group_name, block_name, name, code, type, coordinates, color, description, " . GF_EXTRA_COLS . " FROM geofences WHERE id=?", [$id])->fetch();
     if ($r) {
         $r['coords'] = json_decode($r['coordinates'], true);
         unset($r['coordinates']);
@@ -144,24 +160,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Handle POST: Create Single Geofence
+// Handle POST: Create or Update Single Geofence (Wialon properties supported)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_geofence') {
     check_csrf();
-    require_perm('geofences', 'create');
+    $gfId = (int)($_POST['gf_id'] ?? 0);
+    require_perm('geofences', $gfId > 0 ? 'edit' : 'create');
     $name = trim($_POST['name'] ?? '');
-    $code = trim($_POST['code'] ?? $name);
+    $code = trim($_POST['code'] ?? $name) ?: $name;
     $cat = trim($_POST['category'] ?? 'Plantation');
     $groupName = trim($_POST['group_name'] ?? '');
     $blockName = trim($_POST['block_name'] ?? '');
     $color = trim($_POST['color'] ?? '#10b981');
     $desc = trim($_POST['description'] ?? '');
+    $type = in_array($_POST['type'] ?? '', ['polygon', 'circle', 'line'], true) ? $_POST['type'] : 'polygon';
     $coords_raw = trim($_POST['coordinates'] ?? '[]');
+    $labelColor = trim($_POST['label_color'] ?? '#f97316') ?: '#f97316';
+    $labelSize = max(8, min(28, (int)($_POST['label_size'] ?? 12)));
+    $icon = mb_substr(trim($_POST['icon'] ?? ''), 0, 12) ?: null;
+    $fillEnabled = isset($_POST['fill_enabled']) && $_POST['fill_enabled'] === '0' ? 0 : 1;
+    $minZoom = max(1, min(21, (int)($_POST['min_zoom'] ?? 1)));
+    $maxZoom = max($minZoom, min(21, (int)($_POST['max_zoom'] ?? 19)));
+    $radius = isset($_POST['radius']) && $_POST['radius'] !== '' ? (float)$_POST['radius'] : null;
+    $lineWidth = isset($_POST['line_width']) && $_POST['line_width'] !== '' ? (float)$_POST['line_width'] : null;
+    $shapePoints = trim($_POST['shape_points'] ?? '') ?: null;
 
-    if ($name && $coords_raw) {
-        q("INSERT INTO geofences (category, group_name, block_name, name, code, type, coordinates, color, description, active) 
-           VALUES (?, ?, ?, ?, ?, 'polygon', ?, ?, ?, 1)",
-          [$cat, $groupName ?: null, $blockName ?: null, $name, $code, $coords_raw, $color, $desc]);
-        flash('Geofence sector "' . $name . '" created successfully!');
+    $pts = json_decode($coords_raw, true);
+    $cLat = null; $cLng = null;
+    if (is_array($pts) && count($pts) >= 1) {
+        $sLat = 0; $sLng = 0; $n = 0;
+        foreach ($pts as $pt) { if (isset($pt[0], $pt[1])) { $sLat += (float)$pt[0]; $sLng += (float)$pt[1]; $n++; } }
+        if ($n > 0) { $cLat = round($sLat / $n, 6); $cLng = round($sLng / $n, 6); }
+    }
+
+    if ($name && $coords_raw && $coords_raw !== '[]') {
+        $vals = [$cat, $groupName ?: null, $blockName ?: null, $name, $code, $type, $coords_raw, $color, $desc,
+                 $labelColor, $labelSize, $icon, $fillEnabled, $minZoom, $maxZoom, $radius, $lineWidth, $shapePoints];
+        if ($gfId > 0) {
+            q("UPDATE geofences SET category=?, group_name=?, block_name=?, name=?, code=?, type=?, coordinates=?, color=?, description=?,
+                 label_color=?, label_size=?, icon=?, fill_enabled=?, min_zoom=?, max_zoom=?, radius=?, line_width=?, shape_points=?
+               WHERE id=?", array_merge($vals, [$gfId]));
+            if ($cLat !== null) { try { @q("UPDATE geofences SET center_lat=?, center_lng=? WHERE id=?", [$cLat, $cLng, $gfId]); } catch (Throwable $e) {} }
+            flash('Geofence "' . $name . '" updated successfully!');
+        } else {
+            q("INSERT INTO geofences (category, group_name, block_name, name, code, type, coordinates, color, description,
+                 label_color, label_size, icon, fill_enabled, min_zoom, max_zoom, radius, line_width, shape_points, active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)", $vals);
+            $newId = (int)$pdo->lastInsertId();
+            if ($newId > 0 && $cLat !== null) { try { @q("UPDATE geofences SET center_lat=?, center_lng=? WHERE id=?", [$cLat, $cLng, $newId]); } catch (Throwable $e) {} }
+            flash('Geofence "' . $name . '" created successfully!');
+        }
     }
     header('Location: geofences.php');
     exit;
@@ -290,9 +337,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Handle delete single geofence
+// Handle delete single geofence (supports GET ?delete=&csrf= and POST)
 if (isset($_GET['delete'])) {
-    check_csrf();
+    $tok = (string)($_POST['csrf'] ?? ($_GET['csrf'] ?? ''));
+    if (!hash_equals(csrf(), $tok)) { http_response_code(403); exit('Invalid request'); }
     require_perm('geofences', 'delete');
     q("DELETE FROM geofences WHERE id=?", [(int)$_GET['delete']]);
     flash('Geofence deleted.');
@@ -742,14 +790,90 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
       </div>
     </div>
 
-    <!-- Mode banner for manual polygon drawing -->
-    <div id="draw-banner" style="display:none;background:#fef3c7;border-bottom:1px solid #fde68a;padding:8px 12px;font-size:11.5px;color:#92400e">
-      <strong>Drawing Mode:</strong> Click on map to add boundary points.
-      <div style="margin-top:6px;display:flex;gap:6px">
-        <button type="button" class="btn-wialon-blue" style="padding:2px 8px;font-size:11px" onclick="finishDrawing()">Finish Zone</button>
-        <button type="button" class="btn-wialon-light" style="padding:2px 8px;font-size:11px" onclick="cancelDrawing()">Cancel</button>
+    <!-- Wialon-style Geofence Properties Panel (shown on + New or Edit) -->
+    <form method="POST" id="wialon-gf-props" style="display:none;background:#eff3f8;border-bottom:2px solid #cbd5e1;font-size:12px;color:#1e293b">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_geofence">
+      <input type="hidden" name="gf_id" id="wgp-id" value="0">
+      <input type="hidden" name="type" id="wgp-type" value="polygon">
+      <input type="hidden" name="coordinates" id="wgp-coords" value="[]">
+      <input type="hidden" name="shape_points" id="wgp-shape-points" value="">
+      <input type="hidden" name="fill_enabled" id="wgp-fill-hidden" value="1">
+      <div style="background:#dde5ef;padding:5px 10px;font-weight:700;font-size:12px;color:#1e293b;border-bottom:1px solid #cbd5e1" id="wgp-header">Geofence properties</div>
+      <div style="padding:8px 10px;display:grid;grid-template-columns:86px 1fr;row-gap:6px;column-gap:6px;align-items:center">
+        <label>Name: <span style="color:#ef4444">*</span></label>
+        <div style="display:flex;gap:4px;align-items:center">
+          <input type="text" name="name" id="wgp-name" class="w-form-control" value="New geofence" required style="flex:1;padding:3px 6px;font-size:12px">
+          <input type="color" name="label_color" id="wgp-label-color" value="#f97316" title="Label text color" style="width:26px;height:24px;padding:0;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer">
+          <select name="label_size" id="wgp-label-size" class="w-form-control" style="width:62px;padding:2px 4px;font-size:11px">
+            <option value="10">10 px</option><option value="12" selected>12 px</option><option value="14">14 px</option><option value="16">16 px</option><option value="18">18 px</option>
+          </select>
+        </div>
+
+        <label>Resource:</label>
+        <select name="category" id="wgp-cat" class="w-form-control" style="padding:3px 6px;font-size:12px" onchange="wgpSyncGroups()">
+          <option value="Plantation">Galoya Plantations (Pvt) Ltd — Plantation</option>
+          <option value="Outgrower">Galoya Plantations (Pvt) Ltd — Outgrower</option>
+          <option value="Other">Galoya Plantations (Pvt) Ltd — Other</option>
+        </select>
+
+        <label style="align-self:start;padding-top:3px">Description:</label>
+        <textarea name="description" id="wgp-desc" class="w-form-control" rows="2" style="padding:3px 6px;font-size:12px;resize:vertical"></textarea>
+
+        <label>Group:</label>
+        <select name="group_name" id="wgp-group" class="w-form-control" style="padding:3px 6px;font-size:12px" onchange="wgpGroupChanged()"></select>
+
+        <label>Type:</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="display:inline-flex;border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;background:#fff">
+            <button type="button" class="wgp-type-btn" data-t="circle" onclick="wgpSetType('circle')" title="Circle (click center, set radius)" style="border:0;background:#fff;padding:4px 9px;cursor:pointer;font-size:13px">●</button>
+            <button type="button" class="wgp-type-btn" data-t="polygon" onclick="wgpSetType('polygon')" title="Polygon (click boundary points)" style="border:0;border-left:1px solid #cbd5e1;border-right:1px solid #cbd5e1;background:#dbeafe;padding:4px 9px;cursor:pointer;font-size:13px;color:#1d4ed8">⬟</button>
+            <button type="button" class="wgp-type-btn" data-t="line" onclick="wgpSetType('line')" title="Line / Corridor" style="border:0;background:#fff;padding:4px 9px;cursor:pointer;font-size:13px">〰</button>
+          </div>
+          <span id="wgp-radius-wrap" style="display:none;font-size:11px">R (m): <input type="number" name="radius" id="wgp-radius" value="100" min="5" step="5" style="width:62px;padding:2px 4px;font-size:11px" oninput="wgpRebuildShape()"></span>
+          <span id="wgp-width-wrap" style="display:none;font-size:11px">W (m): <input type="number" name="line_width" id="wgp-width" value="20" min="2" step="2" style="width:54px;padding:2px 4px;font-size:11px" oninput="wgpRebuildShape()"></span>
+        </div>
+
+        <label>Area:</label>
+        <div id="wgp-area" style="font-weight:600;color:#334155">0.000 ha</div>
+
+        <label>Perimeter:</label>
+        <div id="wgp-perim" style="font-weight:600;color:#334155">0.000 km, (0 m)</div>
+
+        <label>Icon:</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div id="wgp-icon-box" style="width:36px;height:36px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#94a3b8">✕</div>
+          <input type="hidden" name="icon" id="wgp-icon" value="">
+          <button type="button" class="btn-wialon-light" style="padding:4px 10px;font-size:11.5px;color:#2563eb" onclick="wgpToggleIcons()">Icon library</button>
+          <button type="button" class="btn-wialon-light" style="padding:4px 6px;font-size:11px" onclick="wgpPickIcon('')" title="Clear icon">Clear</button>
+        </div>
+        <div id="wgp-icon-picker" style="display:none;grid-column:1 / -1;background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:5px;gap:4px;flex-wrap:wrap">
+          <?php foreach (['🌾','🌴','🚜','🏭','🏢','🏠','⛽','💧','🚧','⚠️','📍','🚩','🛡️','📦','🔧','🌳'] as $ic): ?>
+            <button type="button" onclick="wgpPickIcon('<?= $ic ?>')" style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:4px;width:28px;height:28px;cursor:pointer;font-size:16px"><?= $ic ?></button>
+          <?php endforeach; ?>
+        </div>
+
+        <label>Color:</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="wgp-fill-chk" checked onchange="document.getElementById('wgp-fill-hidden').value=this.checked?'1':'0';wgpUpdatePreviewStyle()">
+          <input type="color" name="color" id="wgp-color" value="#15803d" onchange="wgpUpdatePreviewStyle()" style="width:32px;height:24px;padding:0;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer">
+        </div>
+
+        <label>Visibility:</label>
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px">
+          <span>from:</span>
+          <input type="number" name="min_zoom" id="wgp-min-zoom" value="1" min="1" max="21" style="width:46px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px">
+          <span>to:</span>
+          <input type="number" name="max_zoom" id="wgp-max-zoom" value="19" min="1" max="21" style="width:46px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px">
+        </div>
       </div>
-    </div>
+      <div style="padding:4px 10px 6px;font-size:10.5px;color:#475569" id="wgp-hint">Click on map to add polygon points. Double-click a point to remove it.</div>
+      <div style="padding:6px 10px 10px;display:flex;justify-content:center;gap:8px;border-top:1px solid #cbd5e1;background:#e5ecf4">
+        <button type="button" class="btn-wialon-light" style="min-width:68px" onclick="cancelDrawing()">Cancel</button>
+        <button type="button" class="btn-wialon-light" style="min-width:68px" onclick="wgpClearPoints()">Clear</button>
+        <button type="submit" class="btn-wialon-blue" style="min-width:74px" onclick="return wgpBeforeSubmit()">Save</button>
+      </div>
+    </form>
 
     <!-- Fast Sync Banner if geofences empty or need seed -->
     <?php if ($totalGeofences < 100): ?>
@@ -789,6 +913,12 @@ layout_start('Geofences · Galoya Telematics', 'geofences.php', true);
               <div class="w-actions-cell">
                 <span title="Units inside" style="font-size:11px;color:#64748b;display:inline-flex;align-items:center;gap:2px">🚍 0</span>
                 <button type="button" class="w-act-btn" onclick="zoomToSingleGf(<?= $g['id'] ?>)" title="View on map">🔍</button>
+                <?php if (can('geofences', 'edit')): ?>
+                  <button type="button" class="w-act-btn" onclick="editGeofence(<?= $g['id'] ?>)" title="Edit properties">🔧</button>
+                <?php endif; ?>
+                <?php if (can('geofences', 'create')): ?>
+                  <button type="button" class="w-act-btn" onclick="editGeofence(<?= $g['id'] ?>, true)" title="Copy geofence">❐</button>
+                <?php endif; ?>
                 <?php if (can('geofences', 'delete')): ?>
                   <a href="geofences.php?delete=<?= $g['id'] ?>&csrf=<?= csrf() ?>" onclick="return confirm('Delete geofence <?= h($g['name']) ?>?')" class="w-act-btn del" title="Delete">✕</a>
                 <?php endif; ?>
@@ -1073,22 +1203,13 @@ function initMap() {
     if (hud) hud.innerHTML = `${latStr} &nbsp; ${lngStr}`;
   });
 
-  // Map click for drawing
+  // Map click for Wialon drawing (Polygon / Circle / Line)
   map.on('click', function(e) {
     if (!drawingMode) return;
-    const p = [e.latlng.lat, e.latlng.lng];
-    drawnPoints.push(p);
-
-    const m = L.circleMarker(p, { radius: 5, color: '#0284c7', fillColor: '#fff', fillOpacity: 1 }).addTo(map);
-    drawMarkers.push(m);
-
-    if (drawnPoints.length > 1) {
-      if (!drawPolyline) {
-        drawPolyline = L.polyline(drawnPoints, { color: '#0284c7', weight: 2, dashArray: '4, 4' }).addTo(map);
-      } else {
-        drawPolyline.setLatLngs(drawnPoints);
-      }
-    }
+    wgpAddPoint([e.latlng.lat, e.latlng.lng]);
+  });
+  map.on('zoomend', function() {
+    if (typeof wgpApplyZoomVisibility === 'function') wgpApplyZoomVisibility();
   });
 }
 
@@ -1237,21 +1358,27 @@ function toggleSingleGf(id, checked) {
       map.addLayer(singleGfLayers[id]);
       return;
     }
-    fetch(`geofences.php?ajax=single_gf&id=${id}`)
+        fetch(`geofences.php?ajax=single_gf&id=${id}`)
       .then(res => res.json())
       .then(s => {
         if (!s || !s.coords) return;
+        const fillOn = String(s.fill_enabled ?? '1') !== '0';
+        const col = s.color || '#10b981';
         const poly = L.polygon(s.coords, {
-          color: '#ffffff',
+          color: fillOn ? '#ffffff' : col,
           weight: 2,
-          fillColor: s.color || '#10b981',
-          fillOpacity: 0.7
+          fillColor: col,
+          fillOpacity: fillOn ? 0.7 : 0
         }).addTo(map);
-
-        poly.bindTooltip(s.name, { permanent: true, direction: 'center', className: 'sector-label' });
-        poly.bindPopup(`<strong>${s.name}</strong><br>Zone: ${s.group_name || 'N/A'}`);
+        poly._gfMeta = { minZ: parseInt(s.min_zoom || 1), maxZ: parseInt(s.max_zoom || 19) };
+        const lblCol = _escHtml(s.label_color || '#ffffff');
+        const lblSz = parseInt(s.label_size || 12);
+        const ic = s.icon ? (_escHtml(s.icon) + ' ') : '';
+        poly.bindTooltip(`<span style="color:${lblCol};font-size:${lblSz}px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.85)">${ic}${_escHtml(s.name)}</span>`, { permanent: true, direction: 'center', className: 'sector-label' });
+        poly.bindPopup(`<strong>${ic}${_escHtml(s.name)}</strong><br>Zone: ${_escHtml(s.group_name || 'N/A')}`);
         singleGfLayers[id] = poly;
         map.fitBounds(poly.getBounds(), { padding: [40, 40], maxZoom: 16 });
+        if (typeof wgpApplyZoomVisibility === 'function') wgpApplyZoomVisibility();
       });
   } else {
     if (singleGfLayers[id]) {
@@ -1398,7 +1525,10 @@ function filterListAndMap() {
 // Server-side search: fetch matches beyond the first 500 preloaded rows and append them
 let _searchTimer = null;
 const GF_CAN_DELETE = <?= can('geofences', 'delete') ? 'true' : 'false' ?>;
+const GF_CAN_EDIT = <?= can('geofences', 'edit') ? 'true' : 'false' ?>;
+const GF_CAN_CREATE = <?= can('geofences', 'create') ? 'true' : 'false' ?>;
 const GF_CSRF = <?= json_encode(csrf()) ?>;
+const GF_ZONES = <?= json_encode(array_map(fn($g) => ['name' => $g['name'], 'category' => $g['category'] ?? 'Plantation', 'color' => $g['color'] ?? '#10b981'], $groupsData)) ?>;
 function _escHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function serverSearch() {
   const q = document.getElementById('gf-search-input').value.trim();
@@ -1423,6 +1553,8 @@ function serverSearch() {
           g.block_name ? `Block: <b>${_escHtml(g.block_name)}</b>` : '',
           (g.code && g.code !== g.name) ? `Code: <b>${_escHtml(g.code)}</b>` : '',
         ].filter(Boolean).join(' | ');
+        const editBtn = GF_CAN_EDIT ? `<button type="button" class="w-act-btn" onclick="editGeofence(${g.id})" title="Edit properties">🔧</button>` : '';
+        const copyBtn = GF_CAN_CREATE ? `<button type="button" class="w-act-btn" onclick="editGeofence(${g.id}, true)" title="Copy geofence">❐</button>` : '';
         const delBtn = GF_CAN_DELETE
           ? `<a href="geofences.php?delete=${g.id}&csrf=${encodeURIComponent(GF_CSRF)}" class="w-act-btn del" title="Delete"
                onclick="return confirm('Delete geofence ' + ${_escHtml(JSON.stringify(String(g.name || '')))} + '?')">✕</a>`
@@ -1437,7 +1569,7 @@ function serverSearch() {
             </div>
             <div class="w-actions-cell">
               <button type="button" class="w-act-btn" onclick="zoomToSingleGf(${g.id})" title="View on map">🔍</button>
-              ${delBtn}
+              ${editBtn}${copyBtn}${delBtn}
             </div>
           </div>`;
         box.prepend(div);
@@ -1456,73 +1588,257 @@ function clearSearch() {
   filterListAndMap();
 }
 
-// Drawing Mode
-function startDrawingMode() {
-  drawingMode = true;
-  drawnPoints = [];
-  document.getElementById('draw-banner').style.display = 'block';
-  map.getContainer().style.cursor = 'crosshair';
+// ============================================================================
+// Wialon Geofence Properties & Drawing Engine (Polygon, Circle, Line/Corridor)
+// ============================================================================
+let wgpShapeType = 'polygon';
+let wgpPolygonPoints = []; // final polygon [lat,lng] ring saved to `coordinates`
+
+function wgpSyncGroups(selectedGroup) {
+  const cat = document.getElementById('wgp-cat').value;
+  const sel = document.getElementById('wgp-group');
+  const prev = selectedGroup !== undefined ? selectedGroup : sel.value;
+  sel.innerHTML = '<option value="">None</option>';
+  GF_ZONES.filter(z => z.category === cat).forEach(z => {
+    const o = document.createElement('option');
+    o.value = z.name; o.textContent = z.name; o.dataset.color = z.color;
+    if (z.name === prev) o.selected = true;
+    sel.appendChild(o);
+  });
 }
-function cancelDrawing() {
-  drawingMode = false;
-  drawnPoints = [];
+function wgpGroupChanged() {
+  const c = document.getElementById('wgp-group').selectedOptions[0]?.dataset.color;
+  if (c) { document.getElementById('wgp-color').value = c; wgpUpdatePreviewStyle(); }
+}
+function wgpToggleIcons() {
+  const p = document.getElementById('wgp-icon-picker');
+  p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+}
+function wgpPickIcon(ic) {
+  document.getElementById('wgp-icon').value = ic;
+  const box = document.getElementById('wgp-icon-box');
+  box.textContent = ic || '✕';
+  box.style.color = ic ? '#0f172a' : '#94a3b8';
+  document.getElementById('wgp-icon-picker').style.display = 'none';
+}
+function wgpSetType(t) {
+  wgpShapeType = t;
+  document.getElementById('wgp-type').value = t;
+  document.querySelectorAll('.wgp-type-btn').forEach(b => {
+    const on = b.dataset.t === t;
+    b.style.background = on ? '#dbeafe' : '#fff';
+    b.style.color = on ? '#1d4ed8' : '#1e293b';
+  });
+  document.getElementById('wgp-radius-wrap').style.display = t === 'circle' ? 'inline' : 'none';
+  document.getElementById('wgp-width-wrap').style.display = t === 'line' ? 'inline' : 'none';
+  document.getElementById('wgp-hint').textContent =
+    t === 'circle' ? 'Click on map to set circle center (or click a second point to set radius).' :
+    t === 'line' ? 'Click points along the route/corridor. Width (W) sets buffer in meters.' :
+    'Click on map to add polygon points. Double-click a point marker to remove it.';
+  if (t === 'circle' && drawnPoints.length > 1) drawnPoints = [drawnPoints[0]];
+  wgpRebuildShape();
+}
+
+function wgpDistM(a, b) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * toR, dLng = (b[1] - a[1]) * toR;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a[0]*toR)*Math.cos(b[0]*toR)*Math.sin(dLng/2)**2;
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+function wgpDestPoint(pt, brngRad, distM) {
+  const R = 6371000, toR = Math.PI / 180, toD = 180 / Math.PI;
+  const d = distM / R, lat1 = pt[0] * toR, lng1 = pt[1] * toR;
+  const lat2 = Math.asin(Math.sin(lat1)*Math.cos(d) + Math.cos(lat1)*Math.sin(d)*Math.cos(brngRad));
+  const lng2 = lng1 + Math.atan2(Math.sin(brngRad)*Math.sin(d)*Math.cos(lat1), Math.cos(d) - Math.sin(lat1)*Math.sin(lat2));
+  return [+(lat2 * toD).toFixed(7), + (lng2 * toD).toFixed(7)];
+}
+function wgpCircleRing(center, rM, n = 36) {
+  const pts = [];
+  for (let i = 0; i < n; i++) pts.push(wgpDestPoint(center, (2 * Math.PI * i) / n, rM));
+  return pts;
+}
+function wgpLineBufferRing(pts, widthM) {
+  if (pts.length < 2) return [];
+  const half = Math.max(1, widthM / 2), left = [], right = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const mLat = ((a[0] + b[0]) / 2) * Math.PI / 180;
+    const dy = b[0] - a[0], dx = (b[1] - a[1]) * Math.cos(mLat);
+    const brng = Math.atan2(dx, dy);
+    left.push(wgpDestPoint(pts[i], brng - Math.PI / 2, half));
+    right.unshift(wgpDestPoint(pts[i], brng + Math.PI / 2, half));
+  }
+  return left.concat(right);
+}
+function wgpPolygonAreaM2(pts) {
+  if (!pts || pts.length < 3) return 0;
+  const R = 6371000, toR = Math.PI / 180, lat0 = pts[0][0] * toR, cos0 = Math.cos(lat0);
+  let sum = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+    const x1 = p1[1] * toR * R * cos0, y1 = p1[0] * toR * R;
+    const x2 = p2[1] * toR * R * cos0, y2 = p2[0] * toR * R;
+    sum += (x1 * y2 - x2 * y1);
+  }
+  return Math.abs(sum) / 2;
+}
+function wgpPerimeterM(pts, closed = true) {
+  if (!pts || pts.length < 2) return 0;
+  let d = 0;
+  for (let i = 0; i < pts.length - 1; i++) d += wgpDistM(pts[i], pts[i + 1]);
+  if (closed && pts.length > 2) d += wgpDistM(pts[pts.length - 1], pts[0]);
+  return d;
+}
+
+function wgpAddPoint(p) {
+  if (wgpShapeType === 'circle') {
+    if (drawnPoints.length === 0) {
+      drawnPoints = [p];
+    } else {
+      const r = Math.max(5, Math.round(wgpDistM(drawnPoints[0], p)));
+      document.getElementById('wgp-radius').value = r;
+    }
+  } else {
+    drawnPoints.push(p);
+  }
+  wgpRebuildShape();
+}
+
+function wgpRebuildShape() {
   drawMarkers.forEach(m => map.removeLayer(m));
   drawMarkers = [];
   if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
-  document.getElementById('draw-banner').style.display = 'none';
+
+  drawnPoints.forEach((pt, idx) => {
+    const mk = L.marker(pt, {
+      draggable: true,
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="width:10px;height:10px;background:#fff;border:2px solid #0284c7;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>',
+        iconSize: [10, 10], iconAnchor: [5, 5]
+      })
+    }).addTo(map);
+    mk.on('drag', e => { const ll = e.target.getLatLng(); drawnPoints[idx] = [ll.lat, ll.lng]; wgpUpdateGeometryOnly(); });
+    mk.on('dblclick', e => { L.DomEvent.stopPropagation(e); drawnPoints.splice(idx, 1); wgpRebuildShape(); });
+    drawMarkers.push(mk);
+  });
+  wgpUpdateGeometryOnly();
+}
+
+function wgpUpdateGeometryOnly() {
+  const col = document.getElementById('wgp-color').value || '#15803d';
+  const fillOn = document.getElementById('wgp-fill-chk').checked;
+  let areaM2 = 0, perimM = 0;
+  wgpPolygonPoints = [];
+
+  if (wgpShapeType === 'circle' && drawnPoints.length >= 1) {
+    const r = Math.max(5, parseFloat(document.getElementById('wgp-radius').value) || 100);
+    wgpPolygonPoints = wgpCircleRing(drawnPoints[0], r, 36);
+    areaM2 = Math.PI * r * r;
+    perimM = 2 * Math.PI * r;
+  } else if (wgpShapeType === 'line' && drawnPoints.length >= 2) {
+    const w = Math.max(2, parseFloat(document.getElementById('wgp-width').value) || 20);
+    wgpPolygonPoints = wgpLineBufferRing(drawnPoints, w);
+    perimM = wgpPerimeterM(drawnPoints, false);
+    areaM2 = perimM * w;
+  } else if (wgpShapeType === 'polygon' && drawnPoints.length >= 1) {
+    wgpPolygonPoints = drawnPoints.map(p => [+p[0].toFixed(7), +p[1].toFixed(7)]);
+    areaM2 = wgpPolygonAreaM2(wgpPolygonPoints);
+    perimM = wgpPerimeterM(wgpPolygonPoints, true);
+  }
+
+  if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+  if (wgpPolygonPoints.length >= 2) {
+    drawPolyline = L.polygon(wgpPolygonPoints, {
+      color: col, weight: 2, fillColor: col, fillOpacity: fillOn ? 0.45 : 0
+    }).addTo(map);
+  }
+
+  document.getElementById('wgp-area').textContent = (areaM2 / 10000).toFixed(3) + ' ha';
+  document.getElementById('wgp-perim').textContent = (perimM / 1000).toFixed(3) + ' km, (' + Math.round(perimM) + ' m)';
+  document.getElementById('wgp-coords').value = JSON.stringify(wgpPolygonPoints);
+  document.getElementById('wgp-shape-points').value = JSON.stringify(drawnPoints);
+}
+function wgpUpdatePreviewStyle() { wgpUpdateGeometryOnly(); }
+function wgpClearPoints() { drawnPoints = []; wgpRebuildShape(); }
+
+function startDrawingMode(prefill) {
+  switchMainTab('geofences');
+  drawingMode = true;
+  drawnPoints = [];
+  document.getElementById('wialon-gf-props').style.display = 'block';
+  document.getElementById('wgp-id').value = prefill?.id || 0;
+  document.getElementById('wgp-header').textContent = prefill?.id ? ('Edit geofence: ' + prefill.name) : 'Geofence properties';
+  document.getElementById('wgp-name').value = prefill?.name || 'New geofence';
+  document.getElementById('wgp-label-color').value = prefill?.label_color || '#f97316';
+  document.getElementById('wgp-label-size').value = String(prefill?.label_size || 12);
+  document.getElementById('wgp-cat').value = prefill?.category || 'Plantation';
+  wgpSyncGroups(prefill?.group_name || '');
+  document.getElementById('wgp-desc').value = prefill?.description || '';
+  const fillOn = String(prefill?.fill_enabled ?? '1') !== '0';
+  document.getElementById('wgp-fill-chk').checked = fillOn;
+  document.getElementById('wgp-fill-hidden').value = fillOn ? '1' : '0';
+  document.getElementById('wgp-color').value = prefill?.color || '#15803d';
+  document.getElementById('wgp-min-zoom').value = prefill?.min_zoom || 1;
+  document.getElementById('wgp-max-zoom').value = prefill?.max_zoom || 19;
+  document.getElementById('wgp-radius').value = prefill?.radius || 100;
+  document.getElementById('wgp-width').value = prefill?.line_width || 20;
+  wgpPickIcon(prefill?.icon || '');
+  wgpSetType(prefill?.type || 'polygon');
+  if (prefill?.points && Array.isArray(prefill.points)) {
+    drawnPoints = prefill.points.map(p => [parseFloat(p[0]), parseFloat(p[1])]);
+  }
+  wgpRebuildShape();
+  map.getContainer().style.cursor = 'crosshair';
+  document.getElementById('wgp-name').focus();
+}
+
+function editGeofence(id, asCopy = false) {
+  fetch(`geofences.php?ajax=single_gf&id=${id}`)
+    .then(r => r.json())
+    .then(s => {
+      if (!s) return;
+      let pts = s.coords || [];
+      if (s.shape_points) { try { const sp = JSON.parse(s.shape_points); if (Array.isArray(sp) && sp.length) pts = sp; } catch (_) {} }
+      s.points = pts;
+      if (asCopy) { s.id = 0; s.name = (s.name || 'Geofence') + ' (Copy)'; }
+      startDrawingMode(s);
+      if (drawPolyline) map.fitBounds(drawPolyline.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    });
+}
+
+function cancelDrawing() {
+  drawingMode = false;
+  drawnPoints = [];
+  wgpPolygonPoints = [];
+  drawMarkers.forEach(m => map.removeLayer(m));
+  drawMarkers = [];
+  if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+  document.getElementById('wialon-gf-props').style.display = 'none';
   map.getContainer().style.cursor = '';
 }
-function finishDrawing() {
-  if (drawnPoints.length < 3) {
-    alert('Please place at least 3 points on the map to create a zone.');
-    return;
+
+function wgpBeforeSubmit() {
+  wgpUpdateGeometryOnly();
+  if (wgpPolygonPoints.length < 3) {
+    alert(wgpShapeType === 'circle' ? 'Please click on the map to place the circle center.' :
+          wgpShapeType === 'line' ? 'Please click at least 2 points on the map for the line.' :
+          'Please place at least 3 points on the map to create a polygon.');
+    return false;
   }
-  const zones = <?= json_encode(array_map(fn($g) => ['name' => $g['name'], 'category' => $g['category'] ?? 'Plantation', 'color' => $g['color'] ?? '#10b981'], $groupsData)) ?>;
-  let ov = document.getElementById('draw-save-modal');
-  if (ov) ov.remove();
-  ov = document.createElement('div');
-  ov.id = 'draw-save-modal';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center';
-  ov.innerHTML = `
-    <form method="POST" style="background:#fff;border-radius:10px;padding:18px;width:360px;max-width:92vw;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.3)">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="save_geofence">
-      <input type="hidden" name="coordinates" id="dsm-coords">
-      <h3 style="margin:0 0 12px;font-size:15px">Save New Geofence</h3>
-      <label style="display:block;margin-bottom:4px;font-weight:600">Geofence Name</label>
-      <input type="text" name="name" id="dsm-name" class="w-form-control" required style="width:100%;margin-bottom:10px">
-      <label style="display:block;margin-bottom:4px;font-weight:600">Category</label>
-      <select name="category" id="dsm-cat" class="w-form-control" style="width:100%;margin-bottom:10px">
-        <option value="Plantation">Plantation</option>
-        <option value="Outgrower">Outgrower</option>
-        <option value="Other">Other</option>
-      </select>
-      <label style="display:block;margin-bottom:4px;font-weight:600">Zone / Group</label>
-      <select name="group_name" id="dsm-zone" class="w-form-control" style="width:100%;margin-bottom:10px"></select>
-      <label style="display:block;margin-bottom:4px;font-weight:600">Color</label>
-      <input type="color" name="color" id="dsm-color" value="#10b981" style="width:60px;height:30px;margin-bottom:14px">
-      <div style="display:flex;justify-content:flex-end;gap:8px">
-        <button type="button" class="btn-wialon-light" onclick="document.getElementById('draw-save-modal').remove()">Cancel</button>
-        <button type="submit" class="btn-wialon-blue">Save Geofence</button>
-      </div>
-    </form>`;
-  document.body.appendChild(ov);
-  document.getElementById('dsm-coords').value = JSON.stringify(drawnPoints);
-  const catSel = document.getElementById('dsm-cat');
-  const zoneSel = document.getElementById('dsm-zone');
-  const colorIn = document.getElementById('dsm-color');
-  function fillZones() {
-    zoneSel.innerHTML = '<option value="">-- No Zone --</option>';
-    zones.filter(z => z.category === catSel.value).forEach(z => {
-      const o = document.createElement('option');
-      o.value = z.name; o.textContent = z.name; o.dataset.color = z.color;
-      zoneSel.appendChild(o);
-    });
-  }
-  catSel.onchange = fillZones;
-  zoneSel.onchange = () => { const c = zoneSel.selectedOptions[0]?.dataset.color; if (c) colorIn.value = c; };
-  fillZones();
-  document.getElementById('dsm-name').focus();
+  return true;
+}
+
+function wgpApplyZoomVisibility() {
+  const z = map.getZoom();
+  Object.values(singleGfLayers).forEach(layer => {
+    if (!layer._gfMeta) return;
+    const vis = z >= layer._gfMeta.minZ && z <= layer._gfMeta.maxZ;
+    const el = layer.getElement?.();
+    if (el) el.style.display = vis ? '' : 'none';
+    const tp = layer.getTooltip?.()?.getElement?.();
+    if (tp) tp.style.display = vis ? '' : 'none';
+  });
 }
 
 // Modal generic helpers

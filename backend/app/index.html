@@ -1673,13 +1673,8 @@
     }
 
     async function authenticateSimulator(unitId) {
-      try {
-        const res = await fetch(`../api.php?action=simulator_auth&unit_id=${unitId}`);
-        const data = await res.json();
-        if (data.ok && data.token) {
-          localStorage.setItem('staff_token', data.token);
-        }
-      } catch (_) {}
+      // Simulator runs in local preview mode only; never overwrite production staff units
+      return;
     }
 
     // Telemetry Ping
@@ -1689,27 +1684,6 @@
       packetCount++;
       document.getElementById('dock-packet-stats').textContent = `${packetCount} Packets Sent`;
       document.getElementById('unit-telemetry-stats').textContent = `📍 Accuracy ${currentAccuracy.toFixed(0)} m · Speed ${currentSpeed.toFixed(1)} km/h`;
-
-      const token = localStorage.getItem('staff_token');
-      const pt = {
-        lat: currentLat,
-        lng: currentLng,
-        accuracy: currentAccuracy,
-        speed: currentSpeed,
-        battery: currentBattery,
-        t: Date.now()
-      };
-
-      try {
-        await fetch('../api.php?action=locations', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            unit_id: currentUnitId,
-            points: [pt]
-          })
-        });
-      } catch (_) {}
     }
 
     // Drive Simulation

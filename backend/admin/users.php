@@ -365,7 +365,7 @@ layout_start('Web User Management', 'users.php');
             </td>
             <td style="padding:10px 14px;text-align:right;white-space:nowrap">
               <?php if (can('users', 'edit')): ?>
-                <button type="button" class="btn ghost sm" onclick='editUser(<?= json_encode($u) ?>)' style="padding:4px 8px;font-size:11px">
+                <button type="button" class="btn ghost sm" onclick='editUser(<?= json_encode($u, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' style="padding:4px 8px;font-size:11px">
                   ✏️ Edit
                 </button>
               <?php endif; ?>
@@ -797,8 +797,9 @@ function applyRolePreset(role) {
     setPermsFor('notifications', ['view', 'resolve']);
     setPermsFor('staff', ['view']);
   } else if (role === 'supervisor') {
-    // Field Supervisor: Monitoring, Photos, Tasks (full), Geofences view, Fleet view, Messages
+    // Field Supervisor: Monitoring, Dashboard, Photos, Tasks (full), Geofences view, Fleet view, Messages
     setPermsFor('monitoring', ['view']);
+    setPermsFor('dashboard', ['view']);
     setPermsFor('photos', ['view', 'download']);
     setPermsFor('tasks', ['view', 'create', 'edit', 'status']);
     setPermsFor('geofences', ['view']);
@@ -806,8 +807,9 @@ function applyRolePreset(role) {
     setPermsFor('messages', ['view', 'send']);
     setPermsFor('notifications', ['view', 'resolve']);
   } else if (role === 'operator') {
-    // Fleet Operator: Units (all), Drivers (all), History, Monitoring
+    // Fleet Operator: Units (all), Drivers (all), History, Monitoring, Dashboard
     setPermsFor('monitoring', ['view']);
+    setPermsFor('dashboard', ['view']);
     setPermsFor('units', ['view', 'create', 'edit', 'toggle']);
     setPermsFor('drivers', ['view', 'create', 'edit']);
     setPermsFor('history', ['view']);

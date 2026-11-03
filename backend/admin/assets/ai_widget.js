@@ -182,11 +182,175 @@
     }
   });
 
+  // =========================================================================
+  // Draggable + Persistent Position for AI Trigger Button & AI Modal Window
+  // =========================================================================
+  var BTN_POS_KEY = 'track360_ai_btn_pos_v1';
+  var MODAL_POS_KEY = 'track360_ai_modal_pos_v1';
+  var MODAL_EXP_KEY = 'track360_ai_modal_exp_v1';
+  var triggerDragged = false;
+
+  function clampPosition(el, left, top) {
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    var rect = el.getBoundingClientRect();
+    var w = rect.width || el.offsetWidth || 140;
+    var h = rect.height || el.offsetHeight || 44;
+    var minX = 6;
+    var minY = 6;
+    var maxX = Math.max(minX, vw - w - 6);
+    var maxY = Math.max(minY, vh - h - 6);
+    return {
+      left: Math.min(Math.max(minX, Math.round(left)), maxX),
+      top: Math.min(Math.max(minY, Math.round(top)), maxY)
+    };
+  }
+
+  function applyElementPos(el, pos) {
+    if (!pos || typeof pos.left !== 'number' || typeof pos.top !== 'number') return;
+    var c = clampPosition(el, pos.left, pos.top);
+    el.style.left = c.left + 'px';
+    el.style.top = c.top + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+  }
+
+  function restoreSavedPositions() {
+    try {
+      var expSaved = localStorage.getItem(MODAL_EXP_KEY);
+      if (expSaved === '1') {
+        modal.classList.add('expanded');
+        expandBtn.textContent = '⤡';
+      }
+    } catch (e) {}
+
+    try {
+      var rawBtn = localStorage.getItem(BTN_POS_KEY);
+      if (rawBtn) {
+        var bPos = JSON.parse(rawBtn);
+        applyElementPos(trigger, bPos);
+      }
+    } catch (e) {}
+
+    try {
+      var rawMod = localStorage.getItem(MODAL_POS_KEY);
+      if (rawMod) {
+        var mPos = JSON.parse(rawMod);
+        applyElementPos(modal, mPos);
+      }
+    } catch (e) {}
+  }
+
+  function makeDraggable(targetEl, handleEl, storageKey, onDragStatusChange) {
+    var isDown = false;
+    var hasMoved = false;
+    var startX = 0, startY = 0;
+    var origLeft = 0, origTop = 0;
+
+    function getClientXY(e) {
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
+    }
+
+    function onStart(e) {
+      if (e.type === 'mousedown' && e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest('.ctrl-btns')) return;
+      var pt = getClientXY(e);
+      var rect = targetEl.getBoundingClientRect();
+      isDown = true;
+      hasMoved = false;
+      startX = pt.x;
+      startY = pt.y;
+      origLeft = rect.left;
+      origTop = rect.top;
+
+      document.addEventListener('mousemove', onMove, { passive: false });
+      document.addEventListener('mouseup', onEnd);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+    }
+
+    function onMove(e) {
+      if (!isDown) return;
+      var pt = getClientXY(e);
+      var dx = pt.x - startX;
+      var dy = pt.y - startY;
+      if (!hasMoved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+
+      if (!hasMoved) {
+        hasMoved = true;
+        targetEl.classList.add('dragging');
+        if (onDragStatusChange) onDragStatusChange(true);
+      }
+      if (e.cancelable) e.preventDefault();
+
+      var c = clampPosition(targetEl, origLeft + dx, origTop + dy);
+      targetEl.style.left = c.left + 'px';
+      targetEl.style.top = c.top + 'px';
+      targetEl.style.right = 'auto';
+      targetEl.style.bottom = 'auto';
+    }
+
+    function onEnd() {
+      if (!isDown) return;
+      isDown = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+
+      if (hasMoved) {
+        targetEl.classList.remove('dragging');
+        var rect = targetEl.getBoundingClientRect();
+        var finalPos = clampPosition(targetEl, rect.left, rect.top);
+        targetEl.style.left = finalPos.left + 'px';
+        targetEl.style.top = finalPos.top + 'px';
+        targetEl.style.right = 'auto';
+        targetEl.style.bottom = 'auto';
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(finalPos));
+        } catch (err) {}
+        setTimeout(function() {
+          if (onDragStatusChange) onDragStatusChange(false);
+        }, 50);
+      }
+    }
+
+    handleEl.addEventListener('mousedown', onStart);
+    handleEl.addEventListener('touchstart', onStart, { passive: true });
+  }
+
+  var modalHeader = modal.querySelector('.ai-modal-header');
+  makeDraggable(trigger, trigger, BTN_POS_KEY, function(dragging) {
+    triggerDragged = dragging;
+  });
+  if (modalHeader) {
+    makeDraggable(modal, modalHeader, MODAL_POS_KEY);
+  }
+
+  restoreSavedPositions();
+  window.addEventListener('resize', function() {
+    restoreSavedPositions();
+  });
+
   // Toggle Modal
-  trigger.addEventListener('click', function() {
+  trigger.addEventListener('click', function(e) {
+    if (triggerDragged) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     var isOpen = modal.style.display === 'flex';
     modal.style.display = isOpen ? 'none' : 'flex';
     if (!isOpen) {
+      try {
+        var rawMod = localStorage.getItem(MODAL_POS_KEY);
+        if (rawMod) {
+          applyElementPos(modal, JSON.parse(rawMod));
+        }
+      } catch (err) {}
       input.focus();
       messages.scrollTop = messages.scrollHeight;
       updateOnlineStatus();
@@ -199,7 +363,15 @@
 
   expandBtn.addEventListener('click', function() {
     modal.classList.toggle('expanded');
-    expandBtn.textContent = modal.classList.contains('expanded') ? '⤡' : '⤢';
+    var isExp = modal.classList.contains('expanded');
+    expandBtn.textContent = isExp ? '⤡' : '⤢';
+    try {
+      localStorage.setItem(MODAL_EXP_KEY, isExp ? '1' : '0');
+      var rawMod = localStorage.getItem(MODAL_POS_KEY);
+      if (rawMod) {
+        setTimeout(function() { applyElementPos(modal, JSON.parse(rawMod)); }, 260);
+      }
+    } catch (e) {}
   });
 
   // Lightbox Close Handlers

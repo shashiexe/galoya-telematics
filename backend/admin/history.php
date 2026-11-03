@@ -1,9 +1,12 @@
 <?php
 require __DIR__ . '/_common.php';
 require_admin();
+require_perm('history', 'view');
 
-// Fetch all units for dropdown
-$staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
+$secScopeUsers = user_section_scope_sql('users');
+// Fetch all units for dropdown (scoped to user's subordinates)
+$staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
+$allowedIds = array_map(fn($s) => (int)$s['id'], $staff);
 
 $default_user = $staff[0]['id'] ?? 0;
 // If 49-1633 exists, default to it (matching user's screenshot)
@@ -15,6 +18,9 @@ foreach ($staff as $s) {
 }
 
 $uid = (int)($_GET['user'] ?? $default_user);
+if (!in_array($uid, $allowedIds, true)) {
+    $uid = (int)$default_user;
+}
 $from_dt = $_GET['from'] ?? date('Y-m-d 00:00:00');
 $to_dt = $_GET['to'] ?? date('Y-m-d 23:59:59');
 $color_mode = $_GET['color_mode'] ?? 'trips';

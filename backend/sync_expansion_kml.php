@@ -38,17 +38,24 @@ try {
       `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY `uniq_cat_name` (`category`, `name`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-    
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `category` VARCHAR(50) NOT NULL DEFAULT 'Plantation' AFTER `id`");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `group_name` VARCHAR(120) NULL AFTER `category`");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `block_name` VARCHAR(100) NULL AFTER `group_name`");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `center_lat` DECIMAL(10,6) NULL");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `center_lng` DECIMAL(10,6) NULL");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `min_lat` DECIMAL(10,6) NULL");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `max_lat` DECIMAL(10,6) NULL");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `min_lng` DECIMAL(10,6) NULL");
-    @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `max_lng` DECIMAL(10,6) NULL");
 } catch (Throwable $e) {}
+
+$colDefs = [
+    'category'   => "ALTER TABLE `geofences` ADD COLUMN `category` VARCHAR(50) NOT NULL DEFAULT 'Plantation' AFTER `id`",
+    'group_name' => "ALTER TABLE `geofences` ADD COLUMN `group_name` VARCHAR(120) NULL AFTER `category`",
+    'block_name' => "ALTER TABLE `geofences` ADD COLUMN `block_name` VARCHAR(100) NULL AFTER `group_name`",
+    'center_lat' => "ALTER TABLE `geofences` ADD COLUMN `center_lat` DECIMAL(10,6) NULL",
+    'center_lng' => "ALTER TABLE `geofences` ADD COLUMN `center_lng` DECIMAL(10,6) NULL",
+    'min_lat'    => "ALTER TABLE `geofences` ADD COLUMN `min_lat` DECIMAL(10,6) NULL",
+    'max_lat'    => "ALTER TABLE `geofences` ADD COLUMN `max_lat` DECIMAL(10,6) NULL",
+    'min_lng'    => "ALTER TABLE `geofences` ADD COLUMN `min_lng` DECIMAL(10,6) NULL",
+    'max_lng'    => "ALTER TABLE `geofences` ADD COLUMN `max_lng` DECIMAL(10,6) NULL"
+];
+foreach ($colDefs as $cName => $cSql) {
+    try {
+        $pdo->exec($cSql);
+    } catch (Throwable $e) {}
+}
 
 // 2. Define Groups with distinct colors
 $groupsToSeed = [
@@ -244,3 +251,4 @@ try {
   </div>
 </body>
 </html>
+

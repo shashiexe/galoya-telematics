@@ -320,6 +320,7 @@ $filesToUpdate = [
     'sync_agriculture_kml.php' => 'backend/sync_agriculture_kml.php',
     'sync_expansion_kml.php' => 'backend/sync_expansion_kml.php',
     'expansion_geofences_payload.json' => 'backend/expansion_geofences_payload.json',
+    'sync_server_room.php' => 'backend/sync_server_room.php',
     'admin/ai_assistant.php' => 'backend/admin/ai_assistant.php',
     'admin/assets/ai_widget.js' => 'backend/admin/assets/ai_widget.js',
     'admin/assets/ai_widget.css' => 'backend/admin/assets/ai_widget.css',

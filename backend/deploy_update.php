@@ -78,6 +78,20 @@ if (isset($_GET['test_report'])) {
     exit;
 }
 
+if (isset($_GET['reset_face_uid'])) {
+    header('Content-Type: application/json');
+    $uId = (int)$_GET['reset_face_uid'];
+    $uRow = q('SELECT profile_photo FROM users WHERE id=?', [$uId])->fetch();
+    if ($uRow && !empty($uRow['profile_photo'])) {
+        global $CONFIG;
+        $upPath = __DIR__ . '/' . ($CONFIG['upload_url'] ?? 'uploads') . '/' . ltrim($uRow['profile_photo'], '/');
+        if (file_exists($upPath)) @unlink($upPath);
+    }
+    q('UPDATE users SET profile_photo=NULL, face_enrolled=0, face_enrolled_at=NULL WHERE id=?', [$uId]);
+    echo json_encode(['ok' => true, 'message' => "Master Face ID deleted and status reset to 0 for user $uId"]);
+    exit;
+}
+
 if (isset($_GET['diag_duty'])) {
     header('Content-Type: application/json');
     $uId = (int)($_GET['uid'] ?? 22);

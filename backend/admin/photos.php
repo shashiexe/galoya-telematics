@@ -13,7 +13,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'verify_f
     $status = in_array($_POST['status'] ?? '', ['verified', 'mismatch', 'pending']) ? $_POST['status'] : 'verified';
     if ($photoId > 0) {
         q("UPDATE field_photos SET face_match_status = ?, is_selfie = 1 WHERE id = ?", [$status, $photoId]);
-        flash($status === 'verified' ? 'Identity verified successfully 🟢' : 'Flagged as Proxy / Face Mismatch 🔴');
+        flash($status === 'verified' ? 'Identity Rectified / Verified successfully 🟢 (Monitoring alert resolved)' : 'Flagged as Proxy / Face Mismatch 🔴');
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'run_ai_scan') {
+    check_csrf();
+    require_perm('photos', 'edit');
+    $photoId = (int)($_POST['id'] ?? 0);
+    if ($photoId > 0) {
+        $pRow = q('SELECT fp.*, u.profile_photo FROM field_photos fp JOIN users u ON u.id = fp.user_id WHERE fp.id = ?', [$photoId])->fetch();
+        if ($pRow && !empty($pRow['profile_photo'])) {
+            $aiRes = compare_faces_with_ai($pRow['profile_photo'], $pRow['file_path']);
+            if (!empty($aiRes['ok'])) {
+                q('UPDATE field_photos SET face_match_status=?, face_confidence=?, face_match_reason=? WHERE id=?',
+                  [$aiRes['status'], $aiRes['confidence'], $aiRes['reason'], $photoId]);
+                flash("AI Face Scan: {$aiRes['status']} (" . round($aiRes['confidence']) . "%) — {$aiRes['reason']}");
+            } else {
+                flash("AI Scan Notice: " . ($aiRes['reason'] ?? 'Could not scan at this time'), 'warning');
+            }
+        } else {
+            flash('Officer does not have a Master Enrolled Profile Photo to compare with.', 'warning');
+        }
     }
     header('Location: ' . $_SERVER['REQUEST_URI']);
     exit;
@@ -168,6 +191,7 @@ try {
 try { q("ALTER TABLE `field_photos` ADD COLUMN `is_selfie` TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
 try { q("ALTER TABLE `field_photos` ADD COLUMN `face_match_status` VARCHAR(20) DEFAULT 'skipped'"); } catch (Throwable $e) {}
 try { q("ALTER TABLE `field_photos` ADD COLUMN `face_confidence` FLOAT NULL"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `field_photos` ADD COLUMN `face_match_reason` VARCHAR(255) NULL"); } catch (Throwable $e) {}
 try { q("ALTER TABLE `users` ADD COLUMN `profile_photo` VARCHAR(255) NULL"); } catch (Throwable $e) {}
 try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled` TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
 try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled_at` DATETIME NULL"); } catch (Throwable $e) {}
@@ -183,6 +207,7 @@ $sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geo
                 COALESCE(fp.is_selfie, 0) as is_selfie,
                 COALESCE(fp.face_match_status, 'skipped') as face_match_status,
                 fp.face_confidence,
+                fp.face_match_reason,
                 fp.taken_at, 'field' as photo_type, 
                 u.name as user_name, u.code as user_code, u.unit_type, u.profile_photo as user_profile_photo,
                 d.name as dept_name, s.name as sec_name
@@ -200,6 +225,7 @@ $sql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng,
                 0 as is_selfie,
                 'skipped' as face_match_status,
                 NULL as face_confidence,
+                NULL as face_match_reason,
                 tp.taken_at, 'task' as photo_type,
                 u.name as user_name, u.code as user_code, u.unit_type, u.profile_photo as user_profile_photo,
                 d.name as dept_name, s.name as sec_name
@@ -508,7 +534,7 @@ layout_start('Photos & Field Media', 'photos.php');
           ?>
             <div class="photo-thumb-card" 
                  style="position:relative;width:100%;aspect-ratio:1/1;background:#0f172a;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.06)"
-                 onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>', <?= (int)$p['user_id'] ?>)"
+                 onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>', <?= (int)$p['user_id'] ?>, <?= $p['face_confidence'] !== null ? round((float)$p['face_confidence']) : 'null' ?>, '<?= h(addslashes($p['face_match_reason'] ?? '')) ?>')"
                  title="<?= h($p['user_name']) ?> | <?= h($plotName) ?> (<?= date('h:i:s A', strtotime($p['taken_at'])) ?>) <?= !empty($p['note']) ? ' - ' . h($p['note']) : '' ?>">
               
               <!-- Thumbnail Image -->
@@ -559,7 +585,7 @@ layout_start('Photos & Field Media', 'photos.php');
       ?>
         <div class="photo-thumb-card" 
              style="position:relative;width:100%;aspect-ratio:1/1;background:#0f172a;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.06)"
-             onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>', <?= (int)$p['user_id'] ?>)"
+             onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>', <?= (int)$p['user_id'] ?>, <?= $p['face_confidence'] !== null ? round((float)$p['face_confidence']) : 'null' ?>, '<?= h(addslashes($p['face_match_reason'] ?? '')) ?>')"
              title="<?= h($p['user_name']) ?> | <?= h($plotName) ?> (<?= date('h:i:s A', strtotime($p['taken_at'])) ?>)">
           <img src="<?= h($pUrl) ?>" alt="Field Photo" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
           
@@ -634,19 +660,23 @@ layout_start('Photos & Field Media', 'photos.php');
     <div style="padding:10px 16px;background:#1e293b;border-top:1px solid #334155;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div style="color:#cbd5e1;font-size:12px;max-width:650px">
         <div id="lb-note" style="margin-bottom:4px;color:#f1f5f9;font-weight:500"></div>
+        <div id="lb-ai-reason" style="display:none;margin-bottom:4px;color:#a78bfa;font-size:11.5px;font-weight:600;background:rgba(139,92,246,0.15);padding:3px 8px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)"></div>
         <div id="lb-coords" style="font-size:11px;color:#38bdf8"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <!-- Admin Manual Face Verification Controls (Visible only for selfies) -->
         <form method="post" id="lb-verify-form" style="display:none;gap:6px;align-items:center;margin:0">
           <?= csrf_field() ?>
-          <input type="hidden" name="act" value="verify_face">
+          <input type="hidden" name="act" id="lb-verify-act" value="verify_face">
           <input type="hidden" name="id" id="lb-verify-id" value="">
-          <button type="submit" name="status" value="verified" class="btn sm" style="background:#16a34a;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Confirm face matches officer">
-            ✓ Verify 🟢
+          <button type="submit" name="status" value="verified" onclick="document.getElementById('lb-verify-act').value='verify_face'" class="btn sm" style="background:#16a34a;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Confirm face matches officer (Resolve monitoring alert)">
+            ✓ Rectify / Verify 🟢
           </button>
-          <button type="submit" name="status" value="mismatch" class="btn sm" style="background:#dc2626;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Flag as Proxy / Person Mismatch">
+          <button type="submit" name="status" value="mismatch" onclick="document.getElementById('lb-verify-act').value='verify_face'" class="btn sm" style="background:#dc2626;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Flag as Proxy / Person Mismatch">
             ⚠️ Flag Mismatch 🔴
+          </button>
+          <button type="submit" onclick="document.getElementById('lb-verify-act').value='run_ai_scan'" class="btn sm" style="background:#8b5cf6;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Run Gemini Vision AI Face Match">
+            🤖 AI Match Scan
           </button>
         </form>
 
@@ -796,7 +826,7 @@ layout_start('Photos & Field Media', 'photos.php');
 let currentLbPhoto = null;
 let isComparingFace = false;
 
-function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePath, isSelfie, faceStatus, userProfilePhoto, userId) {
+function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePath, isSelfie, faceStatus, userProfilePhoto, userId, faceConfidence, faceReason) {
   currentLbPhoto = { id, type, officer, time, plot, url, userProfilePhoto, userId };
   isComparingFace = false;
 
@@ -815,6 +845,8 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
   const matchBadge = document.getElementById('lb-face-match-badge');
   const compareBtn = document.getElementById('lb-compare-btn');
   const verifyForm = document.getElementById('lb-verify-form');
+  const reasonEl = document.getElementById('lb-ai-reason');
+  const resetForm = document.getElementById('lb-reset-face-form');
 
   if (isSelfie == 1) {
     selfieBadge.style.display = 'inline-block';
@@ -822,21 +854,31 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
       document.getElementById('lb-verify-id').value = id;
       verifyForm.style.display = 'inline-flex';
     }
+    const confText = (faceConfidence !== null && faceConfidence !== undefined && faceConfidence !== '') ? ' (' + Math.round(faceConfidence) + '%)' : '';
     if (faceStatus === 'verified') {
-      matchBadge.textContent = '🟢 Identity Verified';
+      matchBadge.textContent = '🟢 Identity Verified' + confText;
       matchBadge.style.background = '#15803d';
       matchBadge.style.color = '#dcfce7';
       matchBadge.style.display = 'inline-block';
     } else if (faceStatus === 'mismatch') {
-      matchBadge.textContent = '🔴 ⚠️ Possible Proxy / Face Mismatch';
+      matchBadge.textContent = '🔴 Proxy / Face Mismatch' + confText;
       matchBadge.style.background = '#b91c1c';
       matchBadge.style.color = '#fee2e2';
       matchBadge.style.display = 'inline-block';
     } else {
-      matchBadge.textContent = '🟡 Audit Pending';
+      matchBadge.textContent = '🟡 Audit Pending' + confText;
       matchBadge.style.background = '#b45309';
       matchBadge.style.color = '#fef3c7';
       matchBadge.style.display = 'inline-block';
+    }
+
+    if (reasonEl) {
+      if (faceReason) {
+        reasonEl.textContent = '🤖 AI Assessment: ' + faceReason;
+        reasonEl.style.display = 'block';
+      } else {
+        reasonEl.style.display = 'none';
+      }
     }
 
     if (userProfilePhoto) {
@@ -844,13 +886,20 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
       compareBtn.textContent = '👥 Compare Face';
       document.getElementById('lb-master-img').src = userProfilePhoto;
       document.getElementById('lb-compare-selfie-img').src = url;
+      if (resetForm) {
+        document.getElementById('lb-user-id').value = userId;
+        resetForm.style.display = 'inline-block';
+      }
     } else {
       compareBtn.style.display = 'none';
+      if (resetForm) resetForm.style.display = 'none';
     }
   } else {
     selfieBadge.style.display = 'none';
     matchBadge.style.display = 'none';
     compareBtn.style.display = 'none';
+    if (reasonEl) reasonEl.style.display = 'none';
+    if (resetForm) resetForm.style.display = 'none';
     if (verifyForm) verifyForm.style.display = 'none';
   }
 

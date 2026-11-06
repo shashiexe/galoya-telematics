@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../vault.dart';
+import 'face_enrollment.dart';
 import 'home.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -78,8 +79,17 @@ class _LoginScreenState extends State<LoginScreen> {
         tracking: true,
       );
 
+      final bool isFaceEnrolled = j['user']['face_enrolled'] == true;
+      try {
+        await sp?.setBool('face_enrolled', isFaceEnrolled);
+      } catch (_) {}
+
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+      if (!isFaceEnrolled) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const FaceEnrollmentScreen()));
+      } else {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+      }
     } catch (e) {
       String msg;
       if (e is ApiException) {

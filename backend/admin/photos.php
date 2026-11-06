@@ -119,14 +119,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
 // -----------------------------------------------------------------------------
 // Parameters & Filter Setup
 // -----------------------------------------------------------------------------
+function parse_filter_dt(?string $raw, string $default): string {
+    if (empty($raw)) return $default;
+    $s = trim(str_replace('T', ' ', $raw));
+    // Support DD/MM/YYYY format disambiguation for strtotime
+    if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})(.*)$/', $s, $m)) {
+        $s = sprintf('%04d-%02d-%02d%s', $m[3], $m[2], $m[1], $m[4]);
+    }
+    $ts = strtotime($s);
+    return ($ts !== false && $ts > 0) ? date('Y-m-d H:i:s', $ts) : $default;
+}
+
 $secScopeUsers = user_section_scope_sql('users');
 $staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
 
 $uid = isset($_GET['user']) && $_GET['user'] !== '' ? (int)$_GET['user'] : null;
-$from_raw = $_GET['from'] ?? date('Y-m-d 00:00:00', strtotime('-7 days'));
-$from_dt = date('Y-m-d 00:00:00', strtotime(str_replace('T', ' ', $from_raw)));
-$to_raw = $_GET['to'] ?? date('Y-m-d 23:59:59');
-$to_dt = date('Y-m-d 23:59:59', strtotime(str_replace('T', ' ', $to_raw)));
+$from_dt = parse_filter_dt($_GET['from'] ?? null, date('Y-m-d 00:00:00', strtotime('-7 days')));
+$to_dt   = parse_filter_dt($_GET['to'] ?? null, date('Y-m-d 23:59:59'));
 $type = $_GET['type'] ?? 'all'; // all, field, task, selfie, mismatch
 $view_mode = $_GET['view'] ?? 'officer'; // 'officer' (default) or 'grid'
 

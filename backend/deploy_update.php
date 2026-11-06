@@ -23,6 +23,33 @@ if (isset($_GET['show_web_users'])) {
 }
 
 
+if (isset($_GET['test_photos'])) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_name('stafftrack_admin');
+        @session_start();
+    }
+    $_SESSION['admin_id'] = 1;
+    $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+
+    echo "<h3>Testing admin/photos.php execution:</h3><pre>";
+    try {
+        ob_start();
+        include __DIR__ . '/admin/photos.php';
+        $out = ob_get_clean();
+        echo "SUCCESS! Output length: " . strlen($out) . " bytes\n\n";
+        if (preg_match('/Total: \d+ Photos/', $out, $m)) echo "MATCH: " . $m[0] . "\n";
+        if (preg_match('/<div class="photo-card"/', $out)) echo "FOUND PHOTO CARDS!\n";
+        echo htmlspecialchars(substr($out, 0, 1200));
+    } catch (Throwable $e) {
+        if (ob_get_level() > 0) ob_end_clean();
+        echo "CAUGHT EXCEPTION: " . $e->getMessage() . "\n";
+        echo "File: " . $e->getFile() . " Line: " . $e->getLine() . "\n";
+        echo "Trace:\n" . $e->getTraceAsString() . "\n";
+    }
+    echo "</pre>";
+    exit;
+}
+
 if (isset($_GET['test_report'])) {
     if (session_status() === PHP_SESSION_NONE) {
         session_name('stafftrack_admin');

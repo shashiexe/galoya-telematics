@@ -1198,6 +1198,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         return;
       }
 
+      final File confirmedPhoto = photo;
+      final String photoPath = confirmedPhoto.path;
+
       // Ensure FRESH GPS position at the moment photo is taken
       Position? pos;
       try {
@@ -1472,7 +1475,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           'is_selfie': isSelfie ? 1 : 0,
           't': DateTime.now().millisecondsSinceEpoch,
         }),
-        file: photo.path,
+        file: photoPath,
       );
       Sync.run();
 
@@ -1496,7 +1499,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         'auto_geofence': autoGeofence,
         'selected_geofence': selectedGeofence,
         'note': note,
-        'file': photo.path,
+        'file': photoPath,
         'time': DateTime.now(),
       };
       setState(() {
@@ -1523,7 +1526,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: Image.file(
-                    File(photo.path),
+                    confirmedPhoto,
                     height: 160,
                     width: double.infinity,
                     fit: BoxFit.cover,

@@ -22,6 +22,55 @@ if (isset($_GET['show_web_users'])) {
     exit;
 }
 
+if (isset($_GET['backup_db'])) {
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="galoya_db_backup_' . date('Y_m_d_His') . '.sql"');
+    
+    $pdo = db();
+    $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    
+    echo "-- GalOya Track360 Database Full Backup\n";
+    echo "-- Generated: " . date('Y-m-d H:i:s') . "\n";
+    echo "-- Tables: " . count($tables) . "\n\n";
+    echo "SET NAMES utf8mb4;\n";
+    echo "SET FOREIGN_KEY_CHECKS = 0;\n\n";
+    
+    foreach ($tables as $t) {
+        $createStmt = $pdo->query("SHOW CREATE TABLE `$t`")->fetch(PDO::FETCH_ASSOC);
+        $createSql = $createStmt['Create Table'] ?? '';
+        echo "-- Table structure for `$t`\n";
+        echo "DROP TABLE IF EXISTS `$t`;\n";
+        echo $createSql . ";\n\n";
+        
+        $rows = $pdo->query("SELECT * FROM `$t`")->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($rows)) {
+            echo "-- Data for table `$t` (" . count($rows) . " rows)\n";
+            foreach (array_chunk($rows, 100) as $chunk) {
+                $cols = array_keys($chunk[0]);
+                $colNames = implode('`, `', $cols);
+                echo "INSERT INTO `$t` (`$colNames`) VALUES \n";
+                $vals = [];
+                foreach ($chunk as $r) {
+                    $rowVals = [];
+                    foreach ($r as $val) {
+                        if ($val === null) {
+                            $rowVals[] = "NULL";
+                        } else {
+                            $rowVals[] = $pdo->quote($val);
+                        }
+                    }
+                    $vals[] = "(" . implode(', ', $rowVals) . ")";
+                }
+                echo implode(",\n", $vals) . ";\n";
+            }
+            echo "\n";
+        }
+    }
+    echo "SET FOREIGN_KEY_CHECKS = 1;\n";
+    echo "-- Backup completed successfully.\n";
+    exit;
+}
+
 
 if (isset($_GET['check_apk_version'])) {
     header('Content-Type: application/json');

@@ -1291,6 +1291,8 @@ document.addEventListener('DOMContentLoaded', () => {
       let batHtml = `<span style="font-weight:700;color:${batColor}">${batVal !== null ? (hasTemp ? batVal + '°C' : batVal + '%') : '—'}</span>`;
       if (hasTemp && props.pwr_ext) {
         batHtml = `<span style="font-weight:700;color:#0369a1;font-size:10px" title="Main UPS Power: ${props.pwr_ext}V">⚡ ${props.pwr_ext}V</span>`;
+      } else if (props.fuel_liters !== undefined) {
+        batHtml = `<span style="font-weight:700;color:#0369a1;font-size:10.5px" title="Diesel Fuel: ${props.fuel_liters} L">⛽ ${props.fuel_liters}L</span>`;
       }
 
       return `
@@ -1674,6 +1676,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <hr style="margin:6px 0;border:0;border-top:1px solid #e2e8f0">
           <div>Status: <strong style="color:${isSos ? '#dc2626' : (isMoving ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8'))}">${isSos ? '🆘 EMERGENCY SOS ACTIVE!' : (!isOnline ? 'OFFLINE' : (isMoving ? 'MOVING ➔' : 'STATIONARY ⛔'))}</strong></div>
           <div>Speed: <strong>${Math.round(u.speed || 0)} km/h</strong></div>
+          ${props.fuel_liters !== undefined ? `<div>Diesel Tank: <strong style="color:#0284c7">⛽ ${props.fuel_liters} L</strong></div>` : ''}
           <div>Driver: <strong>${hasTemp ? '🏢 IT Server Room Facility' : (u.driver_name || 'Unassigned')}</strong></div>
           <div>Ignition: <strong>${(u.ignition && isOnline) ? 'ON' : 'OFF'}</strong></div>
           <div>Battery: <strong>${(u.battery !== null && u.battery !== undefined && u.battery !== '') ? (hasTemp ? u.battery + '°C' : u.battery + '%') : '—'}</strong></div>
@@ -1859,6 +1862,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const tVal = parseFloat(hcProps.temperature);
         const tCol = tVal > 28 ? '#dc2626' : '#16a34a';
         flsEl.innerHTML = `<span style="color:${tCol};font-weight:800">🌡️ ${tVal.toFixed(1)} °C</span>`;
+      }
+    } else if (hcProps.fuel_liters !== undefined) {
+      if (flsLabelEl) flsLabelEl.textContent = 'FUEL:';
+      if (flsEl) {
+        flsEl.innerHTML = `<span style="color:#0284c7;font-weight:800">⛽ ${hcProps.fuel_liters} L</span>`;
       }
     }
 

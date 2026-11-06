@@ -999,6 +999,8 @@ if ($report_type === 'staff_audit') {
         $rawVisits = q("SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name,
                                COALESCE(fp.activity_type, 'Field Visit') as activity_type,
                                fp.auto_geofence, fp.selected_geofence,
+                               COALESCE(fp.is_selfie, 0) as is_selfie,
+                               COALESCE(fp.face_match_status, 'skipped') as face_match_status,
                                fp.taken_at,
                                u.name as user_name, u.code as user_code, u.phone as user_phone,
                                d.name as dept_name, s.name as sec_name,
@@ -1092,6 +1094,8 @@ if ($report_type === 'staff_audit') {
             'section' => $v['sec_name'] ?: 'Field Division',
             'plot' => $plot,
             'activity' => $v['activity_type'] ?: 'Inspection',
+            'is_selfie' => (int)($v['is_selfie'] ?? 0),
+            'face_match_status' => $v['face_match_status'] ?? 'skipped',
             'lat' => $v['lat'],
             'lng' => $v['lng'],
             'note' => $v['note'],
@@ -1779,9 +1783,15 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                   </span>
                 </td>
                 <td style="padding:10px 14px">
-                  <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700">
-                    <?= h($row['activity']) ?>
-                  </span>
+                  <?php if (!empty($row['is_selfie']) || ($row['activity'] ?? '') === 'Officer Verification Selfie'): ?>
+                    <span style="display:inline-block;padding:2px 8px;background:#f3e8ff;color:#7e22ce;border:1px solid #d8b4fe;border-radius:12px;font-size:11px;font-weight:700">
+                      🤳 Selfie Verification
+                    </span>
+                  <?php else: ?>
+                    <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700">
+                      <?= h($row['activity']) ?>
+                    </span>
+                  <?php endif; ?>
                 </td>
                 <td style="padding:10px 14px;font-size:11.5px">
                   <?php if (!empty($row['lat']) && !empty($row['lng'])): ?>

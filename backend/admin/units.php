@@ -92,13 +92,24 @@ $search = trim($_GET['search'] ?? '');
 $type_filter = $_GET['type'] ?? 'all';
 $status_filter = $_GET['status'] ?? 'all';
 
+// High-speed auto-sync from Wialon if last sync was > 12 seconds ago
+try {
+    $lastSeenVal = q("SELECT last_seen FROM users WHERE code IN ('SRV-ROOM', 'DAH-8851', 'LK-3313') ORDER BY last_seen DESC LIMIT 1")->fetchColumn();
+    if (!$lastSeenVal || (time() - strtotime($lastSeenVal)) > 12) {
+        require_once __DIR__ . '/../sync_server_room.php';
+        if (function_exists('sync_wialon_fleet_fast')) {
+            sync_wialon_fleet_fast();
+        }
+    }
+} catch (Throwable $e) {}
+
 $sql = "SELECT u.*, 
         dept.name as dept_name, sec.name as sec_name,
         d.name as driver_name, d.id as driver_id, d.phone as driver_phone,
-        (SELECT speed FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_speed,
-        (SELECT lat FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_lat,
-        (SELECT lng FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_lng,
-        (SELECT recorded_at FROM locations WHERE user_id = u.id ORDER BY recorded_at DESC LIMIT 1) as latest_time
+        u.speed as latest_speed,
+        u.last_lat as latest_lat,
+        u.last_lng as latest_lng,
+        u.last_seen as latest_time
         FROM users u
         LEFT JOIN departments dept ON dept.id = u.department_id
         LEFT JOIN sections sec ON sec.id = u.section_id

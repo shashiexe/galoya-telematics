@@ -804,7 +804,18 @@ try {
 try {
     $latestPhotos = $pdo->query("SELECT id, user_id, lat, lng, taken_at, activity_type, geofence_name FROM field_photos ORDER BY id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
     $results[] = ["📷 Latest Field Photos in DB: " . json_encode($latestPhotos), "color:#ec4899;font-weight:bold"];
-} catch (Throwable $e) {}
+    
+    $user29 = $pdo->query("SELECT id, name, code, role, active, department_id, section_id FROM users WHERE id=29")->fetch(PDO::FETCH_ASSOC);
+    $results[] = ["👤 User 29 details: " . json_encode($user29), "color:#38bdf8;font-weight:bold"];
+
+    $allStaffInDb = $pdo->query("SELECT id, name, role, active FROM users WHERE role='staff' LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+    $results[] = ["👥 All Staff Count: " . count($allStaffInDb) . " | " . json_encode($allStaffInDb), "color:#a855f7;font-weight:bold"];
+
+    $testJoin = $pdo->query("SELECT fp.id, fp.user_id, u.name, u.role, u.active FROM field_photos fp JOIN users u ON u.id = fp.user_id ORDER BY fp.id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
+    $results[] = ["📸 JOIN users test: " . json_encode($testJoin), "color:#22c55e;font-weight:bold"];
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Photo diag error: " . $e->getMessage(), "color:#ef4444;font-weight:bold"];
+}
 
 try {
     $errFiles = [__DIR__ . '/admin/error_log', __DIR__ . '/error_log'];

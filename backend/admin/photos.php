@@ -19,6 +19,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'verify_f
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'reset_officer_face') {
+    check_csrf();
+    require_perm('staff', 'edit');
+    $uId = (int)($_POST['user_id'] ?? 0);
+    if ($uId > 0) {
+        $uRow = q('SELECT profile_photo FROM users WHERE id=?', [$uId])->fetch();
+        if ($uRow && !empty($uRow['profile_photo'])) {
+            global $CONFIG;
+            $upPath = __DIR__ . '/../' . ($CONFIG['upload_url'] ?? 'uploads') . '/' . ltrim($uRow['profile_photo'], '/');
+            if (file_exists($upPath)) @unlink($upPath);
+        }
+        q('UPDATE users SET profile_photo=NULL, face_enrolled=0, face_enrolled_at=NULL WHERE id=?', [$uId]);
+        flash('Master Face ID successfully deleted & status reset to 0 (Pending) for this officer.');
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
 // -----------------------------------------------------------------------------
 // Handle Photo Deletion with Super Admin Audit Logging
 // -----------------------------------------------------------------------------
@@ -105,9 +123,11 @@ $secScopeUsers = user_section_scope_sql('users');
 $staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
 
 $uid = isset($_GET['user']) && $_GET['user'] !== '' ? (int)$_GET['user'] : null;
-$from_dt = $_GET['from'] ?? date('Y-m-d 00:00:00', strtotime('-7 days'));
-$to_dt = $_GET['to'] ?? date('Y-m-d 23:59:59');
-$type = $_GET['type'] ?? 'all'; // all, field, task
+$from_raw = $_GET['from'] ?? date('Y-m-d 00:00:00', strtotime('-7 days'));
+$from_dt = date('Y-m-d 00:00:00', strtotime(str_replace('T', ' ', $from_raw)));
+$to_raw = $_GET['to'] ?? date('Y-m-d 23:59:59');
+$to_dt = date('Y-m-d 23:59:59', strtotime(str_replace('T', ' ', $to_raw)));
+$type = $_GET['type'] ?? 'all'; // all, field, task, selfie, mismatch
 $view_mode = $_GET['view'] ?? 'officer'; // 'officer' (default) or 'grid'
 
 // Fetch Deletion Audit Log Count
@@ -188,11 +208,15 @@ if ($uid) {
     $params2[] = $uid;
 }
 
+$cond1 = "";
 if ($type === 'selfie') {
-    $sql1 .= " AND (fp.is_selfie = 1 OR fp.activity_type = 'Officer Verification Selfie')";
+    $cond1 = " AND (fp.is_selfie = 1 OR fp.activity_type = 'Officer Verification Selfie')";
+} elseif ($type === 'field') {
+    $cond1 = " AND (fp.is_selfie = 0 OR fp.is_selfie IS NULL) AND (fp.activity_type != 'Officer Verification Selfie' OR fp.activity_type IS NULL)";
 } elseif ($type === 'mismatch') {
-    $sql1 .= " AND (fp.face_match_status = 'mismatch' OR (fp.is_selfie = 1 AND fp.face_match_status != 'verified'))";
+    $cond1 = " AND (fp.face_match_status = 'mismatch' OR (fp.is_selfie = 1 AND fp.face_match_status != 'verified'))";
 }
+$sql1 .= $cond1;
 
 $photos = [];
 if ($type === 'all' || $type === 'field' || $type === 'selfie' || $type === 'mismatch') {
@@ -213,7 +237,7 @@ if ($type === 'all' || $type === 'field' || $type === 'selfie' || $type === 'mis
                              JOIN users u ON u.id = fp.user_id
                              LEFT JOIN departments d ON d.id = u.department_id
                              LEFT JOIN sections s ON s.id = u.section_id
-                             WHERE fp.taken_at BETWEEN ? AND ? AND $secScopeU" . ($uid ? " AND fp.user_id = ?" : "");
+                             WHERE fp.taken_at BETWEEN ? AND ? AND $secScopeU" . ($uid ? " AND fp.user_id = ?" : "") . $cond1;
             $rows1 = q($fallbackSql1, $params1)->fetchAll();
             $photos = array_merge($photos, $rows1);
         } catch (Throwable $e2) {}
@@ -475,7 +499,7 @@ layout_start('Photos & Field Media', 'photos.php');
           ?>
             <div class="photo-thumb-card" 
                  style="position:relative;width:100%;aspect-ratio:1/1;background:#0f172a;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.06)"
-                 onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>')"
+                 onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>', <?= (int)$p['user_id'] ?>)"
                  title="<?= h($p['user_name']) ?> | <?= h($plotName) ?> (<?= date('h:i:s A', strtotime($p['taken_at'])) ?>) <?= !empty($p['note']) ? ' - ' . h($p['note']) : '' ?>">
               
               <!-- Thumbnail Image -->
@@ -526,7 +550,7 @@ layout_start('Photos & Field Media', 'photos.php');
       ?>
         <div class="photo-thumb-card" 
              style="position:relative;width:100%;aspect-ratio:1/1;background:#0f172a;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.06)"
-             onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>')"
+             onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>', <?= (int)$p['user_id'] ?>)"
              title="<?= h($p['user_name']) ?> | <?= h($plotName) ?> (<?= date('h:i:s A', strtotime($p['taken_at'])) ?>)">
           <img src="<?= h($pUrl) ?>" alt="Field Photo" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
           
@@ -614,6 +638,16 @@ layout_start('Photos & Field Media', 'photos.php');
           </button>
           <button type="submit" name="status" value="mismatch" class="btn sm" style="background:#dc2626;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Flag as Proxy / Person Mismatch">
             ⚠️ Flag Mismatch 🔴
+          </button>
+        </form>
+
+        <!-- Admin Reset Master Face ID Form -->
+        <form method="post" id="lb-reset-face-form" style="display:none;margin:0" onsubmit="return confirm('Delete this officer\'s Master Profile Photo and reset face status to 0? The officer will be required to re-enroll live face ID on next mobile login.');">
+          <?= csrf_field() ?>
+          <input type="hidden" name="act" value="reset_officer_face">
+          <input type="hidden" name="user_id" id="lb-user-id" value="">
+          <button type="submit" class="btn sm" style="background:#ef4444;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Delete Master Profile Photo and Reset Face Status to 0">
+            🗑️ Reset Face ID (Status = 0)
           </button>
         </form>
 
@@ -753,8 +787,8 @@ layout_start('Photos & Field Media', 'photos.php');
 let currentLbPhoto = null;
 let isComparingFace = false;
 
-function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePath, isSelfie, faceStatus, userProfilePhoto) {
-  currentLbPhoto = { id, type, officer, time, plot, url, userProfilePhoto };
+function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePath, isSelfie, faceStatus, userProfilePhoto, userId) {
+  currentLbPhoto = { id, type, officer, time, plot, url, userProfilePhoto, userId };
   isComparingFace = false;
 
   // Reset views
@@ -809,6 +843,16 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
     matchBadge.style.display = 'none';
     compareBtn.style.display = 'none';
     if (verifyForm) verifyForm.style.display = 'none';
+  }
+
+  const resetFaceForm = document.getElementById('lb-reset-face-form');
+  if (resetFaceForm) {
+    if (userProfilePhoto && userId) {
+      document.getElementById('lb-user-id').value = userId;
+      resetFaceForm.style.display = 'inline-block';
+    } else {
+      resetFaceForm.style.display = 'none';
+    }
   }
   
   const coordsEl = document.getElementById('lb-coords');

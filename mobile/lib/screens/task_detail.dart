@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -29,6 +30,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   /// Take photo with camera only (no gallery = no old photos), store in app dir, queue for upload.
   Future<void> _capture(String type) async {
+    final sp = await SharedPreferences.getInstance();
+    if (sp.getBool('pending_selfie_verification') ?? false) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('⚠️ සත්‍යාපනය අනිවාර්යයි! කරුණාකර ප්‍රථමයෙන් Home screen එකෙන් ඔබගේ Verification Selfie ලබා දෙන්න.'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 4),
+        ));
+      }
+      return;
+    }
+
     final shot = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 70, maxWidth: 1600);
     if (shot == null) return;
     setState(() => _busy = true);

@@ -381,6 +381,16 @@ try {
     $results[] = ["✅ Database: Ensured field_photos activity & dual geofence columns exist", "color:#10b981"];
 } catch (Throwable $e) {}
 
+try {
+    @$pdo->exec("ALTER TABLE field_photos ADD COLUMN is_selfie TINYINT(1) DEFAULT 0 AFTER selected_geofence");
+    @$pdo->exec("ALTER TABLE field_photos ADD COLUMN face_match_status VARCHAR(20) DEFAULT 'skipped' AFTER is_selfie");
+    @$pdo->exec("ALTER TABLE field_photos ADD COLUMN face_confidence FLOAT NULL AFTER face_match_status");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN profile_photo VARCHAR(255) NULL");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN face_enrolled TINYINT(1) DEFAULT 0 AFTER profile_photo");
+    @$pdo->exec("ALTER TABLE users ADD COLUMN face_enrolled_at DATETIME NULL AFTER face_enrolled");
+    $results[] = ["✅ Database: Ensured field_photos selfie & face verification columns exist", "color:#10b981"];
+} catch (Throwable $e) {}
+
 // Spatial center coordinates & index for 10ms microsecond geofences query
 try {
     @$pdo->exec("ALTER TABLE `geofences` ADD COLUMN `center_lat` DECIMAL(10,6) NULL AFTER `coordinates`");

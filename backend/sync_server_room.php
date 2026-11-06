@@ -153,7 +153,7 @@ try {
 
         $name = $item['nm'];
         $uid = !empty($item['uid']) ? (string)$item['uid'] : 'WIA-' . $wId;
-        $phone = !empty($item['ph']) ? (string)$item['ph'] : '';
+        $phone = !empty($item['ph']) ? (string)$item['ph'] : ('veh_' . preg_replace('/[^A-Za-z0-9]/', '', $cfg['code']));
         $lat = !empty($item['pos']['y']) ? (float)$item['pos']['y'] : 7.222895;
         $lng = !empty($item['pos']['x']) ? (float)$item['pos']['x'] : 81.675295;
         $speed = !empty($item['pos']['s']) ? (float)$item['pos']['s'] : 0.0;

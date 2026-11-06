@@ -1131,8 +1131,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
   }
 
-  // --- Photo Capture with GPS ---
-  Future<void> _snapPhoto(ImageSource source, {bool isSelfie = false}) async {
+  // --- Photo Capture with GPS & Anti-Evasion Identity Verification ---
+  Future<void> _snapPhoto(ImageSource source, {bool isSelfie = false, bool isMandatory = false}) async {
     try {
       final picker = ImagePicker();
       final photo = await picker.pickImage(
@@ -1142,7 +1142,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         maxWidth: 1600,
         maxHeight: 1600,
       );
-      if (photo == null) return;
+      if (photo == null) {
+        // Officer cancelled or backed out without taking the photo
+        if (isSelfie || isMandatory) {
+          final sp = await SharedPreferences.getInstance();
+          await sp.setBool('pending_selfie_verification', true);
+
+          // Log security evasion alert to SQLite offline queue
+          try {
+            await LocalDb.enqueue(
+              'duty',
+              jsonEncode({
+                'status': 'on',
+                'event_type': 'selfie_evaded',
+                'note': 'Officer cancelled / backed out of identity verification selfie',
+                'lat': _currentPosition?.latitude ?? 0.0,
+                'lng': _currentPosition?.longitude ?? 0.0,
+                'battery': _batteryLevel,
+                't': DateTime.now().millisecondsSinceEpoch,
+              }),
+            );
+            Sync.run();
+          } catch (_) {}
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('⚠️ සත්‍යාපනය මඟහරින ලදී (Selfie Cancelled)! ඔබගේ සත්‍යාපන Selfie ඡායාරූපය ලබා දෙන තුරු පසුපස කැමරාව අක්‍රිය වේ.'),
+              backgroundColor: Colors.redAccent,
+              duration: Duration(seconds: 4),
+            ));
+          }
+        }
+        return;
+      }
 
       // Ensure FRESH GPS position at the moment photo is taken
       Position? pos;
@@ -1422,6 +1454,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       );
       Sync.run();
 
+      // Reset or increment identity verification counters
+      try {
+        final sp = await SharedPreferences.getInstance();
+        if (isSelfie) {
+          await sp.setBool('pending_selfie_verification', false);
+          await sp.setInt('visits_since_selfie', 0);
+        } else {
+          int v = (sp.getInt('visits_since_selfie') ?? 0) + 1;
+          await sp.setInt('visits_since_selfie', v);
+        }
+      } catch (_) {}
+
       final photoItem = {
         'client_id': cid,
         'lat': lat,
@@ -1511,7 +1555,140 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
   }
 
-  void _showPhotoCaptureSheet() {
+  Future<void> _showPhotoCaptureSheet() async {
+    final sp = await SharedPreferences.getInstance();
+    final bool mustVerify = sp.getBool('pending_selfie_verification') ?? false;
+    final int visits = sp.getInt('visits_since_selfie') ?? 0;
+
+    if (!mounted) return;
+
+    // 1. If previously cancelled or evaded -> FORCED FRONT SELFIE MODE ONLY
+    if (mustVerify) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xff1e293b),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle),
+                child: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Verification Required\n(සත්‍යාපනය අනිවාර්යයි)',
+                    style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          content: const Text(
+            'පෙර සත්‍යාපන පරීක්ෂාව මඟහැර ඇති බැවින් (Cancelled), ක්ෂේත්‍ර කටයුතු ඉදිරියට ගෙන යාමට ඔබගේ සත්‍යාපන Selfie ඡායාරූපය ලබා දීම අනිවාර්ය වේ.\n\nFront Camera එකෙන් ඔබගේ මුහුණ පෙනෙන සේ ඡායාරූපයක් ලබාගන්න.',
+            style: TextStyle(color: Color(0xffcbd5e1), fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xff94a3b8))),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xff8b5cf6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              icon: const Icon(Icons.face, color: Colors.white),
+              label: const Text('Take Selfie (ඡායාරූපය ගන්න)',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _snapPhoto(ImageSource.camera, isSelfie: true, isMandatory: true);
+              },
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // 2. Random Officer Audit Check (e.g. Every 4th field visit)
+    if (visits >= 4) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xff1e293b),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: const Color(0xff8b5cf6).withOpacity(0.2), shape: BoxShape.circle),
+                child: const Icon(Icons.security, color: Color(0xffa855f7), size: 24),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Officer Identity Audit\n(අහඹු සත්‍යාපනය)',
+                    style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          content: const Text(
+            'ක්ෂේත්‍ර නිලධාරී පැමිණීම තහවුරු කරගැනීම සඳහා අහඹු පරීක්ෂාවක් ක්‍රියාත්මක වේ. කරුණාකර Front Camera එකෙන් ඔබගේ සත්‍යාපන Selfie ඡායාරූපයක් ලබාගන්න.',
+            style: TextStyle(color: Color(0xffcbd5e1), fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                // If user cancels during random check, immediately lock future visits
+                await sp.setBool('pending_selfie_verification', true);
+                try {
+                  await LocalDb.enqueue(
+                    'duty',
+                    jsonEncode({
+                      'status': 'on',
+                      'event_type': 'selfie_evaded',
+                      'note': 'Officer skipped random verification selfie prompt',
+                      'lat': _currentPosition?.latitude ?? 0.0,
+                      'lng': _currentPosition?.longitude ?? 0.0,
+                      'battery': _batteryLevel,
+                      't': DateTime.now().millisecondsSinceEpoch,
+                    }),
+                  );
+                  Sync.run();
+                } catch (_) {}
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('⚠️ සත්‍යාපනය මඟහරින ලදී! ඔබගේ සත්‍යාපන Selfie ඡායාරූපය ලබා දෙන තුරු පසුපස කැමරාව අක්‍රිය වේ.'),
+                    backgroundColor: Colors.redAccent,
+                  ));
+                }
+              },
+              child: const Text('Cancel', style: TextStyle(color: Color(0xff94a3b8))),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xff8b5cf6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              icon: const Icon(Icons.face, color: Colors.white),
+              label: const Text('Take Selfie Now',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _snapPhoto(ImageSource.camera, isSelfie: true, isMandatory: true);
+              },
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // 3. Normal Selection Sheet
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xff1e293b),

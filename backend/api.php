@@ -53,8 +53,8 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.3.9');
-    $latestBuild = (int)setting('latest_app_build', 25);
+    $latestVersion = setting('latest_app_version', '1.4.0');
+    $latestBuild = (int)setting('latest_app_build', 26);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -75,8 +75,8 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.3.9');
-        $latestBuild = (int)setting('latest_app_build', 25);
+        $latestVersion = setting('latest_app_version', '1.4.0');
+        $latestBuild = (int)setting('latest_app_build', 26);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
         $forceUpdate = setting('app_force_update', '0') === '1';
@@ -125,6 +125,7 @@ try {
         $unitType = $u['unit_type'] ?? 'staff';
         $designation = $u['designation'] ?? 'Field Officer';
         $code = !empty($u['code']) ? $u['code'] : '';
+        $faceEnrolled = !empty($u['profile_photo']) && ((int)($u['face_enrolled'] ?? 0) === 1);
 
         out(['ok' => true, 'token' => $token,
              'user' => [
@@ -135,7 +136,9 @@ try {
                  'designation' => $designation,
                  'phone' => $u['phone'],
                  'device_type' => $devModel,
-                 'unique_id' => $devId
+                 'unique_id' => $devId,
+                 'face_enrolled' => $faceEnrolled,
+                 'profile_photo' => $u['profile_photo'] ?? null
              ],
              'config' => app_config()]);
     }
@@ -162,8 +165,15 @@ try {
 
     case 'config': {
         $u = auth_user();
-        out(['ok' => true, 'user' => ['id' => (int)$u['id'], 'name' => $u['name'], 'phone' => $u['phone'],
-             'on_duty' => (bool)$u['on_duty']], 'config' => app_config()]);
+        $faceEnrolled = !empty($u['profile_photo']) && ((int)($u['face_enrolled'] ?? 0) === 1);
+        out(['ok' => true, 'user' => [
+            'id' => (int)$u['id'],
+            'name' => $u['name'],
+            'phone' => $u['phone'],
+            'on_duty' => (bool)$u['on_duty'],
+            'face_enrolled' => $faceEnrolled,
+            'profile_photo' => $u['profile_photo'] ?? null,
+        ], 'config' => app_config()]);
     }
 
     case 'locations': {
@@ -640,6 +650,46 @@ try {
             $r['lng'] = $r['lng'] !== null ? (float)$r['lng'] : null;
         }
         out(['ok' => true, 'tasks' => $rows]);
+    }
+
+    case 'enroll_face':
+    case 'upload_profile_photo': {
+        global $CONFIG;
+        $u = auth_user();
+        $f = $_FILES['photo'] ?? null;
+        if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail('Photo upload failed (code ' . ($f['error'] ?? 'none') . ')');
+        if ($f['size'] > ($CONFIG['max_photo_mb'] ?? 8) * 1048576) fail('Photo too large');
+        $validTypes = [IMAGETYPE_JPEG, IMAGETYPE_PNG];
+        if (defined('IMAGETYPE_WEBP')) $validTypes[] = IMAGETYPE_WEBP;
+        $info = @getimagesize($f['tmp_name']);
+        if (!$info || !in_array($info[2], $validTypes, true)) fail('Invalid image');
+
+        $ext = 'jpg';
+        if ($info[2] === IMAGETYPE_PNG) $ext = 'png';
+        elseif (defined('IMAGETYPE_WEBP') && $info[2] === IMAGETYPE_WEBP) $ext = 'webp';
+
+        $sub = 'profiles';
+        $uploadDir = $CONFIG['upload_dir'] ?? (__DIR__ . '/uploads');
+        $dir = $uploadDir . '/' . $sub;
+        if (!is_dir($dir)) @mkdir($dir, 0777, true);
+
+        $name = 'master_' . (int)$u['id'] . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+        $dest = $dir . '/' . $name;
+        if (!move_uploaded_file($f['tmp_name'], $dest)) fail('Failed to store master profile photo on server');
+
+        $relPath = "$sub/$name";
+        q("UPDATE users SET profile_photo = ?, face_enrolled = 1, face_enrolled_at = NOW() WHERE id = ?", [$relPath, $u['id']]);
+
+        try {
+            q("INSERT INTO duty_logs (user_id, event_type, status, note, at) VALUES (?, 'face_enrolled', 'on', 'Official Master Face enrolled via Mobile App Liveness Check', NOW())", [$u['id']]);
+        } catch (Throwable $e) {}
+
+        out([
+            'ok' => true,
+            'profile_photo' => $relPath,
+            'face_enrolled' => true,
+            'message' => 'Official Master Face ID registered successfully!'
+        ]);
     }
 
     case 'upload_field_photo': {

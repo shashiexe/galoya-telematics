@@ -136,10 +136,12 @@ try {
 } catch (Throwable $e) {}
 
 // Ensure migration columns exist non-destructively
-try { q("ALTER TABLE `field_photos` ADD COLUMN `is_selfie` TINYINT(1) DEFAULT 0 AFTER `selected_geofence`"); } catch (Throwable $e) {}
-try { q("ALTER TABLE `field_photos` ADD COLUMN `face_match_status` VARCHAR(20) DEFAULT 'skipped' AFTER `is_selfie`"); } catch (Throwable $e) {}
-try { q("ALTER TABLE `field_photos` ADD COLUMN `face_confidence` FLOAT NULL AFTER `face_match_status`"); } catch (Throwable $e) {}
-try { q("ALTER TABLE `users` ADD COLUMN `profile_photo` VARCHAR(255) NULL AFTER `avatar`"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `field_photos` ADD COLUMN `is_selfie` TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `field_photos` ADD COLUMN `face_match_status` VARCHAR(20) DEFAULT 'skipped'"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `field_photos` ADD COLUMN `face_confidence` FLOAT NULL"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `users` ADD COLUMN `profile_photo` VARCHAR(255) NULL"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled` TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled_at` DATETIME NULL"); } catch (Throwable $e) {}
 
 // Build queries for field_photos and task_photos scoped by assigned section
 $secScopeU = user_section_scope_sql('u');

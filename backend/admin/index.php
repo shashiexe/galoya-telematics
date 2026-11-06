@@ -120,7 +120,7 @@ if (isset($_GET['feed'])) {
                        TIMESTAMPDIFF(MINUTE, last_seen, NOW()) mins_ago,
                        (SELECT name FROM drivers WHERE assigned_unit_id=users.id LIMIT 1) driver_name,
                        (SELECT COUNT(*) FROM tasks WHERE assigned_to=users.id AND status='in_progress') active_tasks
-                FROM users WHERE role='staff' AND active=1 AND $secScope
+                FROM users WHERE (role IN ('staff', 'facility', 'unit', 'device') OR unit_type NOT IN ('staff', 'field_staff')) AND active=1 AND $secScope
                 ORDER BY sos_active DESC, (motion_state='moving') DESC, on_duty DESC, name ASC")->fetchAll();
 
     foreach ($units as &$u) {
@@ -1161,7 +1161,10 @@ document.addEventListener('DOMContentLoaded', () => {
     motorcycle: '🏍️',
     bike: '🏍️',
     bicycle: '🚲',
-    phone: '📱'
+    phone: '📱',
+    other: '⚙️',
+    server: '🖥️',
+    server_temp: '🌡️'
   };
 
   function toDMM(lat, lng) {
@@ -1257,14 +1260,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Helper to render unit row
     function renderUnitRow(u) {
-      const icon = typeIcons[u.unit_type] || '🚜';
+      let props = {};
+      try { props = JSON.parse(u.properties_json || '{}'); } catch(e) {}
+      const hasTemp = (props.temperature !== undefined);
+      const icon = (u.icon_key === 'server_temp' || hasTemp) ? '🌡️' : (typeIcons[u.unit_type] || '🚜');
       const isOnline = !!u.is_online;
       const isMoving = isOnline && (u.motion_state === 'moving' || parseFloat(u.speed || 0) > 0);
       const isChecked = selectedUnitIds.has(parseInt(u.id));
       
       // Motion column
       let motionHtml = '';
-      if (!isOnline) {
+      if (hasTemp) {
+        const tVal = parseFloat(props.temperature);
+        motionHtml = `<span class="w-motion-badge" style="background:${tVal > 28 ? '#fee2e2;color:#b91c1c' : '#ecfdf5;color:#047857'};font-weight:800;font-size:10.5px" title="Server Room Temperature">🌡️ ${tVal.toFixed(1)}°C</span>`;
+      } else if (!isOnline) {
         motionHtml = `<span class="w-motion-badge offline" title="Offline (GPS Stopped)">● OFF</span>`;
       } else if (isMoving) {
         motionHtml = `<span class="w-motion-badge moving" title="Moving at ${Math.round(u.speed)} km/h"><span class="w-moving-arrow">➔</span> ${Math.round(u.speed)}</span>`;
@@ -1278,8 +1287,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // Battery
       const hasBat = (u.battery !== null && u.battery !== undefined && u.battery !== '');
       const batVal = hasBat ? parseInt(u.battery, 10) : null;
-      const batColor = (!isOnline || batVal === null) ? '#94a3b8' : (batVal < 20 ? '#dc2626' : (batVal < 50 ? '#f59e0b' : '#16a34a'));
-      const batHtml = `<span style="font-weight:700;color:${batColor}">${batVal !== null ? batVal + '%' : '—'}</span>`;
+      let batColor = (!isOnline || batVal === null) ? '#94a3b8' : (batVal < 20 ? '#dc2626' : (batVal < 50 ? '#f59e0b' : '#16a34a'));
+      let batHtml = `<span style="font-weight:700;color:${batColor}">${batVal !== null ? (hasTemp ? batVal + '°C' : batVal + '%') : '—'}</span>`;
+      if (hasTemp && props.pwr_ext) {
+        batHtml = `<span style="font-weight:700;color:#0369a1;font-size:10px" title="Main UPS Power: ${props.pwr_ext}V">⚡ ${props.pwr_ext}V</span>`;
+      }
 
       return `
         <tr class="w-unit-row ${isMoving ? 'is-moving' : ''}" data-id="${u.id}" 
@@ -1293,7 +1305,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <span class="w-unit-vehicle-icon ${isMoving ? 'moving' : ''}">${icon}</span>
               <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
                 <strong style="color:#0f172a;font-size:11.5px">${u.name}</strong>
-                ${isMoving ? `<span style="font-size:10px;color:#16a34a;font-weight:700;margin-left:2px">${Math.round(u.speed)} km/h</span>` : (isOnline ? `<span style="font-size:9.5px;color:#0284c7;margin-left:2px">● Online</span>` : `<span style="font-size:9.5px;color:#94a3b8;margin-left:2px">● Off</span>`)}
+                ${hasTemp ? `<span style="font-size:10px;color:${parseFloat(props.temperature) > 28 ? '#dc2626' : '#16a34a'};font-weight:700;margin-left:2px">● ${props.temperature}°C</span>` : (isMoving ? `<span style="font-size:10px;color:#16a34a;font-weight:700;margin-left:2px">${Math.round(u.speed)} km/h</span>` : (isOnline ? `<span style="font-size:9.5px;color:#0284c7;margin-left:2px">● Online</span>` : `<span style="font-size:9.5px;color:#94a3b8;margin-left:2px">● Off</span>`))}
               </div>
             </div>
           </td>
@@ -1317,6 +1329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '🌾 Sugarcane Harvesters': filtered.filter(u => u.unit_type === 'harvester' || (u.name && u.name.includes('Harvester'))),
         '🚜 Infielders & Tractors': filtered.filter(u => u.unit_type === 'infielder' || u.unit_type === 'tractor' || (u.name && u.name.includes('Infielder'))),
         '🚚 Commercial & Bowsers': filtered.filter(u => u.unit_type === 'truck' || (u.name && u.name.includes('Bowser')) || (u.code && u.code.startsWith('49-'))),
+        '🖥️ Facilities & Server Room': filtered.filter(u => u.unit_type === 'other' || u.unit_type === 'server' || (u.name && u.name.toLowerCase().includes('server'))),
         '🚙 Utility, Boleros & Staff': filtered.filter(u => u.unit_type === 'vehicle' || u.unit_type === 'staff' || (u.name && (u.name.includes('Bolero') || u.name.includes('Cab') || u.name.includes('Bicycle'))))
       };
 
@@ -1638,16 +1651,32 @@ document.addEventListener('DOMContentLoaded', () => {
         iconAnchor: [0, 0]
       });
 
+      let props = {};
+      try { props = JSON.parse(u.properties_json || '{}'); } catch(e) {}
+      const hasTemp = (props.temperature !== undefined);
+      let tempBanner = '';
+      if (hasTemp) {
+        const tVal = parseFloat(props.temperature);
+        tempBanner = `
+          <div style="background:${tVal > 28 ? '#fef2f2;border:1px solid #fecaca' : '#f0fdf4;border:1px solid #bbf7d0'};border-radius:6px;padding:6px 10px;margin:8px 0;text-align:center">
+            <div style="font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px">SERVER ROOM TEMPERATURE</div>
+            <div style="font-size:18px;font-weight:800;color:${tVal > 28 ? '#dc2626' : '#16a34a'}">🌡️ ${tVal.toFixed(1)} °C</div>
+            ${props.pwr_ext ? `<div style="font-size:10.5px;color:#0284c7;margin-top:2px">⚡ UPS: <strong>${props.pwr_ext}V DC</strong> · Internal: <strong>${props.pwr_int || 4.1}V</strong></div>` : ''}
+          </div>
+        `;
+      }
+
       const popupContent = `
         <div style="min-width:180px;font-size:12px;line-height:1.4">
           <strong style="font-size:13px;color:${isSos ? '#dc2626' : '#1565c0'}">${isSos ? '🚨 SOS EMERGENCY: ' : ''}${typeIcons[u.unit_type] || '🚜'} ${u.name}</strong>
           ${u.code ? `<span style="color:#64748b;font-size:11px">(${u.code})</span>` : ''}
+          ${tempBanner}
           <hr style="margin:6px 0;border:0;border-top:1px solid #e2e8f0">
           <div>Status: <strong style="color:${isSos ? '#dc2626' : (isMoving ? '#16a34a' : (isOnline ? '#0284c7' : '#94a3b8'))}">${isSos ? '🆘 EMERGENCY SOS ACTIVE!' : (!isOnline ? 'OFFLINE' : (isMoving ? 'MOVING ➔' : 'STATIONARY ⛔'))}</strong></div>
           <div>Speed: <strong>${Math.round(u.speed || 0)} km/h</strong></div>
-          <div>Driver: <strong>${u.driver_name || 'Unassigned'}</strong></div>
+          <div>Driver: <strong>${hasTemp ? '🏢 IT Server Room Facility' : (u.driver_name || 'Unassigned')}</strong></div>
           <div>Ignition: <strong>${(u.ignition && isOnline) ? 'ON' : 'OFF'}</strong></div>
-          <div>Battery: <strong>${(u.battery !== null && u.battery !== undefined && u.battery !== '') ? u.battery + '%' : '—'}</strong></div>
+          <div>Battery: <strong>${(u.battery !== null && u.battery !== undefined && u.battery !== '') ? (hasTemp ? u.battery + '°C' : u.battery + '%') : '—'}</strong></div>
           <div>Coordinates: <code>${lat.toFixed(5)}, ${lng.toFixed(5)}</code></div>
           <div style="margin-top:8px;display:flex;gap:6px">
             <a href="history.php?user=${u.id}" class="w-icon-btn primary" style="font-size:11px;padding:3px 8px">Track Route History</a>
@@ -1816,6 +1845,23 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    // 3b. Server room temperature & power override
+    let hcProps = {};
+    try { hcProps = JSON.parse(u.properties_json || '{}'); } catch(e) {}
+    if (hcProps.temperature !== undefined) {
+      if (engLabelEl) engLabelEl.textContent = 'STATUS:';
+      if (engEl) {
+        engEl.textContent = 'Active Monitoring';
+        engEl.style.color = '#16a34a';
+      }
+      if (flsLabelEl) flsLabelEl.textContent = 'TEMP:';
+      if (flsEl) {
+        const tVal = parseFloat(hcProps.temperature);
+        const tCol = tVal > 28 ? '#dc2626' : '#16a34a';
+        flsEl.innerHTML = `<span style="color:${tCol};font-weight:800">🌡️ ${tVal.toFixed(1)} °C</span>`;
+      }
+    }
+
     // 4. Connectivity settings (Each officer's actual phone, device type, unique id)
     const devModel = u.device_type || (isStaffCategory ? 'Android Phone' : 'Teltonika GPS');
     const devPhone = u.phone && u.phone.trim() ? u.phone.trim() : 'Not Registered';
@@ -1826,18 +1872,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 5. Telemetry Parameters
     const mileage = 22279000 + (parseInt(u.id) * 350);
-    const pwrExt = isOnline ? '12.4V' : '0.0V';
+    const pwrExt = hcProps.pwr_ext ? (hcProps.pwr_ext + 'V') : (isOnline ? '12.4V' : '0.0V');
+    const pwrInt = hcProps.pwr_int ? (hcProps.pwr_int + 'V') : (batt + '%');
 
     const evtIoEl = document.getElementById('hc-event-io');
-    if (evtIoEl) evtIoEl.textContent = '0';
+    if (evtIoEl) evtIoEl.textContent = hcProps.temperature ? 'io_25' : '0';
     const gsmEl = document.getElementById('hc-gsm');
     if (gsmEl) gsmEl.textContent = isOnline ? '3' : '0';
 
-    document.getElementById('hc-adc1').textContent = Math.round(batt * 1.34);
+    document.getElementById('hc-adc1').textContent = hcProps.temperature ? (hcProps.temperature * 100) : Math.round(batt * 1.34);
     document.getElementById('hc-csq').textContent = isOnline ? '28' : '0';
     document.getElementById('hc-mileage').textContent = mileage;
     document.getElementById('hc-pwr-ext').textContent = pwrExt;
-    document.getElementById('hc-pwr-int').textContent = batt + '%';
+    document.getElementById('hc-pwr-int').textContent = pwrInt;
 
     // 6. Location Address - Show immediate coordinates first, then resolve address asynchronously via cache
     const addrEl = document.getElementById('hc-address');

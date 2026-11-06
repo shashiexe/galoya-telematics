@@ -179,34 +179,46 @@ function insert_field_photo(
     string $dt,
     ?string $activityType = 'General',
     ?string $autoGeofence = null,
-    ?string $selectedGeofence = null
+    ?string $selectedGeofence = null,
+    int $isSelfie = 0,
+    string $faceMatchStatus = 'skipped',
+    ?float $faceConfidence = null
 ): void {
     $auto = $autoGeofence ?: $geofence;
     $selected = $selectedGeofence ?: ($geofence ?: $auto);
-    $act = $activityType ?: 'General';
+    $act = $activityType ?: ($isSelfie ? 'Officer Verification Selfie' : 'General');
 
     try {
-        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
-           VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
+        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, taken_at) 
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $dt]);
     } catch (Throwable $e) {
         // Fallback with column migrations
         try {
             q("ALTER TABLE field_photos ADD COLUMN activity_type VARCHAR(64) NULL DEFAULT 'General' AFTER geofence_name");
             q("ALTER TABLE field_photos ADD COLUMN auto_geofence VARCHAR(128) NULL AFTER activity_type");
             q("ALTER TABLE field_photos ADD COLUMN selected_geofence VARCHAR(128) NULL AFTER auto_geofence");
-            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
-               VALUES (?,?,?,?,?,?,?,?,?,?)',
-              [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
+            q("ALTER TABLE field_photos ADD COLUMN is_selfie TINYINT(1) DEFAULT 0 AFTER selected_geofence");
+            q("ALTER TABLE field_photos ADD COLUMN face_match_status VARCHAR(20) DEFAULT 'skipped' AFTER is_selfie");
+            q("ALTER TABLE field_photos ADD COLUMN face_confidence FLOAT NULL AFTER face_match_status");
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, taken_at) 
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+              [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $dt]);
         } catch (Throwable $e2) {
             try {
-                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-                  [$userId, $filePath, $lat, $lng, $note, $selected ?: $geofence, $dt]);
+                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
+                   VALUES (?,?,?,?,?,?,?,?,?,?)',
+                  [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
             } catch (Throwable $e3) {
                 try {
-                    q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
-                      [$userId, $filePath, $lat, $lng, $note, $dt]);
-                } catch (Throwable $e4) {}
+                    q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+                      [$userId, $filePath, $lat, $lng, $note, $selected ?: $geofence, $dt]);
+                } catch (Throwable $e4) {
+                    try {
+                        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+                          [$userId, $filePath, $lat, $lng, $note, $dt]);
+                    } catch (Throwable $e5) {}
+                }
             }
         }
     }
@@ -319,7 +331,23 @@ try {
     try { q("ALTER TABLE `field_photos` ADD COLUMN `activity_type` VARCHAR(64) NULL DEFAULT 'General' AFTER `geofence_name`"); } catch (Throwable $e) {}
     try { q("ALTER TABLE `field_photos` ADD COLUMN `auto_geofence` VARCHAR(128) NULL AFTER `activity_type`"); } catch (Throwable $e) {}
     try { q("ALTER TABLE `field_photos` ADD COLUMN `selected_geofence` VARCHAR(128) NULL AFTER `auto_geofence`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `is_selfie` TINYINT(1) DEFAULT 0 AFTER `selected_geofence`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `face_match_status` VARCHAR(20) DEFAULT 'skipped' AFTER `is_selfie`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `field_photos` ADD COLUMN `face_confidence` FLOAT NULL AFTER `face_match_status`"); } catch (Throwable $e) {}
     try { q("ALTER TABLE `task_photos` ADD COLUMN `geofence_name` VARCHAR(128) NULL"); } catch (Throwable $e) {}
+
+    // Master user profile and face enrollment flags
+    try { q("ALTER TABLE `users` ADD COLUMN `profile_photo` VARCHAR(255) NULL AFTER `avatar`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled` TINYINT(1) DEFAULT 0 AFTER `profile_photo`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled_at` DATETIME NULL AFTER `face_enrolled`"); } catch (Throwable $e) {}
+
+    // Ensure location interval setting is 15 seconds default
+    try {
+        $curIv = (int)q("SELECT `val` FROM `settings` WHERE `key`='location_interval'")->fetchColumn();
+        if ($curIv === 60 || $curIv === 0) {
+            q("INSERT INTO `settings` (`key`, `val`) VALUES ('location_interval', '15') ON DUPLICATE KEY UPDATE `val`='15'");
+        }
+    } catch (Throwable $e) {}
 
 } catch (Throwable $e) {}
 

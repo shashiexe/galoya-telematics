@@ -53,15 +53,16 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.3.8');
-    $latestBuild = (int)setting('latest_app_build', 24);
+    $latestVersion = setting('latest_app_version', '1.3.9');
+    $latestBuild = (int)setting('latest_app_build', 25);
+    $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
         'upload_batch_size' => (int)setting('upload_batch_size', 500),
         'app_version' => $latestVersion,
         'app_build' => $latestBuild,
-        'apk_url' => 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.3.8-b24/Galoya-Track360-v1.3.8-b24.apk',
+        'apk_url' => $apkUrl,
         'created_by' => 'GOPL IT',
     ];
 }
@@ -74,9 +75,9 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.3.8');
-        $latestBuild = (int)setting('latest_app_build', 24);
-        $apkUrl = 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.3.8-b24/Galoya-Track360-v1.3.8-b24.apk';
+        $latestVersion = setting('latest_app_version', '1.3.9');
+        $latestBuild = (int)setting('latest_app_build', 25);
+        $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
         $forceUpdate = setting('app_force_update', '0') === '1';
 

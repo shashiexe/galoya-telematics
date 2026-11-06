@@ -2233,15 +2233,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }, 400);
     }
-    const focusId = urlParams.get('focus');
+    const focusId = urlParams.get('focus') || urlParams.get('unit') || urlParams.get('user');
     if (focusId) {
       setTimeout(() => {
-        const u = unitsData.find(x => x.id == focusId);
-        if (u && u.lat && u.lng) {
-          map.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { animate: true, duration: 1.2 });
-          if (unitMarkers[focusId]) unitMarkers[focusId].openPopup();
+        const id = parseInt(focusId);
+        const u = unitsData.find(x => parseInt(x.id) === id);
+        if (u) {
+          if (typeof soloUnit === 'function') {
+            soloUnit(id);
+          }
+          const row = document.querySelector(`.w-unit-row[data-id="${id}"]`);
+          if (row) {
+            row.style.background = '#e0f2fe';
+            row.style.borderLeft = '4px solid #0284c7';
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          if (u.lat && u.lng) {
+            map.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { animate: true, duration: 1.2 });
+            if (unitMarkers[id]) unitMarkers[id].openPopup();
+          } else {
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;padding:10px 18px;border-radius:8px;font-size:12.5px;font-weight:700;box-shadow:0 10px 25px rgba(0,0,0,0.3);z-index:99999;border:1px solid #38bdf8';
+            toast.innerHTML = '🎯 Selected in Monitoring Panel: <strong>' + (u.name || 'Staff') + '</strong>';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+          }
         }
-      }, 600);
+      }, 700);
     }
   });
   setInterval(fetchFeed, 4000);

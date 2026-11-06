@@ -14,6 +14,15 @@ if ($key !== 'galoya2026' && !$isAdmin) {
 
 set_time_limit(300);
 
+if (isset($_GET['show_web_users'])) {
+    header('Content-Type: application/json');
+    $u = q('SELECT id, name, phone, role, active, web_access, section_id, section_ids, department_id, staff_ids FROM users WHERE web_access=1 OR role != "staff"')->fetchAll();
+    $fieldPhotos = q('SELECT id, user_id, taken_at, file_path, is_selfie FROM field_photos ORDER BY id DESC LIMIT 5')->fetchAll();
+    echo json_encode(['users' => $u, 'recent_photos' => $fieldPhotos], JSON_PRETTY_PRINT);
+    exit;
+}
+
+
 if (isset($_GET['test_report'])) {
     if (session_status() === PHP_SESSION_NONE) {
         session_name('stafftrack_admin');
@@ -819,3 +828,4 @@ if ($totalGf < 100) {
   </div>
 </body>
 </html>
+

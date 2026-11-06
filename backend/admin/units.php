@@ -170,8 +170,8 @@ layout_start('Fleet Units', 'units.php');
       <a href="staff.php" class="btn ghost sm" style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #cbd5e1" title="Manage Departments, Sections & Personnel">
         <span>🏢</span> <span>Staff & Departments</span>
       </a>
-      <button type="button" class="btn sm" onclick="syncServerRoomNow()" style="display:flex;align-items:center;gap:6px;background:#0d9488;color:#fff" title="Fetch live temperature from Hingurana Server Room Teltonika FMB920">
-        <span>🔄</span> <span>Sync Server Room</span>
+      <button type="button" class="btn sm" onclick="syncServerRoomNow()" style="display:flex;align-items:center;gap:6px;background:#0d9488;color:#fff" title="Fetch live telemetry from Hingurana Fleet Cabs & Server Room Teltonika GPS">
+        <span>🔄</span> <span>Sync Live Fleet</span>
       </button>
       <?php if (can('units', 'create')): ?>
         <button class="btn" onclick="openUnitModal()" style="display:flex;align-items:center;gap:6px;background:#0284c7">
@@ -351,16 +351,28 @@ layout_start('Fleet Units', 'units.php');
                 <div style="font-size:10.5px;color:#64748b;margin-top:3px">
                   BLE Temp Sensor · Stationary
                 </div>
-              <?php elseif ($isMoving): ?>
-                <span style="display:inline-flex;align-items:center;gap:4px;color:#15803d;font-weight:700">
-                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e"></span>
-                  Moving: <?= $speed ?> km/h
-                </span>
               <?php else: ?>
-                <span style="display:inline-flex;align-items:center;gap:4px;color:#64748b">
-                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#cbd5e1"></span>
-                  Stationary (0 km/h)
-                </span>
+                <?php if (!empty($props['fuel_liters'])): ?>
+                  <div style="margin-bottom:4px;display:flex;align-items:center;gap:6px">
+                    <span style="display:inline-flex;align-items:center;gap:3px;background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:10px;font-weight:700;font-size:11.5px">
+                      ⛽ <?= number_format($props['fuel_liters'], 1) ?> L
+                    </span>
+                    <?php if (!empty($props['pwr_ext'])): ?>
+                      <span style="font-size:10.5px;color:#64748b">⚡ <?= $props['pwr_ext'] ?>V</span>
+                    <?php endif; ?>
+                  </div>
+                <?php endif; ?>
+                <?php if ($isMoving): ?>
+                  <span style="display:inline-flex;align-items:center;gap:4px;color:#15803d;font-weight:700">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e"></span>
+                    Moving: <?= $speed ?> km/h
+                  </span>
+                <?php else: ?>
+                  <span style="display:inline-flex;align-items:center;gap:4px;color:#64748b">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#cbd5e1"></span>
+                    Stationary (0 km/h)
+                  </span>
+                <?php endif; ?>
               <?php endif; ?>
               <?php if (!empty($u['latest_lat'])): ?>
                 <div style="font-size:10.5px;color:#94a3b8;font-family:monospace;margin-top:2px">

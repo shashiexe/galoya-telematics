@@ -311,33 +311,75 @@ try {
     }
     $repo = 'shashiexe/galoya-telematics';
 
-    // 1. Find latest APK artifact from GitHub Actions
-    $ch = curl_init("https://api.github.com/repos/$repo/actions/artifacts?per_page=20");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Authorization: Bearer $token",
-        "User-Agent: GaloyaDeployer"
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    $artJson = curl_exec($ch);
-    curl_close($ch);
+    // 1. Find APK artifact from GitHub Actions (Priority: specific artifact_id OR latest successful run on main)
+    $apkArtId = !empty($_GET['artifact_id']) ? (int)$_GET['artifact_id'] : null;
 
-    $artData = json_decode($artJson, true);
-    $apkArtId = null;
-    if (!empty($artData['artifacts'])) {
-        // Sort descending by time so the newest artifact is ALWAYS selected
-        usort($artData['artifacts'], function($a, $b) {
-            $timeA = strtotime($a['created_at'] ?? '2000-01-01');
-            $timeB = strtotime($b['created_at'] ?? '2000-01-01');
-            if ($timeA === $timeB) {
-                return ($b['id'] ?? 0) <=> ($a['id'] ?? 0);
+    if (!$apkArtId) {
+        // Query latest successful workflow run on main branch
+        $chRun = curl_init("https://api.github.com/repos/$repo/actions/runs?branch=main&status=success&per_page=10");
+        curl_setopt($chRun, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($chRun, CURLOPT_HTTPHEADER, [
+            "Authorization: Bearer $token",
+            "User-Agent: GaloyaDeployer"
+        ]);
+        curl_setopt($chRun, CURLOPT_SSL_VERIFYPEER, false);
+        $runJson = curl_exec($chRun);
+        curl_close($chRun);
+        $runData = json_decode($runJson, true);
+
+        if (!empty($runData['workflow_runs'])) {
+            foreach ($runData['workflow_runs'] as $wr) {
+                if ($wr['name'] === 'Build Android APK') {
+                    $runId = $wr['id'];
+                    $chArt = curl_init("https://api.github.com/repos/$repo/actions/runs/$runId/artifacts");
+                    curl_setopt($chArt, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($chArt, CURLOPT_HTTPHEADER, [
+                        "Authorization: Bearer $token",
+                        "User-Agent: GaloyaDeployer"
+                    ]);
+                    curl_setopt($chArt, CURLOPT_SSL_VERIFYPEER, false);
+                    $runArtJson = curl_exec($chArt);
+                    curl_close($chArt);
+                    $runArtData = json_decode($runArtJson, true);
+                    if (!empty($runArtData['artifacts'])) {
+                        foreach ($runArtData['artifacts'] as $art) {
+                            if ($art['name'] === 'Galoya-Telematics-APK' && empty($art['expired'])) {
+                                $apkArtId = $art['id'];
+                                break 2;
+                            }
+                        }
+                    }
+                }
             }
-            return $timeB <=> $timeA;
-        });
-        foreach ($artData['artifacts'] as $art) {
-            if ($art['name'] === 'Galoya-Telematics-APK' && empty($art['expired'])) {
-                $apkArtId = $art['id'];
-                break;
+        }
+    }
+
+    if (!$apkArtId) {
+        $ch = curl_init("https://api.github.com/repos/$repo/actions/artifacts?per_page=20");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "Authorization: Bearer $token",
+            "User-Agent: GaloyaDeployer"
+        ]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $artJson = curl_exec($ch);
+        curl_close($ch);
+
+        $artData = json_decode($artJson, true);
+        if (!empty($artData['artifacts'])) {
+            usort($artData['artifacts'], function($a, $b) {
+                $timeA = strtotime($a['created_at'] ?? '2000-01-01');
+                $timeB = strtotime($b['created_at'] ?? '2000-01-01');
+                if ($timeA === $timeB) {
+                    return ($b['id'] ?? 0) <=> ($a['id'] ?? 0);
+                }
+                return $timeB <=> $timeA;
+            });
+            foreach ($artData['artifacts'] as $art) {
+                if ($art['name'] === 'Galoya-Telematics-APK' && empty($art['expired'])) {
+                    $apkArtId = $art['id'];
+                    break;
+                }
             }
         }
     }

@@ -119,6 +119,12 @@ try {
     $auditLogs = q("SELECT * FROM photo_delete_logs ORDER BY id DESC LIMIT 50")->fetchAll();
 } catch (Throwable $e) {}
 
+// Ensure migration columns exist non-destructively
+try { q("ALTER TABLE `field_photos` ADD COLUMN `is_selfie` TINYINT(1) DEFAULT 0 AFTER `selected_geofence`"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `field_photos` ADD COLUMN `face_match_status` VARCHAR(20) DEFAULT 'skipped' AFTER `is_selfie`"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `field_photos` ADD COLUMN `face_confidence` FLOAT NULL AFTER `face_match_status`"); } catch (Throwable $e) {}
+try { q("ALTER TABLE `users` ADD COLUMN `profile_photo` VARCHAR(255) NULL AFTER `avatar`"); } catch (Throwable $e) {}
+
 // Build queries for field_photos and task_photos scoped by assigned section
 $secScopeU = user_section_scope_sql('u');
 $params1 = [$from_dt, $to_dt];
@@ -169,13 +175,50 @@ if ($type === 'all' || $type === 'field') {
     try {
         $rows1 = q($sql1, $params1)->fetchAll();
         $photos = array_merge($photos, $rows1);
-    } catch (Throwable $e) {}
+    } catch (Throwable $e) {
+        // Fallback to legacy query so photos NEVER disappear if table column migration is pending
+        try {
+            $fallbackSql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, 
+                                    COALESCE(fp.activity_type, 'Field Photo') as activity_type,
+                                    fp.auto_geofence, fp.selected_geofence,
+                                    0 as is_selfie, 'skipped' as face_match_status, NULL as face_confidence,
+                                    fp.taken_at, 'field' as photo_type, 
+                                    u.name as user_name, u.code as user_code, u.unit_type, NULL as user_profile_photo,
+                                    d.name as dept_name, s.name as sec_name
+                             FROM field_photos fp
+                             JOIN users u ON u.id = fp.user_id
+                             LEFT JOIN departments d ON d.id = u.department_id
+                             LEFT JOIN sections s ON s.id = u.section_id
+                             WHERE fp.taken_at BETWEEN ? AND ? AND $secScopeU" . ($uid ? " AND fp.user_id = ?" : "");
+            $rows1 = q($fallbackSql1, $params1)->fetchAll();
+            $photos = array_merge($photos, $rows1);
+        } catch (Throwable $e2) {}
+    }
 }
 if ($type === 'all' || $type === 'task') {
     try {
         $rows2 = q($sql2, $params2)->fetchAll();
         $photos = array_merge($photos, $rows2);
-    } catch (Throwable $e) {}
+    } catch (Throwable $e) {
+        try {
+            $fallbackSql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng, 
+                                    CONCAT('Task #', tp.task_id, ' (', tp.type, ')', IF(t.title IS NOT NULL, CONCAT(' - ', t.title), '')) as note, 
+                                    NULL as geofence_name, 'Task Work' as activity_type,
+                                    NULL as auto_geofence, NULL as selected_geofence,
+                                    0 as is_selfie, 'skipped' as face_match_status, NULL as face_confidence,
+                                    tp.taken_at, 'task' as photo_type,
+                                    u.name as user_name, u.code as user_code, u.unit_type, NULL as user_profile_photo,
+                                    d.name as dept_name, s.name as sec_name
+                             FROM task_photos tp
+                             JOIN users u ON u.id = tp.user_id
+                             LEFT JOIN departments d ON d.id = u.department_id
+                             LEFT JOIN sections s ON s.id = u.section_id
+                             LEFT JOIN tasks t ON t.id = tp.task_id
+                             WHERE tp.taken_at BETWEEN ? AND ? AND $secScopeU" . ($uid ? " AND tp.user_id = ?" : "");
+            $rows2 = q($fallbackSql2, $params2)->fetchAll();
+            $photos = array_merge($photos, $rows2);
+        } catch (Throwable $e2) {}
+    }
 }
 
 // Sort all photos chronologically descending

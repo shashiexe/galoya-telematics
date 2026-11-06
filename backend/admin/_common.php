@@ -174,6 +174,11 @@ function user_section_scope_sql(string $alias = 'users'): string {
         return '(' . implode(' OR ', $conds) . ')';
     }
 
+    // If user has permission to view staff or photos and has no explicit restrictions assigned, allow seeing all staff
+    if (can('staff', 'view') || can('photos', 'view')) {
+        return "1=1";
+    }
+
     // Non-admin/non-super_user without assigned subordinates only sees their own record
     $myId = (int)($u['id'] ?? 0);
     return "({$alias}.id = $myId)";

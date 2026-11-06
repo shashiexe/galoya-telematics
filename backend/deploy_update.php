@@ -481,10 +481,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.4.1');
-    set_setting('latest_app_build', '27');
-    set_setting('app_update_changelog', "• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Surprise Identity Verification & Rear Camera Anti-Evasion Lock\n• Reset Master Face ID in Admin Panel\n• Advanced Photo Gallery & Report Filters");
-    $results[] = ["📱 App Update Broadcast: Configured v1.4.1 (Build 27)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.2');
+    set_setting('latest_app_build', '28');
+    set_setting('app_update_changelog', "• Smart 5km Distance & Plot Gatekeeper (No repeated selfies in same plot)\n• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Gemini Vision AI Face Mismatch & Proxy Audit in Monitoring Room\n• Reset Master Face ID & Rectify Status in Admin Panel");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.2 (Build 28)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -750,10 +750,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.4.1');
-    set_setting('latest_app_build', '27');
-    set_setting('app_update_changelog', "• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Surprise Identity Verification & Rear Camera Anti-Evasion Lock\n• Reset Master Face ID in Admin Panel\n• Advanced Photo Gallery & Report Filters");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.1 build 27", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.2');
+    set_setting('latest_app_build', '28');
+    set_setting('app_update_changelog', "• Smart 5km Distance & Plot Gatekeeper (No repeated selfies in same plot)\n• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Gemini Vision AI Face Mismatch & Proxy Audit in Monitoring Room\n• Reset Master Face ID & Rectify Status in Admin Panel");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.2 build 28", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

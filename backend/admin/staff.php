@@ -63,6 +63,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   [$name, $phone, password_hash($_POST['password'], PASSWORD_DEFAULT), $role, $deptId, $secId, $desigId, $desigName, $uploadedPhotoPath, $uploadedPhotoPath ? 1 : 0, $uploadedPhotoPath ? date('Y-m-d H:i:s') : null]);
                 flash('Staff member added successfully');
             }
+        } elseif ($act === 'reset_face') {
+            require_perm('staff', 'edit');
+            $id = (int)($_POST['id'] ?? 0);
+            $uRow = q('SELECT profile_photo FROM users WHERE id=?', [$id])->fetch();
+            if ($uRow && !empty($uRow['profile_photo'])) {
+                global $CONFIG;
+                $upPath = __DIR__ . '/../' . ($CONFIG['upload_url'] ?? 'uploads') . '/' . ltrim($uRow['profile_photo'], '/');
+                if (file_exists($upPath)) @unlink($upPath);
+            }
+            q('UPDATE users SET profile_photo=NULL, face_enrolled=0, face_enrolled_at=NULL WHERE id=?', [$id]);
+            flash('Master Face ID successfully deleted & status reset to 0 (Pending). User will re-enroll on next app launch.');
+            header('Location: staff.php' . (!empty($_GET['edit']) ? '?edit=' . (int)$_GET['edit'] : ''));
+            exit;
         } elseif ($act === 'toggle') {
             require_perm('staff', 'edit');
             $id = (int)$_POST['id'];
@@ -220,7 +233,15 @@ layout_start('Staff & Organization Management', 'staff.php');
                   <strong style="color:#0f172a;display:block"><?= h($u['name']) ?></strong>
                   <span style="font-size:11px;color:#64748b"><?= h($u['phone']) ?></span>
                   <?php if (!empty($u['profile_photo'])): ?>
-                    <span style="font-size:10px;color:#16a34a;font-weight:700">✓ Face Active</span>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="font-size:10px;color:#16a34a;font-weight:700">✓ Face Active</span>
+                      <form method="post" style="display:inline" onsubmit="return confirm('Delete Master Face ID for <?= h(addslashes($u['name'])) ?> and reset status to 0?');">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="act" value="reset_face">
+                        <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                        <button type="submit" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:9.5px;font-weight:bold;text-decoration:underline;padding:0" title="Delete Master Photo and Reset Face Status to 0">Reset</button>
+                      </form>
+                    </div>
                   <?php else: ?>
                     <span style="font-size:10px;color:#f59e0b;font-weight:600">Pending Face ID</span>
                   <?php endif; ?>
@@ -345,6 +366,14 @@ layout_start('Staff & Organization Management', 'staff.php');
             <div>
               <span style="font-size:11px;color:#16a34a;font-weight:700;display:block">✓ Master Face Active</span>
               <span style="font-size:10px;color:#64748b"><?= !empty($edit['face_enrolled_at']) ? 'Enrolled: ' . date('M d, Y', strtotime($edit['face_enrolled_at'])) : '' ?></span>
+              <form method="post" style="margin-top:4px" onsubmit="return confirm('Permanently delete this Master Face ID and reset enrollment status to 0?');">
+                <?= csrf_field() ?>
+                <input type="hidden" name="act" value="reset_face">
+                <input type="hidden" name="id" value="<?= (int)$edit['id'] ?>">
+                <button type="submit" style="padding:2px 8px;font-size:10px;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;cursor:pointer;font-weight:bold">
+                  🗑️ Delete Photo & Reset Status to 0
+                </button>
+              </form>
             </div>
           </div>
         <?php endif; ?>

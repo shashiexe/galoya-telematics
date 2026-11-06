@@ -30,9 +30,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $desigName = q("SELECT name FROM designations WHERE id=?", [$desigId])->fetchColumn() ?: null;
             }
 
+            // Handle profile photo upload
+            $uploadedPhotoPath = null;
+            if (!empty($_FILES['profile_photo']) && $_FILES['profile_photo']['error'] === UPLOAD_ERR_OK) {
+                $f = $_FILES['profile_photo'];
+                $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+                if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                    global $CONFIG;
+                    $upDir = __DIR__ . '/../' . ($CONFIG['upload_url'] ?? 'uploads') . '/profiles';
+                    if (!is_dir($upDir)) @mkdir($upDir, 0755, true);
+                    $fileName = 'profiles/profile_' . ($id ?: time()) . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                    if (@move_uploaded_file($f['tmp_name'], __DIR__ . '/../' . ($CONFIG['upload_url'] ?? 'uploads') . '/' . $fileName)) {
+                        $uploadedPhotoPath = $fileName;
+                    }
+                }
+            }
+
             if ($id) {
                 q('UPDATE users SET name=?, phone=?, role=?, department_id=?, section_id=?, designation_id=?, designation=? WHERE id=?', 
                   [$name, $phone, $role, $deptId, $secId, $desigId, $desigName, $id]);
+                if ($uploadedPhotoPath) {
+                    q('UPDATE users SET profile_photo=?, face_enrolled=1, face_enrolled_at=NOW() WHERE id=?', [$uploadedPhotoPath, $id]);
+                }
                 if (!empty($_POST['password'])) {
                     q('UPDATE users SET password_hash=? WHERE id=?', [password_hash($_POST['password'], PASSWORD_DEFAULT), $id]);
                     q('DELETE FROM api_tokens WHERE user_id=?', [$id]);
@@ -40,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('Staff member updated successfully');
             } else {
                 if (strlen($_POST['password'] ?? '') < 4) throw new Exception('Password must be at least 4 characters');
-                q('INSERT INTO users (name,phone,password_hash,role,department_id,section_id,designation_id,designation) VALUES (?,?,?,?,?,?,?,?)',
-                  [$name, $phone, password_hash($_POST['password'], PASSWORD_DEFAULT), $role, $deptId, $secId, $desigId, $desigName]);
+                q('INSERT INTO users (name,phone,password_hash,role,department_id,section_id,designation_id,designation,profile_photo,face_enrolled,face_enrolled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                  [$name, $phone, password_hash($_POST['password'], PASSWORD_DEFAULT), $role, $deptId, $secId, $desigId, $desigName, $uploadedPhotoPath, $uploadedPhotoPath ? 1 : 0, $uploadedPhotoPath ? date('Y-m-d H:i:s') : null]);
                 flash('Staff member added successfully');
             }
         } elseif ($act === 'toggle') {
@@ -187,8 +206,26 @@ layout_start('Staff & Organization Management', 'staff.php');
           <?php foreach ($users as $u): ?>
           <tr style="border-bottom:1px solid #e2e8f0;<?= $u['active'] ? '' : 'opacity:.45;background:#f8fafc' ?>">
             <td style="padding:10px 14px">
-              <strong style="color:#0f172a;display:block"><?= h($u['name']) ?></strong>
-              <span style="font-size:11px;color:#64748b"><?= h($u['phone']) ?></span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <?php if (!empty($u['profile_photo'])): ?>
+                  <div style="position:relative;width:38px;height:38px;border-radius:50%;overflow:hidden;border:2px solid #22c55e;flex-shrink:0" title="Master Face Enrolled 🟢">
+                    <img src="<?= h(photo_url($u['profile_photo'])) ?>" style="width:100%;height:100%;object-fit:cover">
+                  </div>
+                <?php else: ?>
+                  <div style="width:38px;height:38px;border-radius:50%;background:#f1f5f9;border:1px dashed #cbd5e1;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:18px;flex-shrink:0" title="Face Not Enrolled Yet">
+                    👤
+                  </div>
+                <?php endif; ?>
+                <div>
+                  <strong style="color:#0f172a;display:block"><?= h($u['name']) ?></strong>
+                  <span style="font-size:11px;color:#64748b"><?= h($u['phone']) ?></span>
+                  <?php if (!empty($u['profile_photo'])): ?>
+                    <span style="font-size:10px;color:#16a34a;font-weight:700">✓ Face Active</span>
+                  <?php else: ?>
+                    <span style="font-size:10px;color:#f59e0b;font-weight:600">Pending Face ID</span>
+                  <?php endif; ?>
+                </div>
+              </div>
             </td>
             <td style="padding:10px 14px">
               <?php if (!empty($u['dept_name'])): ?>
@@ -244,7 +281,7 @@ layout_start('Staff & Organization Management', 'staff.php');
 
   <!-- Add / Edit Staff Form -->
   <?php if (($edit && can('staff', 'edit')) || (!$edit && can('staff', 'create'))): ?>
-    <form method="post" class="card" id="staff-form" style="padding:18px">
+    <form method="post" enctype="multipart/form-data" class="card" id="staff-form" style="padding:18px">
       <h3 style="margin:0 0 14px 0;font-size:15px;color:#1e293b"><?= $edit ? 'Edit Staff / User' : 'Add New Staff Member' ?></h3>
       <?= csrf_field() ?>
       <input type="hidden" name="act" value="save">
@@ -297,6 +334,23 @@ layout_start('Staff & Organization Management', 'staff.php');
         <option value="staff" <?= ($edit['role'] ?? '') === 'staff' ? 'selected' : '' ?>>Staff (Mobile App User)</option>
         <option value="admin" <?= ($edit['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin (Web Control Room)</option>
       </select>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#475569">
+          👤 Master Profile Photo (For Face Verification)
+        </label>
+        <?php if (!empty($edit['profile_photo'])): ?>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <img src="<?= h(photo_url($edit['profile_photo'])) ?>" style="width:48px;height:48px;border-radius:6px;object-fit:cover;border:2px solid #22c55e">
+            <div>
+              <span style="font-size:11px;color:#16a34a;font-weight:700;display:block">✓ Master Face Active</span>
+              <span style="font-size:10px;color:#64748b"><?= !empty($edit['face_enrolled_at']) ? 'Enrolled: ' . date('M d, Y', strtotime($edit['face_enrolled_at'])) : '' ?></span>
+            </div>
+          </div>
+        <?php endif; ?>
+        <input type="file" name="profile_photo" accept="image/*" style="font-size:11.5px;color:#475569">
+        <div style="font-size:10px;color:#64748b;margin-top:4px">Upload HR face photo used to verify field selfies & prevent proxy visits.</div>
+      </div>
 
       <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
         Password <?= $edit ? '<span style="font-weight:normal;color:#94a3b8">(leave blank to keep unchanged)</span>' : '*' ?>

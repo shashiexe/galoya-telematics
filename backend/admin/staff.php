@@ -965,8 +965,8 @@ function showStaffDetail(u) {
 
   // Quick Action Buttons
   document.getElementById('sd-btn-map').href = 'index.php?focus=' + u.id;
-  document.getElementById('sd-btn-history').href = 'history.php?unit=' + u.id;
-  document.getElementById('sd-btn-photos').href = 'photos.php?user_id=' + u.id;
+  document.getElementById('sd-btn-history').href = 'history.php?user=' + u.id;
+  document.getElementById('sd-btn-photos').href = 'photos.php?user=' + u.id;
   document.getElementById('sd-btn-call').href = 'tel:' + (u.phone || '');
 
   document.getElementById('sd-btn-edit').onclick = function() {

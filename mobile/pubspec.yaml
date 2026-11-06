@@ -1,7 +1,7 @@
 name: stafftrack
 description: Staff GPS tracking and task (before/after photo) app.
 publish_to: 'none'
-version: 1.4.0+26
+version: 1.4.1+27
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  camera: ^0.11.0+2
   http: ^1.2.1
   sqflite: ^2.3.3
   path: ^1.9.0

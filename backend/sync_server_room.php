@@ -126,7 +126,7 @@ try {
             'sortType' => 'sys_name'
         ],
         'force' => 1,
-        'flags' => 4198401, // base(1) + pos(1024) + lmsg(4096) + 0x200000(params)
+        'flags' => 1025, // base(1) + pos(1024) which returns full lmsg.p telemetry parameters
         'from' => 0,
         'to' => 0
     ];

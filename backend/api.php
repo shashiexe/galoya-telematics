@@ -75,8 +75,8 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.4.0');
-        $latestBuild = (int)setting('latest_app_build', 26);
+        $latestVersion = setting('latest_app_version', '1.4.1');
+        $latestBuild = (int)setting('latest_app_build', 27);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
         $forceUpdate = setting('app_force_update', '0') === '1';
@@ -833,6 +833,22 @@ try {
             q("UPDATE users SET sos_active=0 WHERE id=?", [$uid]);
         }
         out(['ok' => true]);
+    }
+
+    case 'reset_face': {
+        $u = auth_user();
+        $targetId = (int)($_POST['user_id'] ?? $u['id']);
+        if ($targetId !== (int)$u['id'] && ($u['role'] ?? '') !== 'admin') {
+            fail('Forbidden', 403);
+        }
+        $uRow = q('SELECT profile_photo FROM users WHERE id=?', [$targetId])->fetch();
+        if ($uRow && !empty($uRow['profile_photo'])) {
+            global $CONFIG;
+            $upPath = __DIR__ . '/' . ($CONFIG['upload_url'] ?? 'uploads') . '/' . ltrim($uRow['profile_photo'], '/');
+            if (file_exists($upPath)) @unlink($upPath);
+        }
+        q('UPDATE users SET profile_photo=NULL, face_enrolled=0, face_enrolled_at=NULL WHERE id=?', [$targetId]);
+        out(['ok' => true, 'message' => 'Face enrollment reset to 0']);
     }
 
     case 'logout': {

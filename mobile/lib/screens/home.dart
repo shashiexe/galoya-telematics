@@ -1485,6 +1485,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         if (isSelfie) {
           await sp.setBool('pending_selfie_verification', false);
           await sp.setInt('visits_since_selfie', 0);
+          await sp.setDouble('last_selfie_lat', lat);
+          await sp.setDouble('last_selfie_lng', lng);
+          await sp.setString('last_selfie_plot', selectedGeofence.isNotEmpty ? selectedGeofence : autoGeofence);
+          await sp.setInt('last_selfie_time', DateTime.now().millisecondsSinceEpoch);
         } else {
           int v = (sp.getInt('visits_since_selfie') ?? 0) + 1;
           await sp.setInt('visits_since_selfie', v);
@@ -1585,6 +1589,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     final bool mustVerify = sp.getBool('pending_selfie_verification') ?? false;
     final int visits = sp.getInt('visits_since_selfie') ?? 0;
 
+    final double? lastLat = sp.getDouble('last_selfie_lat');
+    final double? lastLng = sp.getDouble('last_selfie_lng');
+
     if (!mounted) return;
 
     // 1. Mandatory Front Selfie if previously cancelled or evaded
@@ -1600,21 +1607,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       return;
     }
 
-    // 2. Surprise / Random Officer Audit Check (e.g. Every 3rd/4th visit or random 25% chance)
-    final bool isRandomAudit = (visits >= 3) || (Random().nextInt(4) == 0);
-    if (isRandomAudit) {
+    // Current position
+    final curLat = _currentPosition?.latitude ?? 7.2050;
+    final curLng = _currentPosition?.longitude ?? 81.6580;
+
+    // 2. Calculate Distance from last verified selfie point (Hardware GPS Haversine)
+    double distanceMeters = 999999.0;
+    if (lastLat != null && lastLng != null) {
+      distanceMeters = Geolocator.distanceBetween(lastLat, lastLng, curLat, curLng);
+    }
+
+    // 3. Distance & Plot Gatekeeper:
+    // If the officer has already verified at this location and is within 3,000 meters (3km),
+    // they get 100% rear camera field photos with ZERO selfie interruptions!
+    if (lastLat != null && distanceMeters < 3000.0) {
+      // Under 3km from last verified selfie location: 100% normal crop photo!
+      _snapPhoto(isSelfie: false, isMandatory: false);
+      return;
+    }
+
+    // 4. If traveled >= 3km - 5km OR never verified before on this device:
+    // Surprise verification triggers!
+    bool shouldTriggerSelfie = false;
+    if (lastLat == null) {
+      // First photo: selfie verification to register presence
+      shouldTriggerSelfie = true;
+    } else if (distanceMeters >= 5000.0) {
+      // Traveled >= 5 km: mandatory surprise check
+      shouldTriggerSelfie = true;
+    } else if (distanceMeters >= 3000.0 && visits >= 2) {
+      // Traveled >= 3 km and taken 2+ photos: surprise check
+      shouldTriggerSelfie = true;
+    }
+
+    if (shouldTriggerSelfie) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('🛡️ අහඹු නිලධාරී සත්‍යාපනය: කරුණාකර Front Selfie ඡායාරූපයක් ලබාගන්න.'),
-          backgroundColor: Color(0xff8b5cf6),
-          duration: Duration(seconds: 3),
+        final distKm = (distanceMeters / 1000).toStringAsFixed(1);
+        final msg = lastLat == null 
+            ? '🛡️ ආරම්භක සත්‍යාපනය: කරුණාකර Front Selfie ඡායාරූපයක් ලබාගන්න.'
+            : '🛡️ අහඹු නිලධාරී සත්‍යාපනය (${distKm}km දුරින් නව කලාපය): Front Selfie එකක් ලබාගන්න.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          backgroundColor: const Color(0xff8b5cf6),
+          duration: const Duration(seconds: 4),
         ));
       }
       _snapPhoto(isSelfie: true, isMandatory: true);
       return;
     }
 
-    // 3. Normal Field / Crop Photo (Rear Camera)
+    // Default: Normal Field / Crop Photo (Rear Camera)
     _snapPhoto(isSelfie: false, isMandatory: false);
   }
 

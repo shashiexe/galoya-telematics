@@ -170,6 +170,9 @@ layout_start('Fleet Units', 'units.php');
       <a href="staff.php" class="btn ghost sm" style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #cbd5e1" title="Manage Departments, Sections & Personnel">
         <span>🏢</span> <span>Staff & Departments</span>
       </a>
+      <button type="button" class="btn sm" onclick="syncServerRoomNow()" style="display:flex;align-items:center;gap:6px;background:#0d9488;color:#fff" title="Fetch live temperature from Hingurana Server Room Teltonika FMB920">
+        <span>🔄</span> <span>Sync Server Room</span>
+      </button>
       <?php if (can('units', 'create')): ?>
         <button class="btn" onclick="openUnitModal()" style="display:flex;align-items:center;gap:6px;background:#0284c7">
           <span>➕</span> <span>Register Vehicle</span>
@@ -258,22 +261,30 @@ layout_start('Fleet Units', 'units.php');
       </thead>
       <tbody>
         <?php foreach ($units as $idx => $u): 
-          $iconEmoji = match($u['unit_type'] ?? '') {
-              'field_staff' => '👨‍🌾',
-              'supervisor'  => '👷‍♂️',
-              'manager'     => '👔',
-              'security'    => '🛡️',
-              'staff'       => '👨‍🌾',
-              'tractor'     => '🚜',
-              'harvester'   => '🌾',
-              'infielder'   => '🚛',
-              'excavator'   => '🏗️',
-              'lorry', 'truck' => '🚚',
-              'bolero', 'car', 'vehicle' => '🚙',
-              'motorcycle', 'bike' => '🏍️',
-              'bicycle'     => '🚲',
-              'phone'       => '📱',
-              default       => '🚜'
+          $props = !empty($u['properties_json']) ? json_decode($u['properties_json'], true) : [];
+          $isServerRoom = ($u['code'] === 'SRV-ROOM' || ($u['icon_key'] ?? '') === 'server_temp' || stripos($u['name'], 'server room') !== false);
+          $temp = $props['temperature'] ?? null;
+
+          $iconEmoji = match($u['icon_key'] ?? '') {
+              'server_temp' => '🌡️',
+              default => match($u['unit_type'] ?? '') {
+                  'field_staff' => '👨‍🌾',
+                  'supervisor'  => '👷‍♂️',
+                  'manager'     => '👔',
+                  'security'    => '🛡️',
+                  'staff'       => '👨‍🌾',
+                  'tractor'     => '🚜',
+                  'harvester'   => '🌾',
+                  'infielder'   => '🚛',
+                  'excavator'   => '🏗️',
+                  'lorry', 'truck' => '🚚',
+                  'bolero', 'car', 'vehicle' => '🚙',
+                  'motorcycle', 'bike' => '🏍️',
+                  'bicycle'     => '🚲',
+                  'phone'       => '📱',
+                  'other'       => ($isServerRoom ? '🌡️' : '⚙️'),
+                  default       => ($isServerRoom ? '🌡️' : '🚜')
+              }
           };
           $speed = (float)($u['latest_speed'] ?? 0);
           $isMoving = $speed > 0;
@@ -313,7 +324,11 @@ layout_start('Fleet Units', 'units.php');
               <?php endif; ?>
             </td>
             <td style="padding:10px 14px">
-              <?php if (!empty($u['driver_name'])): ?>
+              <?php if ($isServerRoom): ?>
+                <div style="display:inline-flex;align-items:center;gap:5px;background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:12px;font-weight:700;font-size:11.5px">
+                  <span>🏢</span> <span>Hingurana IT Server Room</span>
+                </div>
+              <?php elseif (!empty($u['driver_name'])): ?>
                 <div style="display:inline-flex;align-items:center;gap:5px;background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:12px;font-weight:600;font-size:11.5px">
                   <span>👨‍✈️</span> <span><?= h($u['driver_name']) ?></span>
                 </div>
@@ -322,7 +337,21 @@ layout_start('Fleet Units', 'units.php');
               <?php endif; ?>
             </td>
             <td style="padding:10px 14px">
-              <?php if ($isMoving): ?>
+              <?php if ($temp !== null): ?>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="display:inline-flex;align-items:center;gap:4px;background:<?= $temp > 28 ? '#fee2e2;color:#b91c1c' : '#ecfdf5;color:#047857' ?>;padding:3px 8px;border-radius:12px;font-weight:800;font-size:12px">
+                    🌡️ <?= number_format($temp, 1) ?> °C
+                  </span>
+                  <?php if (!empty($props['pwr_ext'])): ?>
+                    <span style="font-size:11px;color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 6px;border-radius:4px" title="Main UPS Power">
+                      ⚡ <?= $props['pwr_ext'] ?>V
+                    </span>
+                  <?php endif; ?>
+                </div>
+                <div style="font-size:10.5px;color:#64748b;margin-top:3px">
+                  BLE Temp Sensor · Stationary
+                </div>
+              <?php elseif ($isMoving): ?>
                 <span style="display:inline-flex;align-items:center;gap:4px;color:#15803d;font-weight:700">
                   <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e"></span>
                   Moving: <?= $speed ?> km/h
@@ -568,6 +597,31 @@ function filterUnitSections() {
 
 function openPropertiesModal(unitId) {
   window.location.href = 'index.php?open_prop=' + unitId;
+}
+
+function syncServerRoomNow() {
+  const btn = event.currentTarget;
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '<span>⏳</span> <span>Syncing...</span>';
+  btn.disabled = true;
+
+  fetch('../sync_server_room.php')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        alert('✅ Server Room synced successfully!\nTemperature: ' + data.unit.temperature_celsius + ' °C\nExternal Power: ' + data.unit.external_power + '\nInternal Battery: ' + data.unit.internal_battery);
+        location.reload();
+      } else {
+        alert('❌ Sync failed: ' + (data.error || 'Unknown error'));
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    })
+    .catch(err => {
+      alert('❌ Error: ' + err.message);
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    });
 }
 
 window.addEventListener('DOMContentLoaded', () => {

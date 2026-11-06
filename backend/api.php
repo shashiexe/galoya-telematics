@@ -53,8 +53,8 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.4.0');
-    $latestBuild = (int)setting('latest_app_build', 26);
+    $latestVersion = setting('latest_app_version', '1.4.2');
+    $latestBuild = (int)setting('latest_app_build', 28);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -75,8 +75,8 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.4.1');
-        $latestBuild = (int)setting('latest_app_build', 27);
+        $latestVersion = setting('latest_app_version', '1.4.2');
+        $latestBuild = (int)setting('latest_app_build', 28);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
         $forceUpdate = setting('app_force_update', '0') === '1';
@@ -724,8 +724,22 @@ try {
 
         $isSelfie = !empty($_POST['is_selfie']) ? 1 : ($activityType === 'Officer Verification Selfie' ? 1 : 0);
         $faceStatus = $isSelfie ? 'pending' : 'skipped';
+        $faceConfidence = null;
+        $faceReason = null;
 
-        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt, $activityType, $autoGeofence, $selectedGeofence, $isSelfie, $faceStatus);
+        if ($isSelfie) {
+            $masterPhoto = q('SELECT profile_photo FROM users WHERE id=?', [$u['id']])->fetchColumn();
+            if ($masterPhoto) {
+                $aiRes = compare_faces_with_ai($masterPhoto, "$sub/$name");
+                if (!empty($aiRes['ok'])) {
+                    $faceStatus = $aiRes['status'];
+                    $faceConfidence = $aiRes['confidence'];
+                    $faceReason = $aiRes['reason'];
+                }
+            }
+        }
+
+        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt, $activityType, $autoGeofence, $selectedGeofence, $isSelfie, $faceStatus, $faceConfidence, $faceReason);
 
         out([
             'ok' => true,
@@ -733,7 +747,9 @@ try {
             'geofence' => $geofence,
             'activity_type' => $activityType,
             'is_selfie' => $isSelfie,
-            'face_match_status' => $faceStatus
+            'face_match_status' => $faceStatus,
+            'face_confidence' => $faceConfidence,
+            'face_match_reason' => $faceReason
         ]);
     }
 

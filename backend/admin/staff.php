@@ -145,6 +145,7 @@ $edit = isset($_GET['edit']) ? q('SELECT * FROM users WHERE id=?', [(int)$_GET['
 $filterDept = (int)($_GET['dept'] ?? 0);
 $filterSec = (int)($_GET['sec'] ?? 0);
 $where = [user_section_scope_sql('u')];
+$where[] = "(u.role = 'staff' OR u.web_access = 0 OR u.web_access IS NULL) AND u.role NOT IN ('admin', 'super_user')";
 $params = [];
 if ($filterDept) { $where[] = "u.department_id=?"; $params[] = $filterDept; }
 if ($filterSec) { $where[] = "u.section_id=?"; $params[] = $filterSec; }
@@ -160,10 +161,23 @@ $users = q("SELECT u.*,
    LEFT JOIN sections s ON s.id=u.section_id
    LEFT JOIN designations ds ON ds.id=u.designation_id
    WHERE " . implode(' AND ', $where) . "
-   ORDER BY u.role, d.name, s.name, u.name", $params)->fetchAll();
+   ORDER BY d.name, s.name, u.name", $params)->fetchAll();
 
-layout_start('Staff & Organization Management', 'staff.php');
+layout_start('📱 App Users (Field Staff Officers)', 'staff.php');
 ?>
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:26px">📱</span>
+    <div>
+      <strong style="color:#1e40af;font-size:14px;display:block">Mobile App Users (Field Staff Officers)</strong>
+      <span style="font-size:12px;color:#3b82f6">Field officers who log into the GalOya Track360 Android app for plot inspections, GPS tracking & selfie attendance.</span>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="font-size:12px;color:#64748b">Need to manage Web Portal logins?</span>
+    <a href="users.php" class="btn sm" style="background:#475569;color:#fff;padding:5px 12px;font-size:11.5px;border-radius:4px;text-decoration:none;font-weight:600">💻 Switch to Web Users</a>
+  </div>
+</div>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="font-weight:600;font-size:13px;color:#475569">Filter By:</span>
@@ -350,11 +364,14 @@ layout_start('Staff & Organization Management', 'staff.php');
         </select>
       </div>
 
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">System Access Role</label>
-      <select name="role" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-        <option value="staff" <?= ($edit['role'] ?? '') === 'staff' ? 'selected' : '' ?>>Staff (Mobile App User)</option>
-        <option value="admin" <?= ($edit['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin (Web Control Room)</option>
-      </select>
+      <input type="hidden" name="role" value="staff">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:18px">📱</span>
+        <div>
+          <div style="font-size:11.5px;font-weight:700;color:#166534">Mobile App Field Staff Account</div>
+          <div style="font-size:10.5px;color:#15803d">Enables mobile app login, live GPS attendance, face verification & field tasks.</div>
+        </div>
+      </div>
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:12px">
         <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#475569">

@@ -202,21 +202,29 @@ layout_start('📱 App Users (Field Staff Officers)', 'staff.php');
     </form>
   </div>
 
-  <?php if (can('staff', 'edit')): ?>
-    <button class="btn ghost sm" onclick="document.getElementById('org-modal').style.display='flex'">
-      🏢 Manage Departments & Sections
-    </button>
-  <?php endif; ?>
+  <div style="display:flex;align-items:center;gap:10px">
+    <?php if (can('staff', 'create')): ?>
+      <button type="button" class="btn sm" onclick="openStaffModal()" style="display:inline-flex;align-items:center;gap:6px;background:#16a34a;color:#fff;font-weight:700;padding:6px 14px;border-radius:6px;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+        <span>➕</span> <span>Add Field Officer</span>
+      </button>
+    <?php endif; ?>
+    <?php if (can('staff', 'edit')): ?>
+      <button class="btn ghost sm" onclick="document.getElementById('org-modal').style.display='flex'">
+        🏢 Manage Departments & Sections
+      </button>
+    <?php endif; ?>
+  </div>
 </div>
 
-<div class="grid" style="grid-template-columns:1fr 360px;align-items:start;gap:18px">
-  <!-- Staff Table -->
-  <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:700;font-size:14px;color:#1e293b">Field Staff & System Users (<?= count($users) ?>)</span>
-      <span style="font-size:11px;color:#64748b">Wialon & Mobile App Units</span>
+<!-- Full Width Staff Table Card -->
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+  <div style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-weight:700;font-size:14px;color:#1e293b">🌾 Mobile App Field Officers (<?= count($users) ?>)</span>
     </div>
-    <div style="overflow-x:auto">
+    <span style="font-size:11.5px;color:#64748b">GPS Telematics & Face Verified Accounts</span>
+  </div>
+  <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;margin:0">
         <thead>
           <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1;text-align:left;font-size:11px;color:#475569;text-transform:uppercase">
@@ -244,7 +252,9 @@ layout_start('📱 App Users (Field Staff Officers)', 'staff.php');
                   </div>
                 <?php endif; ?>
                 <div>
-                  <strong style="color:#0f172a;display:block"><?= h($u['name']) ?></strong>
+                  <a href="javascript:void(0)" onclick='showStaffDetail(<?= json_encode($u, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' style="color:#0f172a;text-decoration:none;font-weight:700;display:block" title="Click to view full officer profile & live telematics">
+                    <?= h($u['name']) ?>
+                  </a>
                   <span style="font-size:11px;color:#64748b"><?= h($u['phone']) ?></span>
                   <?php if (!empty($u['profile_photo'])): ?>
                     <div style="display:flex;align-items:center;gap:6px">
@@ -294,8 +304,13 @@ layout_start('📱 App Users (Field Staff Officers)', 'staff.php');
               <span style="color:#10b981;font-weight:600"><?= (int)$u['done'] ?> Done</span>
             </td>
             <td style="padding:10px 14px;text-align:right;white-space:nowrap">
+              <button type="button" class="btn sm" onclick='showStaffDetail(<?= json_encode($u, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' style="padding:4px 9px;font-size:11px;background:#0284c7;color:#fff;border:none;margin-right:4px;cursor:pointer;border-radius:4px" title="View Full Officer Details & Live Telematics">
+                👁️ Details
+              </button>
               <?php if (can('staff', 'edit')): ?>
-                <a class="btn ghost sm" href="?edit=<?= $u['id'] ?>">Edit</a>
+                <button type="button" class="btn ghost sm" onclick='editStaff(<?= json_encode($u, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' style="padding:4px 8px;font-size:11px">
+                  ✏️ Edit
+                </button>
                 <?php if ($u['id'] != $me['id']): ?>
                 <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="toggle"><input type="hidden" name="id" value="<?= $u['id'] ?>">
                   <button class="btn sm <?= $u['active'] ? 'red' : '' ?>" style="padding:3px 8px;font-size:11px"><?= $u['active'] ? 'Disable' : 'Enable' ?></button></form>
@@ -314,107 +329,239 @@ layout_start('📱 App Users (Field Staff Officers)', 'staff.php');
     </div>
   </div>
 
-  <!-- Add / Edit Staff Form -->
-  <?php if (($edit && can('staff', 'edit')) || (!$edit && can('staff', 'create'))): ?>
-    <form method="post" enctype="multipart/form-data" class="card" id="staff-form" style="padding:18px">
-      <h3 style="margin:0 0 14px 0;font-size:15px;color:#1e293b"><?= $edit ? 'Edit Staff / User' : 'Add New Staff Member' ?></h3>
-      <?= csrf_field() ?>
-      <input type="hidden" name="act" value="save">
-      <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
-
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Full Name *</label>
-      <input name="name" required value="<?= h($edit['name'] ?? '') ?>" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">Phone / Login Mobile *</label>
-      <input name="phone" required value="<?= h($edit['phone'] ?? '') ?>" placeholder="077xxxxxxx" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
-        Designation / Job Title <span style="font-size:11px;color:#7c3aed;font-weight:normal">(Universal for all staff)</span>
-      </label>
-      <select name="designation_id" id="user-desig" style="width:100%;margin-bottom:12px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-        <option value="">Select Designation...</option>
-        <?php foreach ($designations as $ds): ?>
-          <option value="<?= $ds['id'] ?>" <?= ((int)($edit['designation_id'] ?? 0) === (int)$ds['id']) ? 'selected' : '' ?>><?= h($ds['name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:12px">
-        <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
-          <span>Section / Division</span>
-          <span style="font-size:10.5px;color:#0284c7;font-weight:600">⚡ Auto-selects Department</span>
-        </label>
-        <select name="section_id" id="user-sec" onchange="onUserSecChange()" style="width:100%;margin-bottom:10px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-          <option value="">Select Section...</option>
-          <?php foreach ($sections as $s): ?>
-            <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= ((int)($edit['section_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
-              <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-
-        <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
-          <span>Department</span>
-          <span style="font-size:10.5px;color:#64748b;font-weight:500">Filters sections</span>
-        </label>
-        <select name="department_id" id="user-dept" onchange="onUserDeptChange()" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box;transition:border-color .3s, background-color .3s">
-          <option value="">Select Department...</option>
-          <?php foreach ($departments as $d): ?>
-            <option value="<?= $d['id'] ?>" <?= ((int)($edit['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?> (<?= h($d['code'] ?: 'Dept') ?>)</option>
-          <?php endforeach; ?>
-        </select>
+  <!-- Add / Edit Staff Centered Modal -->
+  <?php if (can('staff', 'edit') || can('staff', 'create')): ?>
+  <div id="staff-modal" style="display:<?= $edit ? 'flex' : 'none' ?>;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+    <div style="background:#ffffff;border-radius:16px;width:100%;max-width:680px;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;margin:auto">
+      
+      <!-- Modal Header -->
+      <div style="padding:14px 20px;background:#1e293b;color:#f8fafc;display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:18px">📱</span>
+          <h3 id="staff-modal-title" style="margin:0;font-size:15px;font-weight:700"><?= $edit ? 'Edit Field Officer' : 'Add New Field Officer' ?></h3>
+        </div>
+        <button type="button" onclick="closeStaffModal()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1">&times;</button>
       </div>
 
-      <input type="hidden" name="role" value="staff">
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-        <span style="font-size:18px">📱</span>
+      <!-- Modal Form -->
+      <form method="post" enctype="multipart/form-data" id="staff-form" style="padding:20px;max-height:82vh;overflow-y:auto;margin:0">
+        <?= csrf_field() ?>
+        <input type="hidden" name="act" value="save">
+        <input type="hidden" name="id" id="staff-f-id" value="<?= (int)($edit['id'] ?? 0) ?>">
+        <input type="hidden" name="role" value="staff">
+
+        <!-- Name & Phone -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;margin-bottom:14px">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:#334155">Full Name *</label>
+            <input name="name" id="staff-f-name" required value="<?= h($edit['name'] ?? '') ?>" placeholder="e.g. Sunil Perera" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:#334155">Phone / Login Mobile *</label>
+            <input name="phone" id="staff-f-phone" required value="<?= h($edit['phone'] ?? '') ?>" placeholder="077xxxxxxx" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
+          </div>
+        </div>
+
+        <!-- Designation -->
+        <div style="margin-bottom:14px">
+          <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;margin-bottom:5px;color:#334155">
+            <span>Designation / Job Title</span>
+            <span style="font-size:11px;color:#7c3aed;font-weight:normal">(Universal for all staff)</span>
+          </label>
+          <select name="designation_id" id="user-desig" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
+            <option value="">Select Designation...</option>
+            <?php foreach ($designations as $ds): ?>
+              <option value="<?= $ds['id'] ?>" <?= ((int)($edit['designation_id'] ?? 0) === (int)$ds['id']) ? 'selected' : '' ?>><?= h($ds['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+
+        <!-- Section & Department (Auto-link) -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px">
+            <div>
+              <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;margin-bottom:5px;color:#334155">
+                <span>Section / Division</span>
+                <span style="font-size:10px;color:#0284c7;font-weight:700">⚡ Auto-selects Dept</span>
+              </label>
+              <select name="section_id" id="user-sec" onchange="onUserSecChange()" style="width:100%;padding:8px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
+                <option value="">Select Section...</option>
+                <?php foreach ($sections as $s): ?>
+                  <option value="<?= $s['id'] ?>" data-dept="<?= (int)$s['department_id'] ?>" <?= ((int)($edit['section_id'] ?? 0) === (int)$s['id']) ? 'selected' : '' ?>>
+                    <?= h($s['name']) ?> <?= !empty($s['code']) ? '(' . h($s['code']) . ')' : '' ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div>
+              <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;margin-bottom:5px;color:#334155">
+                <span>Department</span>
+                <span style="font-size:10px;color:#64748b;font-weight:500">Filters sections</span>
+              </label>
+              <select name="department_id" id="user-dept" onchange="onUserDeptChange()" style="width:100%;padding:8px 10px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;transition:border-color .3s, background-color .3s">
+                <option value="">Select Department...</option>
+                <?php foreach ($departments as $d): ?>
+                  <option value="<?= $d['id'] ?>" <?= ((int)($edit['department_id'] ?? 0) === (int)$d['id']) ? 'selected' : '' ?>><?= h($d['name']) ?> (<?= h($d['code'] ?: 'Dept') ?>)</option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Account Info Banner -->
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">📱</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#166534">Mobile App Field Staff Account</div>
+            <div style="font-size:11px;color:#15803d">Enables mobile app login, live GPS attendance, face verification & field tasks.</div>
+          </div>
+        </div>
+
+        <!-- Master Face Photo Section -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:#334155">
+            👤 Master Profile Photo (For Face Verification)
+          </label>
+          <div id="staff-photo-preview" style="<?= !empty($edit['profile_photo']) ? 'display:flex' : 'display:none' ?>;align-items:center;gap:12px;margin-bottom:10px;padding:8px 10px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px">
+            <img id="staff-preview-img" src="<?= !empty($edit['profile_photo']) ? h(photo_url($edit['profile_photo'])) : '' ?>" style="width:52px;height:52px;border-radius:8px;object-fit:cover;border:2px solid #22c55e">
+            <div style="flex:1">
+              <span style="font-size:11.5px;color:#16a34a;font-weight:700;display:block">✓ Master Face Active</span>
+              <span id="staff-preview-date" style="font-size:10.5px;color:#64748b"><?= !empty($edit['face_enrolled_at']) ? 'Enrolled: ' . date('M d, Y', strtotime($edit['face_enrolled_at'])) : '' ?></span>
+            </div>
+            <?php if (!empty($edit['id'])): ?>
+              <button type="button" onclick="if(confirm('Permanently delete this Master Face ID and reset enrollment status to 0?')) { document.getElementById('reset-face-form').submit(); }" style="padding:4px 8px;font-size:11px;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:6px;cursor:pointer;font-weight:700">
+                🗑️ Reset Face
+              </button>
+            <?php endif; ?>
+          </div>
+          <input type="file" name="profile_photo" accept="image/*" style="font-size:12px;color:#475569;width:100%">
+          <div style="font-size:10.5px;color:#64748b;margin-top:4px">Upload HR face photo used to verify field selfies & prevent proxy visits.</div>
+        </div>
+
+        <!-- Password -->
+        <div style="margin-bottom:18px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:#334155">
+            Password <span id="staff-pwd-hint" style="font-weight:normal;color:#64748b"><?= $edit ? '(leave blank to keep unchanged)' : '*' ?></span>
+          </label>
+          <input name="password" id="staff-pwd" type="password" <?= $edit ? '' : 'required' ?> placeholder="••••••••" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
+        </div>
+
+        <!-- Modal Actions -->
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:12px;border-top:1px solid #e2e8f0">
+          <button type="button" class="btn ghost" onclick="closeStaffModal()">Cancel</button>
+          <button type="submit" class="btn" id="save-staff" style="background:#16a34a;color:#fff;font-weight:700;min-width:140px">
+            <?= $edit ? 'Save Changes' : 'Create Field Officer' ?>
+          </button>
+        </div>
+      </form>
+
+      <!-- Hidden form for reset face -->
+      <form id="reset-face-form" method="post" style="display:none">
+        <?= csrf_field() ?>
+        <input type="hidden" name="act" value="reset_face">
+        <input type="hidden" name="id" id="reset-face-id" value="<?= (int)($edit['id'] ?? 0) ?>">
+      </form>
+    </div>
+  </div>
+  <?php endif; ?>
+
+<!-- Officer Full Details & Live Telematics Modal -->
+<div id="staff-detail-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:99999;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+  <div style="background:#ffffff;border-radius:16px;width:100%;max-width:680px;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;margin:auto">
+    
+    <!-- Modal Header -->
+    <div style="padding:16px 20px;background:#1e293b;color:#f8fafc;display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div id="sd-avatar-wrap" style="position:relative;width:54px;height:54px;border-radius:50%;overflow:hidden;border:2.5px solid #22c55e;flex-shrink:0;background:#0f172a;display:flex;align-items:center;justify-content:center">
+          <img id="sd-avatar-img" src="" style="width:100%;height:100%;object-fit:cover;display:none">
+          <span id="sd-avatar-fallback" style="font-size:26px">👤</span>
+        </div>
         <div>
-          <div style="font-size:11.5px;font-weight:700;color:#166534">Mobile App Field Staff Account</div>
-          <div style="font-size:10.5px;color:#15803d">Enables mobile app login, live GPS attendance, face verification & field tasks.</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <h3 id="sd-name" style="margin:0;font-size:16px;font-weight:800;color:#f8fafc">Officer Name</h3>
+            <span id="sd-duty-badge" style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:12px;background:#10b981;color:#fff">ON DUTY</span>
+          </div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:3px;display:flex;align-items:center;gap:8px">
+            <span id="sd-desig" style="color:#cbd5e1;font-weight:600">Field Officer</span>
+            <span>•</span>
+            <span id="sd-phone" style="font-family:monospace;color:#38bdf8">077xxxxxxx</span>
+          </div>
+        </div>
+      </div>
+      <button type="button" onclick="closeStaffDetailModal()" style="background:none;border:none;color:#94a3b8;font-size:24px;cursor:pointer;line-height:1">&times;</button>
+    </div>
+
+    <!-- Modal Content Body -->
+    <div style="padding:20px;max-height:80vh;overflow-y:auto">
+      
+      <!-- Live Telematics Banner -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:11.5px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+          <span>🛰️</span> <span>Real-Time GPS & Device Telematics</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;margin-bottom:12px">
+          <div style="background:#fff;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0">
+            <div style="font-size:10.5px;color:#64748b">Last Signal</div>
+            <div id="sd-last-seen" style="font-size:13px;font-weight:700;color:#1e293b;margin-top:2px">Just now</div>
+          </div>
+          <div style="background:#fff;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0">
+            <div style="font-size:10.5px;color:#64748b">Battery Level</div>
+            <div id="sd-battery" style="font-size:13px;font-weight:700;color:#16a34a;margin-top:2px">🔋 85%</div>
+          </div>
+          <div style="background:#fff;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0">
+            <div style="font-size:10.5px;color:#64748b">Speed / Motion</div>
+            <div id="sd-speed" style="font-size:13px;font-weight:700;color:#0284c7;margin-top:2px">0.0 km/h</div>
+          </div>
+          <div style="background:#fff;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0">
+            <div style="font-size:10.5px;color:#64748b">App Data Usage</div>
+            <div id="sd-data-usage" style="font-size:13px;font-weight:700;color:#7c3aed;margin-top:2px">0 MB</div>
+          </div>
+        </div>
+
+        <div style="background:#fff;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0">
+          <div style="font-size:10.5px;color:#64748b;margin-bottom:2px">Current GPS Location & Address</div>
+          <div id="sd-address" style="font-size:12.5px;font-weight:600;color:#1e293b;line-height:1.4">Loading address...</div>
+          <div id="sd-coords" style="font-size:10.5px;font-family:monospace;color:#94a3b8;margin-top:3px">Coords: 0.00000, 0.00000</div>
         </div>
       </div>
 
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:12px">
-        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#475569">
-          👤 Master Profile Photo (For Face Verification)
-        </label>
-        <?php if (!empty($edit['profile_photo'])): ?>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <img src="<?= h(photo_url($edit['profile_photo'])) ?>" style="width:48px;height:48px;border-radius:6px;object-fit:cover;border:2px solid #22c55e">
-            <div>
-              <span style="font-size:11px;color:#16a34a;font-weight:700;display:block">✓ Master Face Active</span>
-              <span style="font-size:10px;color:#64748b"><?= !empty($edit['face_enrolled_at']) ? 'Enrolled: ' . date('M d, Y', strtotime($edit['face_enrolled_at'])) : '' ?></span>
-              <form method="post" style="margin-top:4px" onsubmit="return confirm('Permanently delete this Master Face ID and reset enrollment status to 0?');">
-                <?= csrf_field() ?>
-                <input type="hidden" name="act" value="reset_face">
-                <input type="hidden" name="id" value="<?= (int)$edit['id'] ?>">
-                <button type="submit" style="padding:2px 8px;font-size:10px;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;cursor:pointer;font-weight:bold">
-                  🗑️ Delete Photo & Reset Status to 0
-                </button>
-              </form>
-            </div>
-          </div>
-        <?php endif; ?>
-        <input type="file" name="profile_photo" accept="image/*" style="font-size:11.5px;color:#475569">
-        <div style="font-size:10px;color:#64748b;margin-top:4px">Upload HR face photo used to verify field selfies & prevent proxy visits.</div>
+      <!-- Personnel & Division Details -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px">🏢 Division & Section</div>
+          <div style="font-size:12.5px;color:#1e293b;font-weight:600" id="sd-dept">Department: —</div>
+          <div style="font-size:12px;color:#475569;margin-top:4px" id="sd-sec">Section: —</div>
+          <div style="font-size:11.5px;color:#059669;margin-top:6px;font-weight:600" id="sd-face-status">✓ Master Face Active</div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px">📋 Field Tasks & Device</div>
+          <div style="font-size:12.5px;color:#1e293b;font-weight:600" id="sd-tasks">0 Open Tasks · 0 Completed</div>
+          <div style="font-size:12px;color:#475569;margin-top:4px" id="sd-device">Device: Android Phone</div>
+          <div style="font-size:11.5px;color:#64748b;margin-top:6px" id="sd-enrolled-date">Enrolled: —</div>
+        </div>
       </div>
 
-      <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569">
-        Password <?= $edit ? '<span style="font-weight:normal;color:#94a3b8">(leave blank to keep unchanged)</span>' : '*' ?>
-      </label>
-      <input name="password" type="password" <?= $edit ? '' : 'required' ?> placeholder="••••••••" style="width:100%;margin-bottom:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:4px;box-sizing:border-box">
-
-      <div style="display:flex;gap:8px">
-        <button class="btn" style="flex:1" id="save-staff"><?= $edit ? 'Save Changes' : 'Create User' ?></button>
-        <?php if ($edit): ?><a class="btn ghost" href="staff.php">Cancel</a><?php endif; ?>
+      <!-- Quick Action Shortcuts -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #e2e8f0;padding-top:16px">
+        <a id="sd-btn-map" href="#" class="btn sm" style="background:#0284c7;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-weight:700">
+          <span>🛰️</span> <span>Live Map</span>
+        </a>
+        <a id="sd-btn-history" href="#" class="btn sm" style="background:#475569;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-weight:700">
+          <span>↝</span> <span>Route Track</span>
+        </a>
+        <a id="sd-btn-photos" href="#" class="btn sm" style="background:#059669;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-weight:700">
+          <span>📷</span> <span>Field Photos</span>
+        </a>
+        <a id="sd-btn-call" href="#" class="btn ghost sm" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-weight:600">
+          <span>📞</span> <span>Call Officer</span>
+        </a>
+        <button id="sd-btn-edit" type="button" class="btn ghost sm" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-weight:600">
+          <span>✏️</span> <span>Edit Profile</span>
+        </button>
       </div>
-    </form>
-  <?php else: ?>
-    <div class="card" style="padding:28px 20px;text-align:center;color:#64748b;font-size:12px">
-      <div style="font-size:32px;margin-bottom:8px">🛡️</div>
-      <strong style="color:#1e293b;font-size:13.5px;display:block">Staff Management Restricted</strong>
-      <div style="margin-top:6px;line-height:1.5">You have read-only permissions for staff directory.<br>Please contact an Administrator to modify personnel profiles.</div>
+
     </div>
-  <?php endif; ?>
+  </div>
 </div>
 
 <!-- Modal: Master Management (Departments, Sections, Designations) -->
@@ -665,11 +812,206 @@ function onFilterSecChange() {
   document.getElementById('staff-filter-form').submit();
 }
 
+function openStaffModal() {
+  var modal = document.getElementById('staff-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.getElementById('staff-modal-title').innerText = '➕ Add New Field Officer';
+  document.getElementById('staff-form').reset();
+  document.getElementById('staff-f-id').value = '0';
+  var resetId = document.getElementById('reset-face-id');
+  if (resetId) resetId.value = '0';
+  document.getElementById('staff-pwd').required = true;
+  document.getElementById('staff-pwd-hint').innerHTML = '<span style="color:#ef4444">*</span>';
+  document.getElementById('save-staff').innerText = 'Create Field Officer';
+  var photoPreview = document.getElementById('staff-photo-preview');
+  if (photoPreview) photoPreview.style.display = 'none';
+  updateSectionDropdown('', '');
+}
+
+function closeStaffModal() {
+  var modal = document.getElementById('staff-modal');
+  if (modal) modal.style.display = 'none';
+  if (window.location.search.indexOf('edit=') !== -1) {
+    history.replaceState(null, '', 'staff.php');
+  }
+}
+
+function editStaff(u) {
+  var modal = document.getElementById('staff-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.getElementById('staff-modal-title').innerText = '✏️ Edit Field Officer: ' + u.name;
+  document.getElementById('staff-f-id').value = u.id;
+  var resetId = document.getElementById('reset-face-id');
+  if (resetId) resetId.value = u.id;
+  document.getElementById('staff-f-name').value = u.name || '';
+  document.getElementById('staff-f-phone').value = u.phone || '';
+  document.getElementById('user-desig').value = u.designation_id || '';
+  document.getElementById('user-dept').value = u.department_id || '';
+  updateSectionDropdown(u.department_id || '', u.section_id || '');
+
+  var pwdInput = document.getElementById('staff-pwd');
+  pwdInput.required = false;
+  pwdInput.value = '';
+  document.getElementById('staff-pwd-hint').innerHTML = '<span style="color:#64748b">(leave blank to keep unchanged)</span>';
+  document.getElementById('save-staff').innerText = 'Save Changes';
+
+  var photoPreview = document.getElementById('staff-photo-preview');
+  if (photoPreview) {
+    if (u.profile_photo) {
+      photoPreview.style.display = 'flex';
+      var img = document.getElementById('staff-preview-img');
+      if (img) img.src = '../<?= $CONFIG['upload_url'] ?>/' + u.profile_photo.replace(/^\/+/, '');
+      var dateSpan = document.getElementById('staff-preview-date');
+      if (dateSpan) dateSpan.innerText = u.face_enrolled_at ? ('Enrolled: ' + u.face_enrolled_at.substring(0, 10)) : '';
+    } else {
+      photoPreview.style.display = 'none';
+    }
+  }
+}
+
+function showStaffDetail(u) {
+  var modal = document.getElementById('staff-detail-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  // Basic Info
+  document.getElementById('sd-name').innerText = u.name || 'Officer';
+  document.getElementById('sd-desig').innerText = u.desig_title || u.designation || 'Field Officer';
+  document.getElementById('sd-phone').innerText = u.phone || '';
+  
+  // Avatar
+  var img = document.getElementById('sd-avatar-img');
+  var fallback = document.getElementById('sd-avatar-fallback');
+  var wrap = document.getElementById('sd-avatar-wrap');
+  if (u.profile_photo) {
+    img.src = '../<?= $CONFIG['upload_url'] ?>/' + u.profile_photo.replace(/^\/+/, '');
+    img.style.display = 'block';
+    fallback.style.display = 'none';
+    wrap.style.borderColor = '#22c55e';
+  } else {
+    img.style.display = 'none';
+    fallback.style.display = 'block';
+    wrap.style.borderColor = '#94a3b8';
+  }
+
+  // Duty Badge
+  var dutyBadge = document.getElementById('sd-duty-badge');
+  if (parseInt(u.on_duty) === 1) {
+    dutyBadge.innerText = 'ON DUTY 🟢';
+    dutyBadge.style.background = '#10b981';
+  } else {
+    dutyBadge.innerText = 'OFF DUTY ⚪';
+    dutyBadge.style.background = '#64748b';
+  }
+
+  // Telematics
+  var lastSeenEl = document.getElementById('sd-last-seen');
+  lastSeenEl.innerText = u.last_seen ? u.last_seen.substring(0, 16) : 'No signal yet';
+
+  var battEl = document.getElementById('sd-battery');
+  battEl.innerText = (u.last_battery !== null && u.last_battery !== undefined && u.last_battery !== '') ? ('🔋 ' + u.last_battery + '%') : '🔋 N/A';
+
+  var spdEl = document.getElementById('sd-speed');
+  var spd = parseFloat(u.speed || 0);
+  spdEl.innerText = spd > 0 ? (spd.toFixed(1) + ' km/h (Moving)') : '0.0 km/h (Stationary)';
+
+  var dataUsageEl = document.getElementById('sd-data-usage');
+  var gprs = parseInt(u.gprs_traffic_val || 0);
+  dataUsageEl.innerText = gprs >= 1024 ? ((gprs / 1024).toFixed(2) + ' MB') : (gprs + ' KB');
+
+  // Address & Coords
+  var lat = parseFloat(u.last_lat || 0);
+  var lng = parseFloat(u.last_lng || 0);
+  var coordsEl = document.getElementById('sd-coords');
+  var addrEl = document.getElementById('sd-address');
+  if (lat && lng) {
+    coordsEl.innerText = 'GPS: ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+    addrEl.innerText = 'Detecting location in Hingurana / Ampara...';
+    fetch('index.php?geocode=1&lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        addrEl.innerText = (d && d.ok && d.address) ? d.address : (lat.toFixed(5) + ', ' + lng.toFixed(5));
+      })
+      .catch(function() {
+        addrEl.innerText = 'Coordinates: ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+      });
+  } else {
+    coordsEl.innerText = 'Coordinates: No GPS fix yet';
+    addrEl.innerText = 'No recent GPS location broadcasted from mobile app.';
+  }
+
+  // Division / Section
+  document.getElementById('sd-dept').innerText = 'Department: ' + (u.dept_name || 'None Assigned');
+  document.getElementById('sd-sec').innerText = 'Section: ' + (u.sec_name ? (u.sec_name + (u.sec_code ? ' (' + u.sec_code + ')' : '')) : 'None Assigned');
+
+  // Face status
+  var faceStatus = document.getElementById('sd-face-status');
+  if (u.profile_photo && parseInt(u.face_enrolled) === 1) {
+    faceStatus.innerText = '✓ Master Face Enrolled & Active';
+    faceStatus.style.color = '#16a34a';
+  } else {
+    faceStatus.innerText = '⚠️ Master Face ID Pending';
+    faceStatus.style.color = '#f59e0b';
+  }
+
+  // Enrolled date
+  document.getElementById('sd-enrolled-date').innerText = 'Enrolled: ' + (u.face_enrolled_at ? u.face_enrolled_at.substring(0, 10) : 'Pending');
+
+  // Tasks
+  document.getElementById('sd-tasks').innerText = (u.open || 0) + ' Open Tasks · ' + (u.done || 0) + ' Completed';
+  document.getElementById('sd-device').innerText = 'Device: ' + (u.device_type || 'Android Mobile App');
+
+  // Quick Action Buttons
+  document.getElementById('sd-btn-map').href = 'index.php?focus=' + u.id;
+  document.getElementById('sd-btn-history').href = 'history.php?unit=' + u.id;
+  document.getElementById('sd-btn-photos').href = 'photos.php?user_id=' + u.id;
+  document.getElementById('sd-btn-call').href = 'tel:' + (u.phone || '');
+
+  document.getElementById('sd-btn-edit').onclick = function() {
+    closeStaffDetailModal();
+    editStaff(u);
+  };
+}
+
+function closeStaffDetailModal() {
+  var modal = document.getElementById('staff-detail-modal');
+  if (modal) modal.style.display = 'none';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   var deptEl = document.getElementById('user-dept');
   var currentDept = deptEl ? deptEl.value : '';
   var currentSec = "<?= (int)($edit['section_id'] ?? 0) ?>";
   updateSectionDropdown(currentDept, currentSec);
+
+  var staffModal = document.getElementById('staff-modal');
+  if (staffModal) {
+    staffModal.addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeStaffModal();
+      }
+    });
+  }
+
+  var detailModal = document.getElementById('staff-detail-modal');
+  if (detailModal) {
+    detailModal.addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeStaffDetailModal();
+      }
+    });
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeStaffModal();
+    closeStaffDetailModal();
+    var orgModal = document.getElementById('org-modal');
+    if (orgModal) orgModal.style.display = 'none';
+  }
 });
 </script>
 <?php layout_end();

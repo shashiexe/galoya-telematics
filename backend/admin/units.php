@@ -17,6 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $code = trim($_POST['code'] ?? '');
             $phone = trim($_POST['phone'] ?? '');
             $unit_type = trim($_POST['unit_type'] ?? 'tractor');
+            if ($unit_type === 'staff' || $unit_type === 'field_staff') {
+                $unit_type = 'tractor';
+            }
             $device_type = trim($_POST['device_type'] ?? 'Teltonika FMB125');
             $unique_id = trim($_POST['unique_id'] ?? '');
             $icon_key = trim($_POST['icon_key'] ?? 'tractor_blue');
@@ -28,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($pDept) $department_id = (int)$pDept;
             }
 
-            if (empty($name)) throw new Exception("Unit name is required");
+            if (empty($name)) throw new Exception("Vehicle / Unit name is required");
 
             if ($id > 0) {
                 q("UPDATE users SET name=?, code=?, phone=?, unit_type=?, device_type=?, unique_id=?, icon_key=?, department_id=?, section_id=? WHERE id=?",
@@ -42,10 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     q("UPDATE drivers SET assigned_unit_id = NULL WHERE assigned_unit_id = ?", [$id]);
                     q("UPDATE drivers SET assigned_unit_id = ? WHERE id = ?", [$id, $driver_id]);
                 }
-                flash("Unit '{$name}' updated successfully");
+                flash("Fleet Vehicle '{$name}' updated successfully");
             } else {
-                $pwd = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_DEFAULT) : password_hash('123456', PASSWORD_DEFAULT);
-                $phoneVal = !empty($phone) ? $phone : 'unit_' . time();
+                $pwd = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_DEFAULT) : password_hash('unit_' . bin2hex(random_bytes(6)), PASSWORD_DEFAULT);
+                $phoneVal = !empty($phone) ? $phone : 'veh_' . time() . '_' . rand(100, 999);
                 
                 q("INSERT INTO users (name, code, phone, password_hash, role, unit_type, device_type, unique_id, icon_key, department_id, section_id, active, on_duty) 
                    VALUES (?,?,?,?,'staff',?,?,?,?,?,?,1,1)",
@@ -55,20 +58,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($driver_id) {
                     q("UPDATE drivers SET assigned_unit_id = ? WHERE id = ?", [$newId, $driver_id]);
                 }
-                flash("New unit '{$name}' registered in fleet");
+                flash("New vehicle '{$name}' registered in fleet");
             }
         } elseif ($act === 'toggle_active') {
             require_perm('units', 'toggle');
             $id = (int)$_POST['id'];
             q("UPDATE users SET active = 1 - active WHERE id = ?", [$id]);
-            flash("Unit status changed");
+            flash("Vehicle status changed");
         } elseif ($act === 'delete_unit') {
             require_perm('units', 'delete');
             $id = (int)$_POST['id'];
             if ($id !== (int)$me['id']) {
                 q("UPDATE drivers SET assigned_unit_id = NULL WHERE assigned_unit_id = ?", [$id]);
-                q("DELETE FROM users WHERE id = ? AND role = 'staff'", [$id]);
-                flash("Unit removed from fleet");
+                q("DELETE FROM users WHERE id = ? AND unit_type != 'staff'", [$id]);
+                flash("Vehicle removed from fleet");
             }
         }
     } catch (Throwable $e) {
@@ -100,7 +103,7 @@ $sql = "SELECT u.*,
         LEFT JOIN departments dept ON dept.id = u.department_id
         LEFT JOIN sections sec ON sec.id = u.section_id
         LEFT JOIN drivers d ON d.assigned_unit_id = u.id
-        WHERE u.role = 'staff' AND " . user_section_scope_sql('u');
+        WHERE u.unit_type NOT IN ('staff', 'field_staff') AND u.unit_type IS NOT NULL AND u.unit_type != '' AND " . user_section_scope_sql('u');
 $params = [];
 
 if ($search !== '') {
@@ -137,6 +140,22 @@ layout_start('Fleet Units', 'units.php');
 ?>
 
 <div style="padding:16px 20px">
+  <!-- Cross-navigation banner to switch to App Users & Web Users -->
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:26px">🚜</span>
+      <div>
+        <strong style="color:#1e40af;font-size:14px;display:block">Fleet Machinery & Vehicle Telematics (Hardware Units)</strong>
+        <span style="font-size:12px;color:#3b82f6">Tractors, harvesters, infielders, lorries & bowsers with GPS hardware tracking devices.</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;color:#64748b">Looking for human staff?</span>
+      <a href="staff.php" class="btn sm" style="background:#059669;color:#fff;padding:5px 12px;font-size:11.5px;border-radius:4px;text-decoration:none;font-weight:600">📱 Mobile App Users</a>
+      <a href="users.php" class="btn sm" style="background:#475569;color:#fff;padding:5px 12px;font-size:11.5px;border-radius:4px;text-decoration:none;font-weight:600">💻 Web Users</a>
+    </div>
+  </div>
+
   <!-- Wialon Header Bar -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
     <div>
@@ -153,7 +172,7 @@ layout_start('Fleet Units', 'units.php');
       </a>
       <?php if (can('units', 'create')): ?>
         <button class="btn" onclick="openUnitModal()" style="display:flex;align-items:center;gap:6px;background:#0284c7">
-          <span>➕</span> <span>New Unit</span>
+          <span>➕</span> <span>Register Vehicle</span>
         </button>
       <?php endif; ?>
       <a href="index.php" class="btn ghost sm" style="display:flex;align-items:center;gap:6px">
@@ -165,7 +184,7 @@ layout_start('Fleet Units', 'units.php');
   <!-- Metric Quick Cards -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px">
     <div class="card" style="padding:12px 16px;background:#fff;border-left:4px solid #0284c7">
-      <div style="font-size:11px;color:#78909c;text-transform:uppercase;font-weight:700">Total Machinery Units</div>
+      <div style="font-size:11px;color:#78909c;text-transform:uppercase;font-weight:700">Total Machinery & Vehicles</div>
       <div style="font-size:22px;font-weight:700;color:#263238;margin-top:4px"><?= $total_units ?> Units</div>
     </div>
     <div class="card" style="padding:12px 16px;background:#fff;border-left:4px solid #2e7d32">
@@ -173,7 +192,7 @@ layout_start('Fleet Units', 'units.php');
       <div style="font-size:22px;font-weight:700;color:<?= $online_count > 0 ? '#2e7d32' : '#94a3b8' ?>;margin-top:4px"><?= $online_count ?> Online</div>
     </div>
     <div class="card" style="padding:12px 16px;background:#fff;border-left:4px solid #7c3aed">
-      <div style="font-size:11px;color:#78909c;text-transform:uppercase;font-weight:700">Bound Operators</div>
+      <div style="font-size:11px;color:#78909c;text-transform:uppercase;font-weight:700">Bound Operators / Drivers</div>
       <div style="font-size:22px;font-weight:700;color:#7c3aed;margin-top:4px"><?= $assigned_driver_count ?> Assigned</div>
     </div>
     <div class="card" style="padding:12px 16px;background:#fff;border-left:4px solid #f57c00">
@@ -185,18 +204,11 @@ layout_start('Fleet Units', 'units.php');
   <!-- Filter & Search Toolbar -->
   <div class="card" style="padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
     <form method="get" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0">
-      <input type="text" name="search" value="<?= h($search) ?>" placeholder="Search unit name, code, IMEI..." style="width:240px;font-size:12px;padding:6px 10px;height:32px">
+      <input type="text" name="search" value="<?= h($search) ?>" placeholder="Search vehicle name, code, IMEI..." style="width:240px;font-size:12px;padding:6px 10px;height:32px">
       
-      <select name="type" style="width:175px;font-size:12px;padding:4px 8px;height:32px" onchange="this.form.submit()">
-        <option value="all" <?= $type_filter === 'all' ? 'selected' : '' ?>>All Unit Types</option>
-        <optgroup label="👨‍💼 Field Personnel">
-          <option value="field_staff" <?= $type_filter === 'field_staff' ? 'selected' : '' ?>>👨‍🌾 Field Staff / Officers</option>
-          <option value="supervisor" <?= $type_filter === 'supervisor' ? 'selected' : '' ?>>👷‍♂️ Field Supervisors</option>
-          <option value="manager" <?= $type_filter === 'manager' ? 'selected' : '' ?>>👔 Division / Managers</option>
-          <option value="security" <?= $type_filter === 'security' ? 'selected' : '' ?>>🛡️ Security / Watchers</option>
-          <option value="staff" <?= $type_filter === 'staff' ? 'selected' : '' ?>>📱 Mobile Staff (App)</option>
-        </optgroup>
-        <optgroup label="🚜 Estate Machinery">
+      <select name="type" style="width:185px;font-size:12px;padding:4px 8px;height:32px" onchange="this.form.submit()">
+        <option value="all" <?= $type_filter === 'all' ? 'selected' : '' ?>>All Machinery & Vehicles</option>
+        <optgroup label="🚜 Agricultural Machinery">
           <option value="tractor" <?= $type_filter === 'tractor' ? 'selected' : '' ?>>🚜 Tractors</option>
           <option value="harvester" <?= $type_filter === 'harvester' ? 'selected' : '' ?>>🌾 Sugarcane Harvesters</option>
           <option value="infielder" <?= $type_filter === 'infielder' ? 'selected' : '' ?>>🚛 Infielders</option>
@@ -204,9 +216,11 @@ layout_start('Fleet Units', 'units.php');
         </optgroup>
         <optgroup label="🚚 Vehicles & Transport">
           <option value="lorry" <?= $type_filter === 'lorry' ? 'selected' : '' ?>>🚚 Cane Transport Lorries</option>
+          <option value="bowser" <?= $type_filter === 'bowser' ? 'selected' : '' ?>>🛢️ Water / Fuel Bowsers</option>
           <option value="bolero" <?= $type_filter === 'bolero' ? 'selected' : '' ?>>🚙 Bolero / Pickups (4x4)</option>
           <option value="motorcycle" <?= $type_filter === 'motorcycle' ? 'selected' : '' ?>>🏍️ Field Motorcycles</option>
           <option value="bicycle" <?= $type_filter === 'bicycle' ? 'selected' : '' ?>>🚲 Service Bicycles</option>
+          <option value="other" <?= $type_filter === 'other' ? 'selected' : '' ?>>⚙️ Generators & Pumps</option>
         </optgroup>
       </select>
 
@@ -222,7 +236,7 @@ layout_start('Fleet Units', 'units.php');
       <?php endif; ?>
     </form>
     <div style="font-size:12px;color:#78909c">
-      Showing <strong><?= count($units) ?></strong> fleet units
+      Showing <strong><?= count($units) ?></strong> vehicles / machinery
     </div>
   </div>
 
@@ -376,39 +390,32 @@ layout_start('Fleet Units', 'units.php');
 
 <!-- Add/Edit Unit Basic Modal Dialog -->
 <div id="unit-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:8px;width:500px;max-width:95vw;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2);overflow:hidden">
-    <div style="background:#1e293b;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-      <div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">
-        <span>🚜</span> <span id="modal-unit-title">New Machinery Unit</span>
+  <div style="background:#fff;border-radius:12px;width:560px;max-width:95vw;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden">
+    <div style="background:#1e293b;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
+        <span>🚜</span> <span id="modal-unit-title">Register New Fleet Vehicle</span>
       </div>
-      <button onclick="document.getElementById('unit-modal').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer">&times;</button>
+      <button type="button" onclick="document.getElementById('unit-modal').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1">&times;</button>
     </div>
     
-    <form method="post" style="padding:16px;margin:0" id="unit-form">
+    <form method="post" style="padding:20px;margin:0;max-height:82vh;overflow-y:auto" id="unit-form">
       <?= csrf_field() ?>
       <input type="hidden" name="act" value="save_unit">
       <input type="hidden" name="id" id="unit_id" value="0">
 
-      <div style="margin-bottom:12px">
-        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Unit Name *</label>
-        <input type="text" name="name" id="unit_name" required placeholder="e.g. TRACTOR 49-1665" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Vehicle / Machinery Name *</label>
+        <input type="text" name="name" id="unit_name" required placeholder="e.g. TRACTOR 49-1665 or CANE LORRY 08" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Unit Code / Plate</label>
-          <input type="text" name="code" id="unit_code" placeholder="e.g. 49-1665" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Registration / Asset Code</label>
+          <input type="text" name="code" id="unit_code" placeholder="e.g. 49-1665 or WP-CAD-1234" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
         </div>
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Unit Category / Type *</label>
-          <select name="unit_type" id="unit_type" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
-            <optgroup label="👨‍💼 Personnel & Field Staff">
-              <option value="field_staff">👨‍🌾 Field Staff / Field Officer</option>
-              <option value="supervisor">👷‍♂️ Field Supervisor</option>
-              <option value="manager">👔 Division / Estate Manager</option>
-              <option value="security">🛡️ Field Security / Watcher</option>
-              <option value="staff">📱 WiaTag Mobile App / Staff</option>
-            </optgroup>
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Vehicle / Machinery Type *</label>
+          <select name="unit_type" id="unit_type" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
             <optgroup label="🚜 Agricultural Machinery">
               <option value="tractor" selected>🚜 Agricultural Tractor</option>
               <option value="harvester">🌾 Sugarcane Harvester</option>
@@ -417,29 +424,31 @@ layout_start('Fleet Units', 'units.php');
             </optgroup>
             <optgroup label="🚚 Fleet Vehicles & Transport">
               <option value="lorry">🚚 Cane Transport Lorry</option>
+              <option value="bowser">🛢️ Water / Fuel Bowser</option>
               <option value="bolero">🚙 Bolero Field Inspection (4x4)</option>
               <option value="motorcycle">🏍️ Field Motorcycle / Trail Bike</option>
               <option value="bicycle">🚲 Service Bicycle</option>
+              <option value="other">⚙️ Stationary Generator / Pump</option>
             </optgroup>
           </select>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Device Hardware</label>
-          <input type="text" name="device_type" id="device_type" placeholder="e.g. Teltonika FMB125" value="Teltonika FMB125" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">GPS Tracker Hardware</label>
+          <input type="text" name="device_type" id="device_type" placeholder="e.g. Teltonika FMB125" value="Teltonika FMB125" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
         </div>
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Unique ID / IMEI</label>
-          <input type="text" name="unique_id" id="unique_id" placeholder="e.g. 358901234567891" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Tracker IMEI / Unique ID *</label>
+          <input type="text" name="unique_id" id="unique_id" placeholder="e.g. 359632104298952" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Assigned Operator / Driver</label>
-          <select name="driver_id" id="driver_id" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Assigned Driver / Operator</label>
+          <select name="driver_id" id="driver_id" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
             <option value="">-- No Driver (Pool) --</option>
             <?php foreach ($drivers as $d): ?>
               <option value="<?= $d['id'] ?>">👨‍✈️ <?= h($d['name']) ?> (<?= h($d['code']) ?>)</option>
@@ -447,15 +456,15 @@ layout_start('Fleet Units', 'units.php');
           </select>
         </div>
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">SIM / Phone Login</label>
-          <input type="text" name="phone" id="unit_phone" placeholder="e.g. 0771234567" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Tracker SIM Phone (Optional)</label>
+          <input type="text" name="phone" id="unit_phone" placeholder="e.g. 0771234567" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Department</label>
-          <select name="department_id" id="unit_dept" onchange="filterUnitSections()" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Department / Division</label>
+          <select name="department_id" id="unit_dept" onchange="filterUnitSections()" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
             <option value="">-- No Department --</option>
             <?php foreach ($departments as $d): ?>
               <option value="<?= $d['id'] ?>">🏢 <?= h($d['name']) ?></option>
@@ -463,8 +472,8 @@ layout_start('Fleet Units', 'units.php');
           </select>
         </div>
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Section</label>
-          <select name="section_id" id="unit_sec" onchange="onUnitSecChange()" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Section</label>
+          <select name="section_id" id="unit_sec" onchange="onUnitSecChange()" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
             <option value="">-- No Section --</option>
             <?php foreach ($sections as $s): ?>
               <option value="<?= $s['id'] ?>" data-dept="<?= $s['department_id'] ?>">🌾 <?= h($s['name']) ?></option>
@@ -474,13 +483,13 @@ layout_start('Fleet Units', 'units.php');
       </div>
 
       <div style="margin-bottom:16px">
-        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#334155">Password <span style="font-weight:400;color:#94a3b8">(leave blank to keep current)</span></label>
-        <input type="password" name="password" id="unit_password" placeholder="••••••••" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:4px">
+        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Hardware Password <span style="font-weight:400;color:#94a3b8">(Optional, leave blank for auto-generated)</span></label>
+        <input type="password" name="password" id="unit_password" placeholder="••••••••" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box">
       </div>
 
-      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:12px;border-top:1px solid #e2e8f0">
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:14px;border-top:1px solid #e2e8f0">
         <button type="button" class="btn ghost" onclick="document.getElementById('unit-modal').style.display='none'">Cancel</button>
-        <button type="submit" class="btn" style="background:#0284c7">Save Unit</button>
+        <button type="submit" class="btn" style="background:#0284c7;font-weight:700">Save Vehicle</button>
       </div>
     </form>
   </div>
@@ -495,7 +504,7 @@ layout_start('Fleet Units', 'units.php');
 
 <script>
 function openUnitModal() {
-  document.getElementById('modal-unit-title').textContent = 'New Machinery Unit';
+  document.getElementById('modal-unit-title').textContent = '🚜 Register New Fleet Vehicle / Machinery';
   document.getElementById('unit_id').value = '0';
   document.getElementById('unit_name').value = '';
   document.getElementById('unit_code').value = '';
@@ -504,6 +513,7 @@ function openUnitModal() {
   document.getElementById('unique_id').value = '';
   document.getElementById('driver_id').value = '';
   document.getElementById('unit_phone').value = '';
+  document.getElementById('unit_password').value = '';
   document.getElementById('unit_dept').value = '';
   document.getElementById('unit_sec').value = '';
   filterUnitSections();
@@ -511,7 +521,7 @@ function openUnitModal() {
 }
 
 function editUnit(u) {
-  document.getElementById('modal-unit-title').textContent = 'Edit Unit: ' + u.name;
+  document.getElementById('modal-unit-title').textContent = '🚜 Edit Fleet Vehicle: ' + u.name;
   document.getElementById('unit_id').value = u.id;
   document.getElementById('unit_name').value = u.name || '';
   document.getElementById('unit_code').value = u.code || '';
@@ -520,6 +530,7 @@ function editUnit(u) {
   document.getElementById('unique_id').value = u.unique_id || '';
   document.getElementById('driver_id').value = u.driver_id || '';
   document.getElementById('unit_phone').value = u.phone || '';
+  document.getElementById('unit_password').value = '';
   document.getElementById('unit_dept').value = u.department_id || '';
   filterUnitSections();
   document.getElementById('unit_sec').value = u.section_id || '';

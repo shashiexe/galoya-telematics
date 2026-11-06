@@ -465,10 +465,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.3.9');
-    set_setting('latest_app_build', '25');
-    set_setting('app_update_changelog', "• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.9 (Build 25)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.0');
+    set_setting('latest_app_build', '26');
+    set_setting('app_update_changelog', "• Interactive Liveness Face Enrollment (Eye-Blink & Smile Verification)\n• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.0 (Build 26)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -734,10 +734,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.3.9');
-    set_setting('latest_app_build', '25');
-    set_setting('app_update_changelog', "• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.9 build 25", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.0');
+    set_setting('latest_app_build', '26');
+    set_setting('app_update_changelog', "• Interactive Liveness Face Enrollment (Eye-Blink & Smile Verification)\n• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.0 build 26", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

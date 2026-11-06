@@ -585,3 +585,4 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
     );
   }
 }
+

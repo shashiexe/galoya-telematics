@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
@@ -465,10 +465,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.3.8');
-    set_setting('latest_app_build', '24');
-    set_setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
-    $results[] = ["📱 App Update Broadcast: Configured v1.3.8 (Build 24)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.9');
+    set_setting('latest_app_build', '25');
+    set_setting('app_update_changelog', "• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
+    $results[] = ["📱 App Update Broadcast: Configured v1.3.9 (Build 25)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -734,10 +734,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.3.8');
-    set_setting('latest_app_build', '24');
-    set_setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.8 build 24", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.3.9');
+    set_setting('latest_app_build', '25');
+    set_setting('app_update_changelog', "• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.3.9 build 25", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

@@ -4,6 +4,22 @@ $me = require_admin();
 require_perm('photos', 'view');
 
 // -----------------------------------------------------------------------------
+// Handle Manual Face Verification / Proxy Flagging
+// -----------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'verify_face') {
+    check_csrf();
+    require_perm('photos', 'edit');
+    $photoId = (int)($_POST['id'] ?? 0);
+    $status = in_array($_POST['status'] ?? '', ['verified', 'mismatch', 'pending']) ? $_POST['status'] : 'verified';
+    if ($photoId > 0) {
+        q("UPDATE field_photos SET face_match_status = ?, is_selfie = 1 WHERE id = ?", [$status, $photoId]);
+        flash($status === 'verified' ? 'Identity verified successfully 🟢' : 'Flagged as Proxy / Face Mismatch 🔴');
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
+// -----------------------------------------------------------------------------
 // Handle Photo Deletion with Super Admin Audit Logging
 // -----------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act'] === 'delete_photo') {
@@ -170,8 +186,14 @@ if ($uid) {
     $params2[] = $uid;
 }
 
+if ($type === 'selfie') {
+    $sql1 .= " AND (fp.is_selfie = 1 OR fp.activity_type = 'Officer Verification Selfie')";
+} elseif ($type === 'mismatch') {
+    $sql1 .= " AND (fp.face_match_status = 'mismatch' OR (fp.is_selfie = 1 AND fp.face_match_status != 'verified'))";
+}
+
 $photos = [];
-if ($type === 'all' || $type === 'field') {
+if ($type === 'all' || $type === 'field' || $type === 'selfie' || $type === 'mismatch') {
     try {
         $rows1 = q($sql1, $params1)->fetchAll();
         $photos = array_merge($photos, $rows1);
@@ -277,6 +299,33 @@ layout_start('Photos & Field Media', 'photos.php');
     </div>
     
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <?php
+        $mismatchCount = 0;
+        try {
+            $mismatchCount = (int)q("SELECT COUNT(*) FROM field_photos WHERE face_match_status='mismatch' OR (is_selfie=1 AND face_match_status='mismatch')")->fetchColumn();
+        } catch (Throwable $e) {}
+        $selfieCount = 0;
+        try {
+            $selfieCount = (int)q("SELECT COUNT(*) FROM field_photos WHERE is_selfie=1 OR activity_type='Officer Verification Selfie'")->fetchColumn();
+        } catch (Throwable $e) {}
+      ?>
+      <!-- Selfies Count Badge -->
+      <a href="?<?= http_build_query(array_merge($_GET, ['type' => 'selfie'])) ?>" 
+         style="font-size:12px;color:#7c3aed;font-weight:700;background:#f5f3ff;border:1px solid #ddd6fe;padding:5px 12px;border-radius:20px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+        🤳 Selfies: <?= $selfieCount ?>
+      </a>
+      <!-- Proxy / Mismatch Alert Badge -->
+      <?php if ($mismatchCount > 0): ?>
+        <a href="?<?= http_build_query(array_merge($_GET, ['type' => 'mismatch'])) ?>" 
+           style="font-size:12px;color:#b91c1c;font-weight:700;background:#fef2f2;border:1px solid #fecaca;padding:5px 12px;border-radius:20px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+          ⚠️ <?= $mismatchCount ?> Proxy Mismatches!
+        </a>
+      <?php else: ?>
+        <a href="?<?= http_build_query(array_merge($_GET, ['type' => 'mismatch'])) ?>" 
+           style="font-size:12px;color:#15803d;font-weight:700;background:#f0fdf4;border:1px solid #bbf7d0;padding:5px 12px;border-radius:20px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+          🛡️ Zero Proxy Mismatches
+        </a>
+      <?php endif; ?>
       <!-- Total Photos Badge -->
       <div style="font-size:12.5px;color:#0284c7;font-weight:700;background:#f0f9ff;border:1px solid #bae6fd;padding:5px 12px;border-radius:20px">
         📷 Total: <?= count($photos) ?> Photos
@@ -324,12 +373,14 @@ layout_start('Photos & Field Media', 'photos.php');
       </div>
 
       <!-- Type Filter -->
-      <div style="min-width:130px">
+      <div style="min-width:140px">
         <label style="font-size:11px;color:#475569;display:block;margin-bottom:3px;font-weight:700;text-transform:uppercase">Category:</label>
         <select name="type" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
           <option value="all" <?= $type === 'all' ? 'selected' : '' ?>>All Photos</option>
           <option value="field" <?= $type === 'field' ? 'selected' : '' ?>>Field Snaps 📷</option>
           <option value="task" <?= $type === 'task' ? 'selected' : '' ?>>Task Verification ✓</option>
+          <option value="selfie" <?= $type === 'selfie' ? 'selected' : '' ?>>🤳 Verification Selfies</option>
+          <option value="mismatch" <?= $type === 'mismatch' ? 'selected' : '' ?>>🔴 ⚠️ Proxy / Face Mismatches</option>
         </select>
       </div>
 
@@ -550,7 +601,20 @@ layout_start('Photos & Field Media', 'photos.php');
         <div id="lb-note" style="margin-bottom:4px;color:#f1f5f9;font-weight:500"></div>
         <div id="lb-coords" style="font-size:11px;color:#38bdf8"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <!-- Admin Manual Face Verification Controls (Visible only for selfies) -->
+        <form method="post" id="lb-verify-form" style="display:none;gap:6px;align-items:center;margin:0">
+          <?= csrf_field() ?>
+          <input type="hidden" name="act" value="verify_face">
+          <input type="hidden" name="id" id="lb-verify-id" value="">
+          <button type="submit" name="status" value="verified" class="btn sm" style="background:#16a34a;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Confirm face matches officer">
+            ✓ Verify 🟢
+          </button>
+          <button type="submit" name="status" value="mismatch" class="btn sm" style="background:#dc2626;color:#fff;padding:6px 12px;font-size:11.5px;font-weight:700;border:none;border-radius:4px;cursor:pointer" title="Flag as Proxy / Person Mismatch">
+            ⚠️ Flag Mismatch 🔴
+          </button>
+        </form>
+
         <button type="button" id="lb-compare-btn" onclick="toggleFaceCompare()" class="btn" style="display:none;background:#6366f1;color:#fff;padding:6px 12px;font-size:12px;border-radius:4px;font-weight:700;border:none;cursor:pointer">
           👥 Compare Face
         </button>
@@ -705,9 +769,14 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
   const selfieBadge = document.getElementById('lb-selfie-badge');
   const matchBadge = document.getElementById('lb-face-match-badge');
   const compareBtn = document.getElementById('lb-compare-btn');
+  const verifyForm = document.getElementById('lb-verify-form');
 
   if (isSelfie == 1) {
     selfieBadge.style.display = 'inline-block';
+    if (verifyForm) {
+      document.getElementById('lb-verify-id').value = id;
+      verifyForm.style.display = 'inline-flex';
+    }
     if (faceStatus === 'verified') {
       matchBadge.textContent = '🟢 Identity Verified';
       matchBadge.style.background = '#15803d';
@@ -737,6 +806,7 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
     selfieBadge.style.display = 'none';
     matchBadge.style.display = 'none';
     compareBtn.style.display = 'none';
+    if (verifyForm) verifyForm.style.display = 'none';
   }
   
   const coordsEl = document.getElementById('lb-coords');

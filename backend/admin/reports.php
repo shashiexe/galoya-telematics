@@ -3,6 +3,46 @@ require __DIR__ . '/_common.php';
 $me = require_admin();
 require_perm('reports', 'view');
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'verify_face') {
+    check_csrf();
+    require_perm('photos', 'edit');
+    $photoId = (int)($_POST['id'] ?? 0);
+    $status = in_array($_POST['status'] ?? '', ['verified', 'mismatch', 'skipped', 'pending'], true) ? $_POST['status'] : 'verified';
+    if ($photoId > 0) {
+        q('UPDATE field_photos SET face_match_status=? WHERE id=?', [$status, $photoId]);
+        if ($status === 'verified') {
+            flash('Identity Rectified / Verified successfully 🟢 (Monitoring alert resolved)');
+        } else {
+            flash('Photo flagged as Person / Proxy Mismatch 🔴 (Alert recorded)', 'warning');
+        }
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'run_ai_scan') {
+    check_csrf();
+    require_perm('photos', 'edit');
+    $photoId = (int)($_POST['id'] ?? 0);
+    if ($photoId > 0) {
+        $pRow = q('SELECT fp.*, u.profile_photo FROM field_photos fp JOIN users u ON u.id = fp.user_id WHERE fp.id = ?', [$photoId])->fetch();
+        if ($pRow && !empty($pRow['profile_photo'])) {
+            $aiRes = compare_faces_with_ai($pRow['profile_photo'], $pRow['file_path']);
+            if (!empty($aiRes['ok'])) {
+                q('UPDATE field_photos SET face_match_status=?, face_confidence=?, face_match_reason=? WHERE id=?',
+                  [$aiRes['status'], $aiRes['confidence'], $aiRes['reason'], $photoId]);
+                flash("AI Face Scan: {$aiRes['status']} (" . round($aiRes['confidence']) . "%) — {$aiRes['reason']}");
+            } else {
+                flash("AI Scan Notice: " . ($aiRes['reason'] ?? 'Could not scan at this time'), 'warning');
+            }
+        } else {
+            flash('Officer does not have a Master Enrolled Profile Photo to compare with.', 'warning');
+        }
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
 $secScopeUsers = user_section_scope_sql('users');
 $secScopeU = user_section_scope_sql('u');
 $units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
@@ -68,7 +108,11 @@ $summary = [
     'total_visits' => 0,
     'distinct_plots' => 0,
     'active_officers' => 0,
-    'total_notes' => 0
+    'total_notes' => 0,
+    'total_selfies' => 0,
+    'verified_faces' => 0,
+    'mismatch_faces' => 0,
+    'pending_faces' => 0
 ];
 
 $unitFilterSql = $unit_id ? "AND id = " . (int)$unit_id : "";
@@ -1137,6 +1181,65 @@ if ($report_type === 'staff_audit') {
     $summary['distinct_plots'] = count($distinctPlots);
     $summary['active_officers'] = count($activeOfficers);
     $summary['total_notes'] = $totalNotes;
+} elseif ($report_type === 'face_audit') {
+    // -------------------------------------------------------------------------
+    // 🛡️ Field Officer Face ID & Proxy Audit Report (AI Verification)
+    // -------------------------------------------------------------------------
+    $params = [$date_from, $date_to];
+    $extraWhere = "";
+    if ($unit_id > 0) {
+        $extraWhere .= " AND fp.user_id = ?";
+        $params[] = $unit_id;
+    }
+    if ($filterDept > 0) {
+        $extraWhere .= " AND u.department_id = ?";
+        $params[] = $filterDept;
+    }
+    if ($filterSec > 0) {
+        $extraWhere .= " AND u.section_id = ?";
+        $params[] = $filterSec;
+    }
+
+    $faceSql = "SELECT fp.id, fp.user_id, fp.file_path, fp.taken_at, fp.lat, fp.lng,
+                       fp.auto_geofence, fp.selected_geofence, fp.geofence_name,
+                       fp.note,
+                       COALESCE(fp.face_match_status, 'pending') as face_match_status,
+                       fp.face_confidence,
+                       fp.face_match_reason,
+                       u.name as user_name, u.code as user_code, u.phone as user_phone,
+                       u.profile_photo as user_profile_photo,
+                       dept.name as dept_name, sec.name as sec_name
+                FROM field_photos fp
+                JOIN users u ON u.id = fp.user_id
+                LEFT JOIN departments dept ON dept.id = u.department_id
+                LEFT JOIN sections sec ON sec.id = u.section_id
+                WHERE (fp.is_selfie = 1 OR fp.activity_type = 'Officer Verification Selfie')
+                  AND fp.taken_at BETWEEN ? AND ?
+                  AND $secScopeU
+                  $extraWhere
+                ORDER BY fp.taken_at DESC";
+    try {
+        $report_rows = q($faceSql, $params)->fetchAll();
+    } catch (Throwable $e) {
+        $report_rows = [];
+    }
+
+    $totalSelfies = count($report_rows);
+    $verifiedCount = 0;
+    $mismatchCount = 0;
+    $pendingCount = 0;
+
+    foreach ($report_rows as $fr) {
+        $st = $fr['face_match_status'] ?: 'pending';
+        if ($st === 'verified') $verifiedCount++;
+        elseif ($st === 'mismatch') $mismatchCount++;
+        else $pendingCount++;
+    }
+
+    $summary['total_selfies'] = $totalSelfies;
+    $summary['verified_faces'] = $verifiedCount;
+    $summary['mismatch_faces'] = $mismatchCount;
+    $summary['pending_faces'] = $pendingCount;
 }
 
 // CSV Export Handler
@@ -1146,7 +1249,26 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Disposition: attachment; filename="galoya_telematics_report_' . $report_type . '_' . date('Ymd_His') . '.csv"');
     $out = fopen('php://output', 'w');
     if (!empty($report_rows)) {
-        if ($report_type === 'field_visits') {
+        if ($report_type === 'face_audit') {
+            fputcsv($out, ['Time', 'Field Officer', 'Staff Code', 'Phone', 'Department', 'Section', 'Plot Number / Geofence', 'Face Match Status', 'AI Confidence %', 'AI Assessment Reason', 'Selfie Photo URL', 'Master Profile URL']);
+            foreach ($report_rows as $r) {
+                $plot = $r['selected_geofence'] ?: ($r['auto_geofence'] ?: ($r['geofence_name'] ?: 'Field Plot'));
+                fputcsv($out, [
+                    $r['taken_at'],
+                    $r['user_name'],
+                    $r['user_code'],
+                    $r['user_phone'],
+                    $r['dept_name'] ?? '',
+                    $r['sec_name'] ?? '',
+                    $plot,
+                    strtoupper($r['face_match_status'] ?? 'PENDING'),
+                    $r['face_confidence'] !== null ? round($r['face_confidence']) . '%' : 'N/A',
+                    $r['face_match_reason'] ?? '',
+                    photo_url($r['file_path']),
+                    !empty($r['user_profile_photo']) ? photo_url($r['user_profile_photo']) : 'None'
+                ]);
+            }
+        } elseif ($report_type === 'field_visits') {
             fputcsv($out, ['Time', 'Field Officer', 'Staff Code', 'Department', 'Section', 'Plot Number / Geofence', 'Activity Type', 'Latitude', 'Longitude', 'Field Observation / Notes', 'Photo Attached']);
             foreach ($report_rows as $r) {
                 fputcsv($out, [
@@ -1181,6 +1303,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Select Report Template</label>
       <select name="type" onchange="this.form.submit()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;font-weight:700;background:#fff;color:#0f172a">
+        <option value="face_audit" <?= $report_type === 'face_audit' ? 'selected' : '' ?>>🛡️ Field Officer Face ID & Proxy Audit Report (AI Verification)</option>
         <option value="field_visits" <?= $report_type === 'field_visits' ? 'selected' : '' ?>>🌾 Field Officer Plot Visits & Crop Inspection Summary</option>
         <option value="staff_audit" <?= $report_type === 'staff_audit' ? 'selected' : '' ?>>📱 Staff Daily Activity & Tracking Audit Report</option>
         <option value="dept_section" <?= $report_type === 'dept_section' ? 'selected' : '' ?>>📊 Section & Department Telematics Summary</option>
@@ -1190,7 +1313,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </select>
     </div>
 
-    <?php if ($report_type === 'field_visits'): ?>
+    <?php if ($report_type === 'field_visits' || $report_type === 'face_audit'): ?>
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Field Staff / Officer</label>
       <select name="unit_id" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
@@ -1211,7 +1334,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
     <?php endif; ?>
 
-    <?php if ($report_type === 'dept_section' || $report_type === 'field_visits'): ?>
+    <?php if ($report_type === 'dept_section' || $report_type === 'field_visits' || $report_type === 'face_audit'): ?>
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Department</label>
       <select name="dept_id" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
@@ -1272,7 +1395,27 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 
 <!-- Compact Single-Line KPI Summary Strip -->
 <div class="card" style="margin-bottom:12px;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03)">
-  <?php if ($report_type === 'field_visits'): ?>
+  <?php if ($report_type === 'face_audit'): ?>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🤳 Total Selfies:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#6366f1;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 10px;border-radius:12px"><?= $summary['total_selfies'] ?></span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🟢 Verified Matches:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= $summary['verified_faces'] ?></span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🔴 Proxy / Mismatch:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:2px 10px;border-radius:12px"><?= $summary['mismatch_faces'] ?></span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🟡 Audit Pending:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 10px;border-radius:12px"><?= $summary['pending_faces'] ?></span>
+    </div>
+  <?php elseif ($report_type === 'field_visits'): ?>
     <div style="display:inline-flex;align-items:center;gap:8px">
       <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🌾 Total Plot Visits:</span>
       <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $summary['total_visits'] ?></span>
@@ -1664,7 +1807,9 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" id="report-table-card" style="padding:0;overflow:hidden">
   <div style="padding:10px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <strong style="font-size:14px;color:#1e293b">
-      <?php if ($report_type === 'field_visits'): ?>
+      <?php if ($report_type === 'face_audit'): ?>
+        🛡️ Field Officer Face ID & Proxy Audit Report (AI Verification)
+      <?php elseif ($report_type === 'field_visits'): ?>
         🌾 Field Officer Plot Visits & Crop Inspection Summary Log
       <?php elseif ($report_type === 'staff_audit'): 
         $sName = is_array($staffUser) ? ($staffUser['name'] ?? 'Staff') : 'Staff';
@@ -1690,7 +1835,16 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <table id="report-table" style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead>
         <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
-          <?php if ($report_type === 'field_visits'): ?>
+          <?php if ($report_type === 'face_audit'): ?>
+            <th style="padding:10px 14px;text-align:center;width:40px">#</th>
+            <th style="padding:10px 14px;text-align:left">Time & Plot</th>
+            <th style="padding:10px 14px;text-align:left">Field Officer</th>
+            <th style="padding:10px 14px;text-align:center">Master Face (HR)</th>
+            <th style="padding:10px 14px;text-align:center">Field Selfie</th>
+            <th style="padding:10px 14px;text-align:left">AI Match & Confidence</th>
+            <th style="padding:10px 14px;text-align:center">Status</th>
+            <th style="padding:10px 14px;text-align:center">Actions</th>
+          <?php elseif ($report_type === 'field_visits'): ?>
             <th style="padding:10px 14px;text-align:center;width:40px">#</th>
             <th style="padding:10px 14px;text-align:left">Visit Time</th>
             <th style="padding:10px 14px;text-align:left">Field Officer</th>
@@ -1761,7 +1915,87 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             $evStr = (string)($row['event'] ?? '');
           ?>
             <tr class="report-row" style="border-bottom:1px solid #f1f5f9">
-              <?php if ($report_type === 'field_visits'): ?>
+              <?php if ($report_type === 'face_audit'): 
+                $plot = $row['selected_geofence'] ?: ($row['auto_geofence'] ?: ($row['geofence_name'] ?: 'Field Plot'));
+                $status = $row['face_match_status'] ?: 'pending';
+                $conf = $row['face_confidence'];
+              ?>
+                <td style="padding:10px 14px;text-align:center;color:#94a3b8;font-weight:600"><?= $rowIdx ?></td>
+                <td style="padding:10px 14px;color:#0f172a">
+                  <div style="font-weight:700"><?= date('h:i:s A', strtotime($row['taken_at'])) ?></div>
+                  <div style="font-size:11px;color:#64748b"><?= date('Y-m-d', strtotime($row['taken_at'])) ?></div>
+                  <div style="font-size:11.5px;color:#166534;font-weight:600;margin-top:2px">🌾 <?= h($plot) ?></div>
+                  <?php if (!empty($row['lat']) && !empty($row['lng'])): ?>
+                    <a href="https://maps.google.com/?q=<?= $row['lat'] ?>,<?= $row['lng'] ?>" target="_blank" style="font-size:10.5px;color:#0284c7;text-decoration:none">📍 <?= round($row['lat'], 5) ?>, <?= round($row['lng'], 5) ?></a>
+                  <?php endif; ?>
+                </td>
+                <td style="padding:10px 14px">
+                  <strong style="color:#0f172a;display:block"><?= h($row['user_name']) ?></strong>
+                  <span style="font-size:11px;color:#64748b"><?= h($row['sec_name'] ?? ($row['dept_name'] ?? 'Sugar Cultivation')) ?></span>
+                  <div style="font-size:11px;color:#94a3b8;font-family:monospace"><?= h($row['user_phone']) ?></div>
+                </td>
+                <!-- Master Profile Photo (HR) -->
+                <td style="padding:10px 14px;text-align:center">
+                  <?php if (!empty($row['user_profile_photo'])): ?>
+                    <a href="<?= h(photo_url($row['user_profile_photo'])) ?>" target="_blank" title="Click to view full Master Face">
+                      <img src="<?= h(photo_url($row['user_profile_photo'])) ?>" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid #22c55e;display:inline-block">
+                    </a>
+                  <?php else: ?>
+                    <span style="font-size:11px;color:#94a3b8;font-style:italic">No Master Enrolled</span>
+                  <?php endif; ?>
+                </td>
+                <!-- Field Verification Selfie -->
+                <td style="padding:10px 14px;text-align:center">
+                  <a href="<?= h(photo_url($row['file_path'])) ?>" target="_blank" title="Click to view full field selfie">
+                    <img src="<?= h(photo_url($row['file_path'])) ?>" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid <?= $status === 'mismatch' ? '#ef4444' : '#8b5cf6' ?>;display:inline-block">
+                  </a>
+                </td>
+                <!-- AI Match & Confidence -->
+                <td style="padding:10px 14px;max-width:280px">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                    <span style="font-size:11px;font-weight:700;color:#6366f1">🤖 Gemini Vision:</span>
+                    <?php if ($conf !== null): ?>
+                      <span style="font-size:12px;font-weight:800;color:<?= $conf >= 65 ? '#16a34a' : '#dc2626' ?>"><?= round($conf) ?>% Match</span>
+                    <?php else: ?>
+                      <span style="font-size:11px;color:#94a3b8">Pending scan</span>
+                    <?php endif; ?>
+                  </div>
+                  <?php if (!empty($row['face_match_reason'])): ?>
+                    <div style="font-size:11px;color:#475569;line-height:1.3;background:#f8fafc;padding:4px 6px;border-radius:4px;border:1px solid #e2e8f0"><?= h($row['face_match_reason']) ?></div>
+                  <?php endif; ?>
+                </td>
+                <!-- Status Badge -->
+                <td style="padding:10px 14px;text-align:center;white-space:nowrap">
+                  <?php if ($status === 'verified'): ?>
+                    <span style="background:#ecfdf5;color:#15803d;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #86efac">🟢 Verified</span>
+                  <?php elseif ($status === 'mismatch'): ?>
+                    <span style="background:#fef2f2;color:#b91c1c;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #fca5a5">🔴 Proxy Mismatch</span>
+                  <?php else: ?>
+                    <span style="background:#fffbeb;color:#b45309;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #fde68a">🟡 Pending</span>
+                  <?php endif; ?>
+                </td>
+                <!-- Actions -->
+                <td style="padding:10px 14px;text-align:center;white-space:nowrap">
+                  <form method="post" style="display:inline-flex;gap:4px;align-items:center;margin:0">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                    <?php if ($status !== 'verified'): ?>
+                      <button type="submit" name="act" value="verify_face" class="btn sm" style="background:#16a34a;color:#fff;padding:4px 10px;font-size:11px;border-radius:4px;font-weight:700;border:none;cursor:pointer" title="Rectify and verify officer identity">
+                        ✓ Rectify 🟢
+                      </button>
+                    <?php endif; ?>
+                    <?php if ($status !== 'mismatch'): ?>
+                      <input type="hidden" name="status" id="st_<?= $row['id'] ?>" value="verified">
+                      <button type="submit" name="act" value="verify_face" onclick="document.getElementById('st_<?= $row['id'] ?>').value='mismatch'" class="btn sm ghost" style="color:#dc2626;padding:4px 8px;font-size:11px;border:1px solid #fecaca" title="Flag as Proxy Mismatch">
+                        Flag 🔴
+                      </button>
+                    <?php endif; ?>
+                    <button type="submit" name="act" value="run_ai_scan" class="btn sm ghost" style="color:#7c3aed;padding:4px 8px;font-size:11px;border:1px solid #ddd6fe" title="Re-run Gemini Vision AI match">
+                      🤖
+                    </button>
+                  </form>
+                </td>
+              <?php elseif ($report_type === 'field_visits'): ?>
                 <td style="padding:10px 14px;text-align:center;color:#94a3b8;font-weight:600"><?= $rowIdx ?></td>
                 <td style="padding:10px 14px;color:#0f172a;font-weight:600;white-space:nowrap">
                   <?= date('h:i:s A', strtotime($row['time'])) ?>

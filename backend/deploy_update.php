@@ -30,8 +30,12 @@ if (isset($_GET['check_apk_version'])) {
     if (file_exists($apkPath)) {
         $za = new ZipArchive();
         if ($za->open($apkPath) === true) {
-            $v = $za->getFromName('assets/flutter_assets/version.json');
-            $res['version_json'] = $v ? json_decode($v, true) : null;
+            $libApp = $za->getFromName('lib/arm64-v8a/libapp.so');
+            if ($libApp) {
+                $res['arm64_libapp_size'] = strlen($libApp);
+                $res['contains_1_4_2'] = strpos($libApp, '1.4.2') !== false;
+                $res['contains_1_4_1'] = strpos($libApp, '1.4.1') !== false;
+            }
             $za->close();
         }
     }

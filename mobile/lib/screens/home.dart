@@ -747,11 +747,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         Sync.run();
       } catch (_) {}
     } else {
-      // User can freely pause/stop tracking without a password
+      // Prompt user for confirmation and reason to prevent accidental shutoff
+      final String? selectedReason = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          String reason = 'Shift Ended';
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                backgroundColor: const Color(0xff1e293b),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: const [
+                    Icon(Icons.warning_amber_rounded, color: Color(0xfff59e0b), size: 28),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text('Stop Tracking?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Are you sure you want to stop tracking? Please select a reason:',
+                      style: TextStyle(color: Color(0xff94a3b8), fontSize: 13.5),
+                    ),
+                    const SizedBox(height: 14),
+                    RadioListTile<String>(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: const Color(0xff22c55e),
+                      title: const Text('Shift Ended (සේවා මුරය අවසන්)', style: TextStyle(color: Colors.white, fontSize: 14)),
+                      value: 'Shift Ended',
+                      groupValue: reason,
+                      onChanged: (val) => setDialogState(() => reason = val!),
+                    ),
+                    RadioListTile<String>(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: const Color(0xff22c55e),
+                      title: const Text('Lunch Break (දිවා ආහාර විවේකය)', style: TextStyle(color: Colors.white, fontSize: 14)),
+                      value: 'Lunch Break',
+                      groupValue: reason,
+                      onChanged: (val) => setDialogState(() => reason = val!),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(null),
+                    child: const Text('Cancel', style: TextStyle(color: Color(0xff94a3b8), fontWeight: FontWeight.w600)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xffef4444),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(reason),
+                    child: const Text('Confirm & Stop', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (selectedReason == null) {
+        // User cancelled or tapped away -> keep tracking switch ON
+        setState(() => _tracking = true);
+        return;
+      }
+
       await Tracker.stop();
       setState(() => _tracking = false);
 
-      // Record offline-durable Tracking OFF event with timestamp & battery
+      // Record offline-durable Tracking OFF event with timestamp, battery & selected reason
       try {
         final pos = _currentPosition ?? await Geolocator.getLastKnownPosition();
         int? bat;
@@ -762,7 +837,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             'client_id': 'off_${DateTime.now().millisecondsSinceEpoch}',
             'status': 'off',
             'event_type': 'tracking_off',
-            'note': 'Tracking Turned OFF',
+            'note': 'Tracking Turned OFF ($selectedReason)',
+            'reason': selectedReason,
             'lat': pos?.latitude,
             'lng': pos?.longitude,
             'battery': bat,
@@ -773,7 +849,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       } catch (_) {}
 
       try {
-        await Api.post('set_offline', {});
+        await Api.post('set_offline', {'reason': selectedReason});
       } catch (_) {}
     }
   }
@@ -1056,11 +1132,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   // --- Photo Capture with GPS ---
-  Future<void> _snapPhoto(ImageSource source) async {
+  Future<void> _snapPhoto(ImageSource source, {bool isSelfie = false}) async {
     try {
       final picker = ImagePicker();
       final photo = await picker.pickImage(
         source: source,
+        preferredCameraDevice: isSelfie ? CameraDevice.front : CameraDevice.rear,
         imageQuality: 75,
         maxWidth: 1600,
         maxHeight: 1600,
@@ -1120,14 +1197,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         selectedGeofence = 'Office / External Area';
       }
 
-      String selectedActivity = 'Field Visit';
-      String note = '';
+      String selectedActivity = isSelfie ? 'Officer Verification Selfie' : 'Field Visit';
+      String note = isSelfie ? 'On-site Officer Verification Selfie' : '';
 
       if (mounted) {
         final res = await showDialog<Map<String, String>>(
           context: context,
           builder: (ctx) {
-            final ctl = TextEditingController();
+            final ctl = TextEditingController(text: note);
             String act = selectedActivity;
             String secGf = selectedGeofence;
 
@@ -1136,12 +1213,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 return AlertDialog(
                   backgroundColor: const Color(0xff1e293b),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  title: const Row(
+                  title: Row(
                     children: [
-                      Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 22),
-                      SizedBox(width: 8),
-                      Text('Field Photo & Task Details',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                      Icon(isSelfie ? Icons.face : Icons.camera_alt, color: isSelfie ? const Color(0xffa855f7) : const Color(0xff38bdf8), size: 22),
+                      const SizedBox(width: 8),
+                      Text(isSelfie ? 'Officer Selfie Verification' : 'Field Photo & Task Details',
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   content: SizedBox(
@@ -1159,6 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                             spacing: 6,
                             runSpacing: 6,
                             children: [
+                              if (isSelfie) 'Officer Verification Selfie',
                               'Field Visit',
                               'Fertilizer Application',
                               'Land Preparation',
@@ -1337,6 +1415,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           'auto_geofence': autoGeofence,
           'selected_geofence': selectedGeofence,
           'note': note,
+          'is_selfie': isSelfie ? 1 : 0,
           't': DateTime.now().millisecondsSinceEpoch,
         }),
         file: photo.path,
@@ -1430,6 +1509,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error capturing photo: $e')));
       }
     }
+  }
+
+  void _showPhotoCaptureSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xff1e293b),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '📸 Capture Field Photo',
+                  style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Choose capture mode with automatic GPS geotagging:',
+                  style: TextStyle(color: Color(0xff94a3b8), fontSize: 12.5),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xff0284c7).withOpacity(0.18), shape: BoxShape.circle),
+                    child: const Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 24),
+                  ),
+                  title: const Text('Field / Crop Photo (කෙත්වතු ඡායාරූපය)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: const Text('Rear Camera · Crop condition, fertilizer, harvesting inspection', style: TextStyle(color: Color(0xff94a3b8), fontSize: 11.5)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _snapPhoto(ImageSource.camera, isSelfie: false);
+                  },
+                ),
+                const Divider(color: Color(0xff334155), height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xff8b5cf6).withOpacity(0.18), shape: BoxShape.circle),
+                    child: const Icon(Icons.face, color: Color(0xffa855f7), size: 24),
+                  ),
+                  title: const Text('Officer Verification Selfie (සත්‍යාපන Selfie)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: const Text('Front Camera · Instant field officer presence verification', style: TextStyle(color: Color(0xff94a3b8), fontSize: 11.5)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _snapPhoto(ImageSource.camera, isSelfie: true);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   double? _safeDouble(dynamic val) {
@@ -2605,7 +2744,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                   _buildWiaActionBtn(
                     color: const Color(0xff0284c7), // Cyan Camera
                     icon: Icons.camera_alt,
-                    onTap: () => _snapPhoto(ImageSource.camera),
+                    onTap: _showPhotoCaptureSheet,
                   ),
                   _buildWiaActionBtn(
                     color: const Color(0xff10b981), // Emerald Battery

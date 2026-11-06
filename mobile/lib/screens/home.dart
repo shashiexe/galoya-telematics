@@ -1614,7 +1614,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // 3. Normal Field / Crop Photo (Rear Camera)
     _snapPhoto(isSelfie: false, isMandatory: false);
   }
-  }
 
   double? _safeDouble(dynamic val) {
     if (val == null) return null;

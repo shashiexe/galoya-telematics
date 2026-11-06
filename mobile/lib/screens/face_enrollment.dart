@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import 'home.dart';
+import 'in_app_camera.dart';
 
 class FaceEnrollmentScreen extends StatefulWidget {
   final bool isMandatory;
@@ -55,24 +57,19 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen>
 
   Future<void> _startLiveCapture() async {
     try {
-      setState(() {
-        _currentStep = 2;
-        _statusText = '👁️ ඇස් පිල්ලම් ගසන්න (Blink your eyes) සහ ස්වභාවිකව සිනාසෙන්න';
-      });
-
-      // Give 1 second for user to read prompt before camera opens
-      await Future.delayed(const Duration(milliseconds: 900));
-
-      final picker = ImagePicker();
-      final photo = await picker.pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        imageQuality: 88,
-        maxWidth: 1200,
-        maxHeight: 1200,
+      final captured = await Navigator.of(context).push<File>(
+        MaterialPageRoute(
+          builder: (_) => const InAppCameraScreen(
+            preferredLens: CameraLensDirection.front,
+            isSelfie: true,
+            isEnrollment: true,
+            title: 'Live Face ID Enrollment',
+            subtitle: 'Front Camera · Align inside oval & blink/smile',
+          ),
+        ),
       );
 
-      if (photo == null) {
+      if (captured == null) {
         setState(() {
           _currentStep = 1;
           _statusText = 'ඡායාරූපය ලබාගැනීම අවලංගු විය. කරුණාකර නැවත උත්සාහ කරන්න.';
@@ -80,12 +77,11 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen>
         return;
       }
 
-      final f = File(photo.path);
-      if (await f.exists() && await f.length() > 5000) {
+      if (await captured.exists() && await captured.length() > 5000) {
         setState(() {
-          _capturedFace = f;
+          _capturedFace = captured;
           _currentStep = 3;
-          _statusText = '✅ Liveness Confirmed! Live Face Verified.';
+          _statusText = '✅ Live Face Confirmed! Ready to save.';
         });
       } else {
         setState(() {
@@ -433,3 +429,4 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen>
     );
   }
 }
+

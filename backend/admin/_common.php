@@ -298,8 +298,8 @@ function layout_start(string $title, string $active, bool $map = false): void {
         'drivers.php'       => ['Drivers', '👨‍✈️', null, 'drivers'],
         'messages.php'      => ['Messages', '💬', null, 'messages'],
         'notifications.php' => ['Alarms', '🔔', $unread_notifs > 0 ? $unread_notifs : null, 'notifications'],
-        'staff.php'         => ['Staff', '👥', null, 'staff'],
-        'users.php'         => ['Users', '👤', null, 'users'],
+        'staff.php'         => ['App Users', '📱', null, 'staff'],
+        'users.php'         => ['Web Users', '💻', null, 'users'],
         'settings.php'      => ['Settings', '⚙️', null, 'settings'],
     ];
     ?><!doctype html>

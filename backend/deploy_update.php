@@ -819,6 +819,31 @@ try {
     $testP = $pdo->query("SELECT fp.id, fp.user_id, fp.taken_at FROM field_photos fp JOIN users u ON u.id = fp.user_id WHERE fp.taken_at BETWEEN '$from_dt' AND '$to_dt'")->fetchAll(PDO::FETCH_ASSOC);
     $results[] = ["📸 Photos in date range ('$from_dt' - '$to_dt'): " . count($testP), "color:#ec4899;font-weight:bold"];
 
+    // Test photos.php exact $sql1
+    $secScopeU = '1=1';
+    $sql1_test = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, 
+                    COALESCE(fp.activity_type, 'Field Photo') as activity_type,
+                    fp.auto_geofence, fp.selected_geofence,
+                    COALESCE(fp.is_selfie, 0) as is_selfie,
+                    COALESCE(fp.face_match_status, 'skipped') as face_match_status,
+                    fp.face_confidence,
+                    fp.taken_at, 'field' as photo_type, 
+                    u.name as user_name, u.code as user_code, u.unit_type, u.profile_photo as user_profile_photo,
+                    d.name as dept_name, s.name as sec_name
+             FROM field_photos fp
+             JOIN users u ON u.id = fp.user_id
+             LEFT JOIN departments d ON d.id = u.department_id
+             LEFT JOIN sections s ON s.id = u.section_id
+             WHERE fp.taken_at BETWEEN ? AND ? AND $secScopeU";
+    try {
+        $st = $pdo->prepare($sql1_test);
+        $st->execute([$from_dt, $to_dt]);
+        $rows_test = $st->fetchAll(PDO::FETCH_ASSOC);
+        $results[] = ["✅ EXACT photos.php \$sql1 SUCCESS: " . count($rows_test) . " photos", "color:#10b981;font-weight:bold"];
+    } catch (Throwable $e) {
+        $results[] = ["❌ EXACT photos.php \$sql1 FAILED: " . $e->getMessage(), "color:#ef4444;font-weight:bold"];
+    }
+
     // Test with admin user session in photos.php
     $adminRow = $pdo->query("SELECT id, name, role, permissions_json, staff_ids, section_ids, department_id FROM users WHERE role='admin' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
     $results[] = ["👤 Admin user in DB: " . json_encode($adminRow), "color:#38bdf8;font-weight:bold"];

@@ -165,10 +165,25 @@ $admin_count = count(array_filter($users, fn($u) => in_array($u['role'], ['admin
 $active_count = count(array_filter($users, fn($u) => $u['active'] == 1));
 $manager_count = count(array_filter($users, fn($u) => in_array($u['role'], ['manager', 'supervisor'])));
 
-layout_start('Web User Management', 'users.php');
+layout_start('💻 Web Users (Portal Admin & Management)', 'users.php');
 ?>
 
 <div style="padding:16px 20px">
+  <!-- Cross-Navigation Banner -->
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:26px">💻</span>
+      <div>
+        <strong style="color:#0f172a;font-size:14px;display:block">Web Portal Users & Management Access</strong>
+        <span style="font-size:12px;color:#64748b">Management, Monitoring Room officers, and System Administrators who log into this Web Dashboard on PC/tablets.</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;color:#64748b">Need to manage Field Officers?</span>
+      <a href="staff.php" class="btn sm" style="background:#0284c7;color:#fff;padding:5px 12px;font-size:11.5px;border-radius:4px;text-decoration:none;font-weight:600">📱 Switch to App Users</a>
+    </div>
+  </div>
+
   <!-- Header Bar -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
     <div>

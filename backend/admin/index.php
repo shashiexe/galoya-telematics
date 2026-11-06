@@ -110,6 +110,17 @@ if (isset($_GET['geocode'])) {
 if (isset($_GET['feed'])) {
     header('Content-Type: application/json');
     $off = (int)$CONFIG['offline_after_min'];
+
+    // High-speed auto-sync from Wialon if last sync was > 10 seconds ago
+    try {
+        $lastSeenVal = q("SELECT last_seen FROM users WHERE code IN ('SRV-ROOM', 'DAH-8851', 'LK-3313') ORDER BY last_seen DESC LIMIT 1")->fetchColumn();
+        if (!$lastSeenVal || (time() - strtotime($lastSeenVal)) > 10) {
+            require_once __DIR__ . '/../sync_server_room.php';
+            if (function_exists('sync_wialon_fleet_fast')) {
+                sync_wialon_fleet_fast();
+            }
+        }
+    } catch (Throwable $e) {}
     
     // Fetch units with telematics data filtered by assigned section scope
     $secScope = user_section_scope_sql('users');

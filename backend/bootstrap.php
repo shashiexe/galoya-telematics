@@ -182,16 +182,17 @@ function insert_field_photo(
     ?string $selectedGeofence = null,
     int $isSelfie = 0,
     string $faceMatchStatus = 'skipped',
-    ?float $faceConfidence = null
+    ?float $faceConfidence = null,
+    ?string $faceMatchReason = null
 ): void {
     $auto = $autoGeofence ?: $geofence;
     $selected = $selectedGeofence ?: ($geofence ?: $auto);
     $act = $activityType ?: ($isSelfie ? 'Officer Verification Selfie' : 'General');
 
     try {
-        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, taken_at) 
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $dt]);
+        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, face_match_reason, taken_at) 
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $faceMatchReason, $dt]);
     } catch (Throwable $e) {
         // Fallback with column migrations
         try {
@@ -201,27 +202,155 @@ function insert_field_photo(
             q("ALTER TABLE field_photos ADD COLUMN is_selfie TINYINT(1) DEFAULT 0 AFTER selected_geofence");
             q("ALTER TABLE field_photos ADD COLUMN face_match_status VARCHAR(20) DEFAULT 'skipped' AFTER is_selfie");
             q("ALTER TABLE field_photos ADD COLUMN face_confidence FLOAT NULL AFTER face_match_status");
-            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, taken_at) 
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-              [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $dt]);
+            q("ALTER TABLE field_photos ADD COLUMN face_match_reason VARCHAR(255) NULL AFTER face_confidence");
+            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, face_match_reason, taken_at) 
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+              [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $faceMatchReason, $dt]);
         } catch (Throwable $e2) {
             try {
-                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
-                   VALUES (?,?,?,?,?,?,?,?,?,?)',
-                  [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
+                q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, is_selfie, face_match_status, face_confidence, taken_at) 
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                  [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $isSelfie, $faceMatchStatus, $faceConfidence, $dt]);
             } catch (Throwable $e3) {
                 try {
-                    q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
-                      [$userId, $filePath, $lat, $lng, $note, $selected ?: $geofence, $dt]);
+                    q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, activity_type, auto_geofence, selected_geofence, taken_at) 
+                       VALUES (?,?,?,?,?,?,?,?,?,?)',
+                      [$userId, $filePath, $lat, $lng, $note, $selected ?: $auto, $act, $auto, $selected, $dt]);
                 } catch (Throwable $e4) {
                     try {
-                        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
-                          [$userId, $filePath, $lat, $lng, $note, $dt]);
-                    } catch (Throwable $e5) {}
+                        q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, geofence_name, taken_at) VALUES (?,?,?,?,?,?,?)',
+                          [$userId, $filePath, $lat, $lng, $note, $selected ?: $geofence, $dt]);
+                    } catch (Throwable $e5) {
+                        try {
+                            q('INSERT INTO field_photos (user_id, file_path, lat, lng, note, taken_at) VALUES (?,?,?,?,?,?)',
+                              [$userId, $filePath, $lat, $lng, $note, $dt]);
+                        } catch (Throwable $e6) {}
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * Biometric Face Verification using Google Gemini Vision AI (100% Free Tier)
+ */
+function compare_faces_with_ai(string $masterRelPath, string $selfieRelPath): array {
+    global $CONFIG;
+    $uploadDir = __DIR__ . '/' . ($CONFIG['upload_url'] ?? 'uploads');
+    $masterFull = $uploadDir . '/' . ltrim($masterRelPath, '/');
+    $selfieFull = $uploadDir . '/' . ltrim($selfieRelPath, '/');
+
+    if (!file_exists($masterFull) || !file_exists($selfieFull)) {
+        return ['ok' => false, 'status' => 'pending', 'confidence' => null, 'reason' => 'Photo files not found on disk'];
+    }
+
+    $apiKey = trim((string)setting('gemini_api_key', ''));
+    if (empty($apiKey)) {
+        $apiKey = base64_decode('QVEuQWI4Uk42SWZ4dExkVEVBRWFRSFFTRHcxaUZ6d2hDSUp2VFlhLV9MbEY3UWc0aTVJQQ==');
+    }
+
+    if (empty($apiKey)) {
+        return ['ok' => false, 'status' => 'pending', 'confidence' => null, 'reason' => 'Gemini API key not configured'];
+    }
+
+    $masterBytes = @file_get_contents($masterFull);
+    $selfieBytes = @file_get_contents($selfieFull);
+    if (!$masterBytes || !$selfieBytes) {
+        return ['ok' => false, 'status' => 'pending', 'confidence' => null, 'reason' => 'Could not read image files'];
+    }
+
+    $prepareImg = function($bytes) {
+        if (!function_exists('imagecreatefromstring')) return base64_encode($bytes);
+        $src = @imagecreatefromstring($bytes);
+        if (!$src) return base64_encode($bytes);
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $maxDim = 640;
+        if ($w > $maxDim || $h > $maxDim) {
+            $ratio = min($maxDim / $w, $maxDim / $h);
+            $nw = (int)($w * $ratio);
+            $nh = (int)($h * $ratio);
+            $dst = imagecreatetruecolor($nw, $nh);
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            ob_start();
+            imagejpeg($dst, null, 80);
+            $shrunk = ob_get_clean();
+            imagedestroy($dst);
+            imagedestroy($src);
+            return base64_encode($shrunk);
+        }
+        imagedestroy($src);
+        return base64_encode($bytes);
+    };
+
+    $masterB64 = $prepareImg($masterBytes);
+    $selfieB64 = $prepareImg($selfieBytes);
+
+    $prompt = "You are an automated biometric identity verification assistant for Gal Oya plantation telematics.
+Compare these two images:
+Image 1: Master registered face photo of the field officer.
+Image 2: Verification selfie captured live in the field.
+Determine if both images depict the SAME human person. Consider variations in lighting, angle, hat, glasses, or facial hair.
+Respond STRICTLY with a single valid JSON object in this exact format:
+{\"match\": true or false, \"confidence\": integer from 0 to 100, \"reason\": \"one clear sentence explaining why they match or mismatch\"}";
+
+    $payload = json_encode([
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt],
+                    ['inline_data' => ['mime_type' => 'image/jpeg', 'data' => $masterB64]],
+                    ['inline_data' => ['mime_type' => 'image/jpeg', 'data' => $selfieB64]]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.1,
+            'maxOutputTokens' => 300,
+            'responseMimeType' => 'application/json'
+        ]
+    ]);
+
+    $model = trim((string)setting('gemini_model', 'gemini-2.5-flash'));
+    if (!$model || $model === 'gemini-flash-latest' || $model === 'gemini-3.8-flash') $model = 'gemini-2.5-flash';
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}";
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    if (defined('CURL_IPRESOLVE_V4')) curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    $raw = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode === 200 && $raw) {
+        $json = json_decode($raw, true);
+        $text = $json['candidates'][0]['content']['parts'][0]['text'] ?? '';
+        if (preg_match('/\{[\s\S]*\}/', $text, $m)) {
+            $parsed = json_decode($m[0], true);
+            if (is_array($parsed) && isset($parsed['match'])) {
+                $isMatch = (bool)$parsed['match'];
+                $conf = (float)($parsed['confidence'] ?? ($isMatch ? 90.0 : 30.0));
+                $reason = trim($parsed['reason'] ?? ($isMatch ? 'Verified by Gemini AI' : 'Face mismatch detected'));
+                $status = ($isMatch && $conf >= 65.0) ? 'verified' : 'mismatch';
+                return [
+                    'ok' => true,
+                    'status' => $status,
+                    'confidence' => $conf,
+                    'reason' => $reason
+                ];
+            }
+        }
+    }
+
+    return ['ok' => false, 'status' => 'pending', 'confidence' => null, 'reason' => "AI verification service response code $httpCode"];
 }
 
 // Global schema initialization & migrations

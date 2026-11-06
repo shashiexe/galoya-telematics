@@ -23,6 +23,22 @@ if (isset($_GET['show_web_users'])) {
 }
 
 
+if (isset($_GET['check_apk_version'])) {
+    header('Content-Type: application/json');
+    $apkPath = __DIR__ . '/Galoya-Telematics.apk';
+    $res = ['size' => file_exists($apkPath) ? filesize($apkPath) : 0, 'mtime' => file_exists($apkPath) ? date('Y-m-d H:i:s', filemtime($apkPath)) : null];
+    if (file_exists($apkPath)) {
+        $za = new ZipArchive();
+        if ($za->open($apkPath) === true) {
+            $v = $za->getFromName('assets/flutter_assets/version.json');
+            $res['version_json'] = $v ? json_decode($v, true) : null;
+            $za->close();
+        }
+    }
+    echo json_encode($res, JSON_PRETTY_PRINT);
+    exit;
+}
+
 if (isset($_GET['test_photos'])) {
     if (session_status() === PHP_SESSION_NONE) {
         session_name('stafftrack_admin');

@@ -127,8 +127,11 @@ $params2 = [$from_dt, $to_dt];
 $sql1 = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, 
                 COALESCE(fp.activity_type, 'Field Photo') as activity_type,
                 fp.auto_geofence, fp.selected_geofence,
+                COALESCE(fp.is_selfie, 0) as is_selfie,
+                COALESCE(fp.face_match_status, 'skipped') as face_match_status,
+                fp.face_confidence,
                 fp.taken_at, 'field' as photo_type, 
-                u.name as user_name, u.code as user_code, u.unit_type,
+                u.name as user_name, u.code as user_code, u.unit_type, u.profile_photo as user_profile_photo,
                 d.name as dept_name, s.name as sec_name
          FROM field_photos fp
          JOIN users u ON u.id = fp.user_id
@@ -141,8 +144,11 @@ $sql2 = "SELECT tp.id, tp.user_id, tp.file_path, tp.lat, tp.lng,
                 NULL as geofence_name,
                 'Task Work' as activity_type,
                 NULL as auto_geofence, NULL as selected_geofence,
+                0 as is_selfie,
+                'skipped' as face_match_status,
+                NULL as face_confidence,
                 tp.taken_at, 'task' as photo_type,
-                u.name as user_name, u.code as user_code, u.unit_type,
+                u.name as user_name, u.code as user_code, u.unit_type, u.profile_photo as user_profile_photo,
                 d.name as dept_name, s.name as sec_name
          FROM task_photos tp
          JOIN users u ON u.id = tp.user_id
@@ -373,15 +379,22 @@ layout_start('Photos & Field Media', 'photos.php');
           ?>
             <div class="photo-thumb-card" 
                  style="position:relative;width:100%;aspect-ratio:1/1;background:#0f172a;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.06)"
-                 onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>')"
+                 onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>')"
                  title="<?= h($p['user_name']) ?> | <?= h($plotName) ?> (<?= date('h:i:s A', strtotime($p['taken_at'])) ?>) <?= !empty($p['note']) ? ' - ' . h($p['note']) : '' ?>">
               
               <!-- Thumbnail Image -->
               <img src="<?= h($pUrl) ?>" alt="Field Photo" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
               
-              <!-- Top Left Time Badge -->
-              <div style="position:absolute;top:3px;left:3px;background:rgba(15,23,42,0.82);color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:3px;backdrop-filter:blur(2px)">
-                <?= date('H:i', strtotime($p['taken_at'])) ?>
+              <!-- Top Left Time Badge & Selfie Pill -->
+              <div style="position:absolute;top:3px;left:3px;display:flex;gap:3px;align-items:center">
+                <span style="background:rgba(15,23,42,0.85);color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:3px;backdrop-filter:blur(2px)">
+                  <?= date('H:i', strtotime($p['taken_at'])) ?>
+                </span>
+                <?php if (!empty($p['is_selfie']) || ($p['activity_type'] ?? '') === 'Officer Verification Selfie'): ?>
+                  <span style="background:rgba(139,92,246,0.92);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;backdrop-filter:blur(2px)" title="Officer Verification Selfie">
+                    🤳 Selfie
+                  </span>
+                <?php endif; ?>
               </div>
 
               <!-- Top Right Delete Button (Super Admin / Authorized) -->
@@ -417,12 +430,19 @@ layout_start('Photos & Field Media', 'photos.php');
       ?>
         <div class="photo-thumb-card" 
              style="position:relative;width:100%;aspect-ratio:1/1;background:#0f172a;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.06)"
-             onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>')"
+             onclick="openLightbox('<?= h($pUrl) ?>', '<?= h(addslashes($p['user_name'])) ?>', '<?= h(addslashes($plotName)) ?>', '<?= h($p['taken_at']) ?>', '<?= h(addslashes($p['note'] ?? '')) ?>', '<?= $p['lat'] ?>', '<?= $p['lng'] ?>', <?= (int)$p['id'] ?>, '<?= $p['photo_type'] ?>', '<?= h($p['file_path']) ?>', <?= (int)($p['is_selfie'] ?? 0) ?>, '<?= h($p['face_match_status'] ?? 'skipped') ?>', '<?= h($p['user_profile_photo'] ? photo_url($p['user_profile_photo']) : '') ?>')"
              title="<?= h($p['user_name']) ?> | <?= h($plotName) ?> (<?= date('h:i:s A', strtotime($p['taken_at'])) ?>)">
           <img src="<?= h($pUrl) ?>" alt="Field Photo" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
           
-          <div style="position:absolute;top:3px;left:3px;background:rgba(15,23,42,0.82);color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:3px">
-            <?= date('H:i', strtotime($p['taken_at'])) ?>
+          <div style="position:absolute;top:3px;left:3px;display:flex;gap:3px;align-items:center">
+            <span style="background:rgba(15,23,42,0.85);color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:3px">
+              <?= date('H:i', strtotime($p['taken_at'])) ?>
+            </span>
+            <?php if (!empty($p['is_selfie']) || ($p['activity_type'] ?? '') === 'Officer Verification Selfie'): ?>
+              <span style="background:rgba(139,92,246,0.92);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px" title="Officer Verification Selfie">
+                🤳 Selfie
+              </span>
+            <?php endif; ?>
           </div>
 
           <?php if (can('photos', 'delete')): ?>
@@ -454,17 +474,31 @@ layout_start('Photos & Field Media', 'photos.php');
     
     <!-- Modal Header -->
     <div style="padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between">
-      <div style="color:#f8fafc;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px">
+      <div style="color:#f8fafc;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span id="lb-officer">Officer Name</span>
         <span id="lb-plot" style="background:#166534;color:#bbf7d0;font-size:11px;padding:2px 8px;border-radius:4px">Plot</span>
+        <span id="lb-selfie-badge" style="display:none;background:#8b5cf6;color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700">🤳 Verification Selfie</span>
+        <span id="lb-face-match-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700"></span>
         <span id="lb-time" style="color:#94a3b8;font-size:11.5px;font-weight:normal">Time</span>
       </div>
       <button type="button" onclick="closeLightbox()" style="background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px">✕</button>
     </div>
 
-    <!-- Image Display -->
-    <div style="position:relative;max-height:70vh;text-align:center;background:#020617;display:flex;align-items:center;justify-content:center;overflow:hidden">
-      <img id="lightbox-img" src="" style="max-width:100%;max-height:68vh;object-fit:contain;display:block">
+    <!-- Image Display Area (Supports Single or Side-by-Side Face Compare) -->
+    <div id="lightbox-img-container" style="position:relative;max-height:70vh;text-align:center;background:#020617;display:flex;align-items:center;justify-content:center;overflow:hidden">
+      <div id="lb-single-view" style="width:100%;display:flex;justify-content:center">
+        <img id="lightbox-img" src="" style="max-width:100%;max-height:68vh;object-fit:contain;display:block">
+      </div>
+      <div id="lb-compare-view" style="display:none;width:100%;padding:10px;justify-content:center;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:260px;max-width:420px;text-align:center;background:#0f172a;border-radius:8px;padding:8px;border:1px solid #334155">
+          <div style="color:#38bdf8;font-size:12px;font-weight:700;margin-bottom:6px">👤 Master Profile Photo (HR)</div>
+          <img id="lb-master-img" src="" style="max-width:100%;max-height:55vh;object-fit:contain;border-radius:6px">
+        </div>
+        <div style="flex:1;min-width:260px;max-width:420px;text-align:center;background:#0f172a;border-radius:8px;padding:8px;border:1px solid #334155">
+          <div style="color:#a855f7;font-size:12px;font-weight:700;margin-bottom:6px">🤳 Field Selfie (Taken On-Site)</div>
+          <img id="lb-compare-selfie-img" src="" style="max-width:100%;max-height:55vh;object-fit:contain;border-radius:6px">
+        </div>
+      </div>
     </div>
 
     <!-- Modal Footer & Metadata -->
@@ -474,6 +508,9 @@ layout_start('Photos & Field Media', 'photos.php');
         <div id="lb-coords" style="font-size:11px;color:#38bdf8"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" id="lb-compare-btn" onclick="toggleFaceCompare()" class="btn" style="display:none;background:#6366f1;color:#fff;padding:6px 12px;font-size:12px;border-radius:4px;font-weight:700;border:none;cursor:pointer">
+          👥 Compare Face
+        </button>
         <a id="lightbox-dl" href="#" class="btn" style="background:#0284c7;color:#fff;display:inline-flex;padding:6px 14px;font-size:12px;border-radius:4px;text-decoration:none;font-weight:700">
           ⬇️ Download High Res
         </a>
@@ -605,14 +642,59 @@ layout_start('Photos & Field Media', 'photos.php');
 <!-- ========================================================================= -->
 <script>
 let currentLbPhoto = null;
+let isComparingFace = false;
 
-function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePath) {
-  currentLbPhoto = { id, type, officer, time, plot };
+function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePath, isSelfie, faceStatus, userProfilePhoto) {
+  currentLbPhoto = { id, type, officer, time, plot, url, userProfilePhoto };
+  isComparingFace = false;
+
+  // Reset views
+  document.getElementById('lb-single-view').style.display = 'flex';
+  document.getElementById('lb-compare-view').style.display = 'none';
+
   document.getElementById('lightbox-img').src = url;
   document.getElementById('lb-officer').textContent = officer || 'Staff Officer';
   document.getElementById('lb-plot').textContent = plot ? '🌾 ' + plot : 'Field Plot';
   document.getElementById('lb-time').textContent = time || '';
   document.getElementById('lb-note').textContent = note ? '📝 Note: ' + note : 'No field remark attached';
+
+  // Selfie & Face Match Badges
+  const selfieBadge = document.getElementById('lb-selfie-badge');
+  const matchBadge = document.getElementById('lb-face-match-badge');
+  const compareBtn = document.getElementById('lb-compare-btn');
+
+  if (isSelfie == 1) {
+    selfieBadge.style.display = 'inline-block';
+    if (faceStatus === 'verified') {
+      matchBadge.textContent = '🟢 Identity Verified';
+      matchBadge.style.background = '#15803d';
+      matchBadge.style.color = '#dcfce7';
+      matchBadge.style.display = 'inline-block';
+    } else if (faceStatus === 'mismatch') {
+      matchBadge.textContent = '🔴 ⚠️ Possible Proxy / Face Mismatch';
+      matchBadge.style.background = '#b91c1c';
+      matchBadge.style.color = '#fee2e2';
+      matchBadge.style.display = 'inline-block';
+    } else {
+      matchBadge.textContent = '🟡 Audit Pending';
+      matchBadge.style.background = '#b45309';
+      matchBadge.style.color = '#fef3c7';
+      matchBadge.style.display = 'inline-block';
+    }
+
+    if (userProfilePhoto) {
+      compareBtn.style.display = 'inline-block';
+      compareBtn.textContent = '👥 Compare Face';
+      document.getElementById('lb-master-img').src = userProfilePhoto;
+      document.getElementById('lb-compare-selfie-img').src = url;
+    } else {
+      compareBtn.style.display = 'none';
+    }
+  } else {
+    selfieBadge.style.display = 'none';
+    matchBadge.style.display = 'none';
+    compareBtn.style.display = 'none';
+  }
   
   const coordsEl = document.getElementById('lb-coords');
   if (lat && lng && parseFloat(lat) !== 0) {
@@ -625,6 +707,23 @@ function openLightbox(url, officer, plot, time, note, lat, lng, id, type, filePa
   document.getElementById('lightbox-dl').href = 'download_photo.php?file=' + encodeURIComponent(fileName);
 
   document.getElementById('lightbox-modal').style.display = 'flex';
+}
+
+function toggleFaceCompare() {
+  isComparingFace = !isComparingFace;
+  const singleView = document.getElementById('lb-single-view');
+  const compareView = document.getElementById('lb-compare-view');
+  const btn = document.getElementById('lb-compare-btn');
+
+  if (isComparingFace) {
+    singleView.style.display = 'none';
+    compareView.style.display = 'flex';
+    btn.textContent = '🖼️ Single View';
+  } else {
+    singleView.style.display = 'flex';
+    compareView.style.display = 'none';
+    btn.textContent = '👥 Compare Face';
+  }
 }
 
 function closeLightbox() {

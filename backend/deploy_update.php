@@ -813,6 +813,15 @@ try {
 
     $testJoin = $pdo->query("SELECT fp.id, fp.user_id, u.name, u.role, u.active FROM field_photos fp JOIN users u ON u.id = fp.user_id ORDER BY fp.id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
     $results[] = ["📸 JOIN users test: " . json_encode($testJoin), "color:#22c55e;font-weight:bold"];
+
+    $from_dt = '2026-10-30 00:00:00';
+    $to_dt = '2026-11-06 23:59:59';
+    $testP = $pdo->query("SELECT fp.id, fp.user_id, fp.taken_at FROM field_photos fp JOIN users u ON u.id = fp.user_id WHERE fp.taken_at BETWEEN '$from_dt' AND '$to_dt'")->fetchAll(PDO::FETCH_ASSOC);
+    $results[] = ["📸 Photos in date range ('$from_dt' - '$to_dt'): " . count($testP), "color:#ec4899;font-weight:bold"];
+
+    // Test with admin user session in photos.php
+    $adminRow = $pdo->query("SELECT id, name, role, permissions_json, staff_ids, section_ids, department_id FROM users WHERE role='admin' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $results[] = ["👤 Admin user in DB: " . json_encode($adminRow), "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Photo diag error: " . $e->getMessage(), "color:#ef4444;font-weight:bold"];
 }

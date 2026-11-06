@@ -87,6 +87,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id === (int)$me['id']) throw new Exception("You cannot deactivate your own logged-in account.");
             q("UPDATE users SET active = 1 - active WHERE id = ?", [$id]);
             flash("User account status updated.");
+        } elseif ($act === 'reset_face') {
+            require_perm('users', 'edit');
+            $id = (int)($_POST['id'] ?? 0);
+            $uRow = q('SELECT profile_photo FROM users WHERE id=?', [$id])->fetch();
+            if ($uRow && !empty($uRow['profile_photo'])) {
+                global $CONFIG;
+                $upPath = __DIR__ . '/../' . ($CONFIG['upload_url'] ?? 'uploads') . '/' . ltrim($uRow['profile_photo'], '/');
+                if (file_exists($upPath)) @unlink($upPath);
+            }
+            q('UPDATE users SET profile_photo=NULL, face_enrolled=0, face_enrolled_at=NULL WHERE id=?', [$id]);
+            flash('Master Face ID successfully deleted & status reset to 0 (Pending). User will re-enroll on next app launch.');
         } elseif ($act === 'delete_user') {
             require_perm('users', 'delete');
             $id = (int)$_POST['id'];
@@ -267,15 +278,29 @@ layout_start('Web User Management', 'users.php');
           <tr style="border-bottom:1px solid #f1f5f9;<?= $u['active'] ? '' : 'opacity:0.55;background:#fafafa' ?>">
             <td style="padding:10px 14px;color:#94a3b8;font-size:11px"><?= $idx + 1 ?></td>
             <td style="padding:10px 14px">
-              <div style="font-weight:700;color:#1e293b;font-size:13px;display:flex;align-items:center;gap:6px">
-                <span><?= $isSuper ? '🛡️' : '👤' ?></span>
-                <span><?= h($u['name']) ?></span>
-                <?php if ((int)$u['id'] === (int)$me['id']): ?>
-                  <span style="font-size:10px;background:#e2e8f0;color:#475569;padding:1px 5px;border-radius:4px">You</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <?php if (!empty($u['profile_photo'])): ?>
+                  <div style="position:relative;width:34px;height:34px;border-radius:50%;overflow:hidden;border:2px solid #22c55e;flex-shrink:0" title="Enrolled Live Face ID 🟢">
+                    <img src="<?= h(photo_url($u['profile_photo'])) ?>" style="width:100%;height:100%;object-fit:cover">
+                  </div>
                 <?php endif; ?>
-              </div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px;font-family:monospace">
-                Login: <strong><?= h($u['phone']) ?></strong>
+                <div>
+                  <div style="font-weight:700;color:#1e293b;font-size:13px;display:flex;align-items:center;gap:6px">
+                    <?php if (empty($u['profile_photo'])): ?>
+                      <span><?= $isSuper ? '🛡️' : '👤' ?></span>
+                    <?php endif; ?>
+                    <span><?= h($u['name']) ?></span>
+                    <?php if ((int)$u['id'] === (int)$me['id']): ?>
+                      <span style="font-size:10px;background:#e2e8f0;color:#475569;padding:1px 5px;border-radius:4px">You</span>
+                    <?php endif; ?>
+                  </div>
+                  <div style="font-size:11px;color:#64748b;margin-top:2px;font-family:monospace">
+                    Login: <strong><?= h($u['phone']) ?></strong>
+                    <?php if (!empty($u['profile_photo'])): ?>
+                      <span style="color:#16a34a;margin-left:6px;font-weight:bold">✓ Face Active</span>
+                    <?php endif; ?>
+                  </div>
+                </div>
               </div>
             </td>
             <td style="padding:10px 14px">
@@ -368,6 +393,16 @@ layout_start('Web User Management', 'users.php');
                 <button type="button" class="btn ghost sm" onclick='editUser(<?= json_encode($u, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' style="padding:4px 8px;font-size:11px">
                   ✏️ Edit
                 </button>
+                <?php if (!empty($u['profile_photo'])): ?>
+                  <form method="post" style="display:inline;margin:0" onsubmit="return confirm('Delete Master Face ID for <?= h(addslashes($u['name'])) ?> and reset status to 0?');">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="act" value="reset_face">
+                    <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                    <button type="submit" class="btn ghost sm" style="padding:4px 8px;font-size:11px;color:#ef4444" title="Delete Master Photo and Reset Face Status to 0">
+                      🗑️ Reset Face
+                    </button>
+                  </form>
+                <?php endif; ?>
               <?php endif; ?>
               <?php if (can('users', 'delete') && (int)$u['id'] !== (int)$me['id']): ?>
                 <form method="post" style="display:inline;margin-left:4px" onsubmit="return confirm('Permanently delete web user <?= htmlspecialchars($u['name']) ?>?');">

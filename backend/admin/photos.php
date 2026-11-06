@@ -156,7 +156,7 @@ function parse_filter_dt(?string $raw, string $default): string {
 $secScopeUsers = user_section_scope_sql('users');
 $staff = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY (code IS NOT NULL) DESC, name ASC")->fetchAll();
 
-$uid = isset($_GET['user']) && $_GET['user'] !== '' ? (int)$_GET['user'] : null;
+$uid = isset($_GET['user']) && $_GET['user'] !== '' ? (int)$_GET['user'] : (isset($_GET['user_id']) && $_GET['user_id'] !== '' ? (int)$_GET['user_id'] : (isset($_GET['unit']) && $_GET['unit'] !== '' ? (int)$_GET['unit'] : null));
 $from_dt = parse_filter_dt($_GET['from'] ?? null, date('Y-m-d 00:00:00', strtotime('-7 days')));
 $to_dt   = parse_filter_dt($_GET['to'] ?? null, date('Y-m-d 23:59:59'));
 $type = $_GET['type'] ?? 'all'; // all, field, task, selfie, mismatch

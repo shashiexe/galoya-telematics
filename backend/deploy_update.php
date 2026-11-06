@@ -87,11 +87,13 @@ if (isset($_GET['diag_duty'])) {
     $firstPts = q("SELECT recorded_at, lat, lng, speed, battery FROM locations WHERE user_id=? AND recorded_at >= '2026-10-21 00:00:00' ORDER BY recorded_at ASC LIMIT 10", [$uId])->fetchAll();
     $lastPts = q("SELECT recorded_at, lat, lng, speed, battery FROM locations WHERE user_id=? AND recorded_at >= '2026-10-21 00:00:00' ORDER BY recorded_at DESC LIMIT 10", [$uId])->fetchAll();
     $locCount = q("SELECT COUNT(*) FROM locations WHERE user_id=? AND recorded_at >= '2026-10-21 00:00:00'", [$uId])->fetchColumn();
+    $uPhotos = q("SELECT id, user_id, lat, lng, taken_at, activity_type, geofence_name, is_selfie, face_match_status, file_path FROM field_photos WHERE user_id=? ORDER BY id DESC LIMIT 10", [$uId])->fetchAll();
     echo json_encode([
         'user' => $uRow,
+        'user_photos' => $uPhotos,
+        'loc_count_today' => (int)$locCount,
         'duty_logs_today' => $dLogs,
         'all_recent_duty_logs' => $allRecentLogs,
-        'loc_count_today' => (int)$locCount,
         'first_pts' => $firstPts,
         'last_pts' => $lastPts,
     ], JSON_PRETTY_PRINT);

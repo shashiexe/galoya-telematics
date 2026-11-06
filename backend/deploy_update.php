@@ -467,10 +467,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.4.0');
-    set_setting('latest_app_build', '26');
-    set_setting('app_update_changelog', "• Interactive Liveness Face Enrollment (Eye-Blink & Smile Verification)\n• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
-    $results[] = ["📱 App Update Broadcast: Configured v1.4.0 (Build 26)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.1');
+    set_setting('latest_app_build', '27');
+    set_setting('app_update_changelog', "• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Surprise Identity Verification & Rear Camera Anti-Evasion Lock\n• Reset Master Face ID in Admin Panel\n• Advanced Photo Gallery & Report Filters");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.1 (Build 27)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -736,10 +736,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.4.0');
-    set_setting('latest_app_build', '26');
-    set_setting('app_update_changelog', "• Interactive Liveness Face Enrollment (Eye-Blink & Smile Verification)\n• Anti-Proxy Verification Lock & Random Officer Selfies\n• Tracking Stop Confirmation with Reason Selector\n• 15-second high precision field tracking");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.0 build 26", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.1');
+    set_setting('latest_app_build', '27');
+    set_setting('app_update_changelog', "• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Surprise Identity Verification & Rear Camera Anti-Evasion Lock\n• Reset Master Face ID in Admin Panel\n• Advanced Photo Gallery & Report Filters");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.1 build 27", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

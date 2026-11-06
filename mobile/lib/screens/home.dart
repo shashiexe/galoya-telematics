@@ -22,6 +22,7 @@ import '../tracker.dart';
 import '../updater.dart';
 import '../vault.dart';
 import 'login.dart';
+import 'face_enrollment.dart';
 import 'settings.dart';
 import 'task_detail.dart';
 
@@ -2952,6 +2953,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                 style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45),
                               ),
                               const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xff8b5cf6),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                  ),
+                                  icon: const Icon(Icons.face, size: 16),
+                                  label: const Text('Enroll / Update Master Face ID', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (_) => const FaceEnrollmentScreen()),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton.icon(

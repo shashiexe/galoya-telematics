@@ -17,7 +17,7 @@ foreach ($staff as $s) {
     }
 }
 
-$uid = (int)($_GET['user'] ?? $default_user);
+$uid = (int)($_GET['user'] ?? ($_GET['unit'] ?? ($_GET['focus'] ?? $default_user)));
 if (!in_array($uid, $allowedIds, true)) {
     $uid = (int)$default_user;
 }

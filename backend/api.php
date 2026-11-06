@@ -56,7 +56,7 @@ function app_config(): array {
     $latestVersion = setting('latest_app_version', '1.3.8');
     $latestBuild = (int)setting('latest_app_build', 24);
     return [
-        'location_interval' => (int)setting('location_interval', 60),
+        'location_interval' => (int)setting('location_interval', 15),
         'allow_staff_change_interval' => setting('allow_staff_change_interval', '1') === '1',
         'upload_batch_size' => (int)setting('upload_batch_size', 500),
         'app_version' => $latestVersion,
@@ -671,9 +671,19 @@ try {
         $selectedGeofence = trim($_POST['selected_geofence'] ?? '');
         $geofence = $selectedGeofence ?: ($autoGeofence ?: find_nearest_geofence($lat, $lng));
 
-        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt, $activityType, $autoGeofence, $selectedGeofence);
+        $isSelfie = !empty($_POST['is_selfie']) ? 1 : ($activityType === 'Officer Verification Selfie' ? 1 : 0);
+        $faceStatus = $isSelfie ? 'pending' : 'skipped';
 
-        out(['ok' => true, 'file_path' => "$sub/$name", 'geofence' => $geofence, 'activity_type' => $activityType]);
+        insert_field_photo($u['id'], "$sub/$name", $lat, $lng, $note, $geofence, $dt, $activityType, $autoGeofence, $selectedGeofence, $isSelfie, $faceStatus);
+
+        out([
+            'ok' => true,
+            'file_path' => "$sub/$name",
+            'geofence' => $geofence,
+            'activity_type' => $activityType,
+            'is_selfie' => $isSelfie,
+            'face_match_status' => $faceStatus
+        ]);
     }
 
     case 'task_photo': {

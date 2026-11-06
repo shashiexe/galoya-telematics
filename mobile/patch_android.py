@@ -85,13 +85,13 @@ if os.path.exists(gradle_path):
             content += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n    implementation 'androidx.multidex:multidex:2.0.1'\n}\n"
             print("[Patch] Appended Groovy dependencies block with desugar_jdk_libs and multidex")
 
-    # Ensure multiDexEnabled and abiFilters
+    # Ensure multiDexEnabled
     if "multiDexEnabled" not in content and "defaultConfig {" in content:
         content = content.replace(
             "defaultConfig {",
-            "defaultConfig {\n        multiDexEnabled true\n        ndk {\n            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'\n        }"
+            "defaultConfig {\n        multiDexEnabled true"
         )
-        print("[Patch] Added multiDexEnabled true and abiFilters to defaultConfig")
+        print("[Patch] Added multiDexEnabled true to defaultConfig")
 
     # Ensure minifyEnabled false and shrinkResources false in release buildType
     if "buildTypes {" in content:
@@ -131,9 +131,9 @@ if os.path.exists(kts_path):
     if "multiDexEnabled" not in content and "defaultConfig {" in content:
         content = content.replace(
             "defaultConfig {",
-            'defaultConfig {\n        multiDexEnabled = true\n        ndk {\n            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86_64"))\n        }'
+            "defaultConfig {\n        multiDexEnabled = true"
         )
-        print("[Patch] Added multiDexEnabled = true and abiFilters to kts defaultConfig")
+        print("[Patch] Added multiDexEnabled = true to kts defaultConfig")
 
     # Disable minification and add ProGuard in release build
     if "release {" in content and "isMinifyEnabled" not in content:

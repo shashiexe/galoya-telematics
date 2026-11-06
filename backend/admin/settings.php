@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else flash('Settings saved successfully');
     header('Location: settings.php'); exit;
 }
-$iv = (int)setting('location_interval', 60);
+$iv = (int)setting('location_interval', 15);
 $geminiKey = (string)setting('gemini_api_key', '');
 $geminiModel = (string)setting('gemini_model', 'gemini-3.5-flash');
 if (!$geminiModel || $geminiModel === 'gemini-3.8-flash') $geminiModel = 'gemini-3.5-flash';
@@ -38,7 +38,7 @@ layout_start('Settings', 'settings.php');
     <h3 style="margin-top:0">GPS tracking (all staff)</h3>
     <label>Location interval (seconds)</label>
     <select name="location_interval">
-      <?php foreach ([15 => '15 seconds', 30 => '30 seconds', 60 => '1 minute (default)', 120 => '2 minutes', 300 => '5 minutes', 600 => '10 minutes'] as $v => $l): ?>
+      <?php foreach ([15 => '15 seconds (Recommended)', 30 => '30 seconds', 60 => '1 minute', 120 => '2 minutes', 300 => '5 minutes', 600 => '10 minutes'] as $v => $l): ?>
       <option value="<?= $v ?>" <?= $v === $iv ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?>
     </select>
     <label style="display:flex;gap:10px;align-items:center;color:var(--txt)"><input type="checkbox" name="allow" style="width:auto" <?= setting('allow_staff_change_interval', '1') === '1' ? 'checked' : '' ?>> Allow staff to change interval in the app</label>

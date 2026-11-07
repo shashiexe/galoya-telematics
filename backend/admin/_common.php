@@ -4,6 +4,13 @@ require_once __DIR__ . '/../bootstrap.php';
 session_name('stafftrack_admin');
 session_start();
 
+// Prevent aggressive browser caching of admin telematics pages & script modals
+if (!headers_sent()) {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+}
+
 function ensure_web_user_columns(): void {
     static $checked = false;
     if ($checked) return;

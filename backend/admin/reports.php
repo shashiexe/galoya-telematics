@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require __DIR__ . '/_common.php';
 $me = require_admin();
 require_perm('reports', 'view');
@@ -45,8 +45,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'run_ai_s
 
 $secScopeUsers = user_section_scope_sql('users');
 $secScopeU = user_section_scope_sql('u');
-$units = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
-$allowedUnitIds = array_map(fn($r) => (int)$r['id'], $units);
+$staffUnits = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers ORDER BY name ASC")->fetchAll();
+$fleetUnits = q("SELECT id, name, code, unit_type, icon_key, sensors_json, properties_json, unique_id FROM users WHERE role IN ('unit', 'vehicle') AND active=1 ORDER BY name ASC")->fetchAll();
+
+// Report Parameters (Aligned with Wialon Galoya setup)
+$report_type = $_GET['type'] ?? 'fuel_graph';
+$isFuelReport = ($report_type === 'fuel_graph' || $report_type === 'fuel_summary');
+
+$units = $isFuelReport ? $fleetUnits : $staffUnits;
+$allowedUnitIds = array_map(fn($r) => (int)$r['id'], array_merge($staffUnits, $fleetUnits));
+
+$unit_id = (int)($_GET['unit_id'] ?? 0);
+if ($isFuelReport) {
+    if ($unit_id === 0 || !in_array($unit_id, array_map(fn($r) => (int)$r['id'], $fleetUnits), true)) {
+        $unit_id = !empty($fleetUnits) ? (int)$fleetUnits[0]['id'] : 0;
+    }
+} else {
+    if ($unit_id > 0 && !in_array($unit_id, array_map(fn($r) => (int)$r['id'], $staffUnits), true)) {
+        $unit_id = 0;
+    }
+}
+
 $geofences = q("SELECT id, name, code FROM geofences WHERE active=1 ORDER BY name ASC")->fetchAll();
 $departments = q("SELECT id, name, code FROM departments WHERE active=1 AND id IN (SELECT DISTINCT department_id FROM users WHERE role='staff' AND active=1 AND $secScopeUsers AND department_id IS NOT NULL) ORDER BY name ASC")->fetchAll();
 if (empty($departments) && is_super_admin()) {
@@ -55,13 +74,6 @@ if (empty($departments) && is_super_admin()) {
 $sections = q("SELECT s.id, s.department_id, s.name, s.code, d.name dept_name FROM sections s LEFT JOIN departments d ON d.id=s.department_id WHERE s.active=1 AND s.id IN (SELECT DISTINCT section_id FROM users WHERE role='staff' AND active=1 AND $secScopeUsers AND section_id IS NOT NULL) ORDER BY s.name ASC")->fetchAll();
 if (empty($sections) && is_super_admin()) {
     $sections = q("SELECT s.id, s.department_id, s.name, s.code, d.name dept_name FROM sections s LEFT JOIN departments d ON d.id=s.department_id WHERE s.active=1 ORDER BY s.name ASC")->fetchAll();
-}
-
-// Report Parameters (Aligned with Wialon Galoya setup)
-$report_type = $_GET['type'] ?? 'staff_audit';
-$unit_id = (int)($_GET['unit_id'] ?? 0);
-if ($unit_id > 0 && !in_array($unit_id, $allowedUnitIds, true)) {
-    $unit_id = 0;
 }
 $filterDept = (int)($_GET['dept_id'] ?? 0);
 $filterSec = (int)($_GET['sec_id'] ?? 0);
@@ -96,6 +108,350 @@ if (!function_exists('haversine_dist_km')) {
     }
 }
 
+function fetch_wialon_history_points($wId, $dateFrom, $dateTo) {
+    $token = "14534c72a9fd9f73e079d703d6fe9a8a01178A0335ADA2D1A9647DBD59561FC816FB2570";
+    $loginParams = json_encode(['token' => $token]);
+    $ch = curl_init("https://hst-api.wialon.com/wialon/ajax.html?svc=token/login&params=" . urlencode($loginParams));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $loginRaw = curl_exec($ch);
+    curl_close($ch);
+    
+    $loginData = json_decode($loginRaw, true);
+    $sid = $loginData['eid'] ?? null;
+    if (!$sid) return [];
+    
+    $fromUnix = strtotime($dateFrom);
+    $toUnix = strtotime($dateTo);
+    
+    $params = [
+        'itemId' => (int)$wId,
+        'timeFrom' => $fromUnix,
+        'timeTo' => $toUnix,
+        'flags' => 1,
+        'flagsMask' => 65281,
+        'loadCount' => 5000
+    ];
+    
+    $ch = curl_init("https://hst-api.wialon.com/wialon/ajax.html?svc=messages/load_interval&sid=$sid&params=" . urlencode(json_encode($params)));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $msgRaw = curl_exec($ch);
+    curl_close($ch);
+    
+    $msgData = json_decode($msgRaw, true);
+    return $msgData['messages'] ?? [];
+}
+
+function generate_wialon_fuel_report($unit, $dateFrom, $dateTo) {
+    if (!$unit) return null;
+    $unitId = (int)$unit['id'];
+
+    // 1. Fetch Calibration and sensor info
+    $sensors = json_decode($unit['sensors_json'] ?? '[]', true) ?: [];
+    $flsSensor = null;
+    foreach ($sensors as $s) {
+        $t = strtolower($s['type'] ?? '');
+        $p = $s['param'] ?? '';
+        if (strpos($t, 'fuel') !== false || $p === 'io_201') {
+            $flsSensor = $s;
+            break;
+        }
+    }
+
+    $calibTbl = $flsSensor['table'] ?? [];
+    $lowerB = (float)($flsSensor['lower_bound'] ?? 0);
+    $upperB = (float)($flsSensor['upper_bound'] ?? 9999);
+    $minFilling = (float)($flsSensor['min_filling'] ?? 5.0);
+    $minTheft = (float)($flsSensor['min_theft'] ?? 10.0);
+
+    $calcFuel = function($rawX) use ($calibTbl, $lowerB, $upperB) {
+        if ($rawX === null || $rawX === '') return null;
+        $x = (float)$rawX;
+        if (empty($calibTbl)) return $x;
+        $matched = null;
+        foreach ($calibTbl as $seg) {
+            if ($x >= $seg['x']) $matched = $seg;
+            else break;
+        }
+        if (!$matched) $matched = $calibTbl[0];
+        $liters = $matched['a'] * $x + $matched['b'];
+        if ($liters < $lowerB) $liters = $lowerB;
+        if ($liters > $upperB) $liters = $upperB;
+        return round($liters, 2);
+    };
+
+    // 2. Query Local Locations Table
+    $locs = q("SELECT lat, lng, speed, battery, fuel_liters, raw_params, recorded_at 
+               FROM locations 
+               WHERE user_id = ? AND recorded_at BETWEEN ? AND ? 
+               ORDER BY recorded_at ASC", [$unitId, $dateFrom, $dateTo])->fetchAll();
+
+    $props = json_decode($unit['properties_json'] ?? '[]', true) ?: [];
+    $wId = $props['wialon_id'] ?? null;
+
+    // Fallback: If local points < 30 and Wialon ID available, fetch from Wialon API
+    if (count($locs) < 30 && $wId) {
+        $wPoints = fetch_wialon_history_points($wId, $dateFrom, $dateTo);
+        if (!empty($wPoints)) {
+            $processed = [];
+            foreach ($wPoints as $msg) {
+                $pos = $msg['pos'] ?? [];
+                $p = $msg['p'] ?? [];
+                $rawFuel = $p['io_201'] ?? ($p['io_9'] ?? null);
+                $liters = $calcFuel($rawFuel);
+                $time = date('Y-m-d H:i:s', (int)$msg['t']);
+                $speed = (float)($pos['s'] ?? 0);
+
+                $processed[] = [
+                    'lat' => (float)($pos['y'] ?? 0),
+                    'lng' => (float)($pos['x'] ?? 0),
+                    'speed' => $speed,
+                    'fuel_liters' => $liters,
+                    'raw_fuel' => $rawFuel,
+                    'recorded_at' => $time
+                ];
+            }
+            if (count($processed) > count($locs)) {
+                $locs = $processed;
+            }
+        }
+    } else {
+        foreach ($locs as &$l) {
+            if ($l['fuel_liters'] === null && !empty($l['raw_params'])) {
+                $raw = json_decode($l['raw_params'], true);
+                if (isset($raw['io_201'])) {
+                    $l['fuel_liters'] = $calcFuel($raw['io_201']);
+                }
+            }
+        }
+        unset($l);
+    }
+
+    if (empty($locs)) {
+        return [
+            'empty' => true,
+            'unit' => $unit,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'message' => 'No telematics or fuel telemetry points recorded for this period.'
+        ];
+    }
+
+    // 3. Process Telemetry, Trips, Parkings, Fillings, Thefts
+    $mileageTotal = 0.0;
+    $prevLat = null;
+    $prevLng = null;
+
+    $initialFuel = null;
+    $finalFuel = null;
+
+    $chartPoints = [];
+    $trips = [];
+    $parkings = [];
+    $fillings = [];
+    $thefts = [];
+    $routeCoords = [];
+
+    $currentSegment = null;
+    $lastSampleTime = 0;
+
+    foreach ($locs as $idx => $pt) {
+        $t = strtotime($pt['recorded_at']);
+        $lat = (float)$pt['lat'];
+        $lng = (float)$pt['lng'];
+        $speed = (float)$pt['speed'];
+        $fuel = ($pt['fuel_liters'] !== null) ? (float)$pt['fuel_liters'] : null;
+
+        if ($fuel !== null) {
+            if ($initialFuel === null) $initialFuel = $fuel;
+            $finalFuel = $fuel;
+        }
+
+        // Distance accumulation
+        if ($prevLat !== null && $prevLng !== null && $lat && $lng) {
+            $dist = haversine_dist_km($prevLat, $prevLng, $lat, $lng);
+            if ($speed > 2.0 && $dist > 0.004 && $dist < 5.0) {
+                $mileageTotal += $dist;
+            }
+        }
+        $prevLat = $lat;
+        $prevLng = $lng;
+
+        if ($lat && $lng && abs($lat) > 1 && abs($lng) > 1) {
+            $routeCoords[] = [$lat, $lng];
+        }
+
+        $isMoving = ($speed >= 3.0);
+        $segType = $isMoving ? 'trip' : 'parking';
+
+        if (!$currentSegment) {
+            $currentSegment = [
+                'type' => $segType,
+                'start_time' => $pt['recorded_at'],
+                'end_time' => $pt['recorded_at'],
+                'start_fuel' => $fuel,
+                'end_fuel' => $fuel,
+                'start_lat' => $lat,
+                'start_lng' => $lng,
+                'end_lat' => $lat,
+                'end_lng' => $lng,
+                'start_mileage' => $mileageTotal,
+                'max_speed' => $speed,
+                'count' => 1
+            ];
+        } elseif ($currentSegment['type'] === $segType) {
+            $currentSegment['end_time'] = $pt['recorded_at'];
+            if ($fuel !== null) $currentSegment['end_fuel'] = $fuel;
+            $currentSegment['end_lat'] = $lat;
+            $currentSegment['end_lng'] = $lng;
+            if ($speed > $currentSegment['max_speed']) $currentSegment['max_speed'] = $speed;
+            $currentSegment['count']++;
+        } else {
+            $segDuration = strtotime($currentSegment['end_time']) - strtotime($currentSegment['start_time']);
+            $segDist = max(0, $mileageTotal - $currentSegment['start_mileage']);
+
+            // Detect fuel filling during parking/stationary
+            if ($currentSegment['type'] === 'parking' && $currentSegment['start_fuel'] !== null && $currentSegment['end_fuel'] !== null) {
+                $fuelDiff = $currentSegment['end_fuel'] - $currentSegment['start_fuel'];
+                if ($fuelDiff >= $minFilling) {
+                    $fillings[] = [
+                        'time' => $currentSegment['start_time'],
+                        'volume' => round($fuelDiff, 1),
+                        'start_fuel' => round($currentSegment['start_fuel'], 1),
+                        'end_fuel' => round($currentSegment['end_fuel'], 1),
+                        'lat' => $currentSegment['start_lat'],
+                        'lng' => $currentSegment['start_lng'],
+                        'location' => sprintf('%.5f, %.5f', $currentSegment['start_lat'], $currentSegment['start_lng'])
+                    ];
+                } elseif ($fuelDiff <= -$minTheft) {
+                    $thefts[] = [
+                        'time' => $currentSegment['start_time'],
+                        'volume' => round(abs($fuelDiff), 1),
+                        'start_fuel' => round($currentSegment['start_fuel'], 1),
+                        'end_fuel' => round($currentSegment['end_fuel'], 1),
+                        'lat' => $currentSegment['start_lat'],
+                        'lng' => $currentSegment['start_lng'],
+                        'location' => sprintf('%.5f, %.5f', $currentSegment['start_lat'], $currentSegment['start_lng'])
+                    ];
+                }
+            }
+
+            if ($currentSegment['type'] === 'trip' && ($segDist > 0.05 || $segDuration > 30)) {
+                $trips[] = [
+                    'start_time' => $currentSegment['start_time'],
+                    'end_time' => $currentSegment['end_time'],
+                    'duration_sec' => $segDuration,
+                    'distance_km' => round($segDist, 2),
+                    'start_fuel' => $currentSegment['start_fuel'],
+                    'end_fuel' => $currentSegment['end_fuel'],
+                    'fuel_consumed' => ($currentSegment['start_fuel'] !== null && $currentSegment['end_fuel'] !== null) ? max(0, round($currentSegment['start_fuel'] - $currentSegment['end_fuel'], 2)) : 0,
+                    'max_speed' => round($currentSegment['max_speed'], 1),
+                    'start_loc' => sprintf('%.5f, %.5f', $currentSegment['start_lat'], $currentSegment['start_lng']),
+                    'end_loc' => sprintf('%.5f, %.5f', $currentSegment['end_lat'], $currentSegment['end_lng'])
+                ];
+            } elseif ($currentSegment['type'] === 'parking' && $segDuration >= 60) {
+                $parkings[] = [
+                    'start_time' => $currentSegment['start_time'],
+                    'end_time' => $currentSegment['end_time'],
+                    'duration_sec' => $segDuration,
+                    'fuel' => $currentSegment['start_fuel'],
+                    'lat' => $currentSegment['start_lat'],
+                    'lng' => $currentSegment['start_lng'],
+                    'loc' => sprintf('%.5f, %.5f', $currentSegment['start_lat'], $currentSegment['start_lng'])
+                ];
+            }
+
+            $currentSegment = [
+                'type' => $segType,
+                'start_time' => $pt['recorded_at'],
+                'end_time' => $pt['recorded_at'],
+                'start_fuel' => $fuel,
+                'end_fuel' => $fuel,
+                'start_lat' => $lat,
+                'start_lng' => $lng,
+                'end_lat' => $lat,
+                'end_lng' => $lng,
+                'start_mileage' => $mileageTotal,
+                'max_speed' => $speed,
+                'count' => 1
+            ];
+        }
+
+        // Downsample chart points (every 90s or state change)
+        if ($t - $lastSampleTime >= 90 || $idx === 0 || $idx === count($locs) - 1 || $isMoving) {
+            $chartPoints[] = [
+                'time_str' => date('H:i:s', $t),
+                'date_str' => date('m-d', $t),
+                'full_time' => $pt['recorded_at'],
+                'fuel' => ($fuel !== null) ? round($fuel, 2) : null,
+                'mileage' => round($mileageTotal, 2),
+                'speed' => round($speed, 1),
+                'is_trip' => $isMoving
+            ];
+            $lastSampleTime = $t;
+        }
+    }
+
+    if ($currentSegment) {
+        $segDuration = strtotime($currentSegment['end_time']) - strtotime($currentSegment['start_time']);
+        $segDist = max(0, $mileageTotal - $currentSegment['start_mileage']);
+        if ($currentSegment['type'] === 'trip' && ($segDist > 0.05 || $segDuration > 30)) {
+            $trips[] = [
+                'start_time' => $currentSegment['start_time'],
+                'end_time' => $currentSegment['end_time'],
+                'duration_sec' => $segDuration,
+                'distance_km' => round($segDist, 2),
+                'start_fuel' => $currentSegment['start_fuel'],
+                'end_fuel' => $currentSegment['end_fuel'],
+                'fuel_consumed' => ($currentSegment['start_fuel'] !== null && $currentSegment['end_fuel'] !== null) ? max(0, round($currentSegment['start_fuel'] - $currentSegment['end_fuel'], 2)) : 0,
+                'max_speed' => round($currentSegment['max_speed'], 1),
+                'start_loc' => sprintf('%.5f, %.5f', $currentSegment['start_lat'], $currentSegment['start_lng']),
+                'end_loc' => sprintf('%.5f, %.5f', $currentSegment['end_lat'], $currentSegment['end_lng'])
+            ];
+        } elseif ($currentSegment['type'] === 'parking' && $segDuration >= 60) {
+            $parkings[] = [
+                'start_time' => $currentSegment['start_time'],
+                'end_time' => $currentSegment['end_time'],
+                'duration_sec' => $segDuration,
+                'fuel' => $currentSegment['start_fuel'],
+                'lat' => $currentSegment['start_lat'],
+                'lng' => $currentSegment['start_lng'],
+                'loc' => sprintf('%.5f, %.5f', $currentSegment['start_lat'], $currentSegment['start_lng'])
+            ];
+        }
+    }
+
+    $totalFilled = array_sum(array_column($fillings, 'volume'));
+    $totalDrained = array_sum(array_column($thefts, 'volume'));
+    $totalConsumed = 0;
+    if ($initialFuel !== null && $finalFuel !== null) {
+        $totalConsumed = max(0, round(($initialFuel + $totalFilled) - ($finalFuel + $totalDrained), 2));
+    }
+    $avgConsumption = ($mileageTotal > 0) ? round(($totalConsumed / $mileageTotal) * 100, 2) : 0;
+
+    return [
+        'unit' => $unit,
+        'sensor' => $flsSensor,
+        'date_from' => $dateFrom,
+        'date_to' => $dateTo,
+        'initial_fuel' => ($initialFuel !== null) ? round($initialFuel, 2) : 0,
+        'final_fuel' => ($finalFuel !== null) ? round($finalFuel, 2) : 0,
+        'total_consumed' => $totalConsumed,
+        'total_mileage' => round($mileageTotal, 2),
+        'avg_consumption' => $avgConsumption,
+        'fillings' => $fillings,
+        'thefts' => $thefts,
+        'trips' => $trips,
+        'parkings' => $parkings,
+        'chart_points' => $chartPoints,
+        'route_coords' => $routeCoords,
+        'total_points' => count($locs)
+    ];
+}
+
 // Generate Telematics Report Data
 $report_rows = [];
 $officerStats = [];
@@ -114,6 +470,24 @@ $summary = [
     'mismatch_faces' => 0,
     'pending_faces' => 0
 ];
+
+$fuelReportData = null;
+if ($isFuelReport) {
+    $selectedFleetUnit = null;
+    foreach ($fleetUnits as $fu) {
+        if ((int)$fu['id'] === $unit_id) {
+            $selectedFleetUnit = $fu;
+            break;
+        }
+    }
+    if (!$selectedFleetUnit && !empty($fleetUnits)) {
+        $selectedFleetUnit = $fleetUnits[0];
+        $unit_id = (int)$selectedFleetUnit['id'];
+    }
+    if ($selectedFleetUnit) {
+        $fuelReportData = generate_wialon_fuel_report($selectedFleetUnit, $date_from, $date_to);
+    }
+}
 
 $unitFilterSql = $unit_id ? "AND id = " . (int)$unit_id : "";
 $activeUnits = q("SELECT id, name, code, unit_type FROM users WHERE role='staff' AND active=1 AND $secScopeUsers $unitFilterSql ORDER BY name ASC")->fetchAll();
@@ -1303,17 +1677,30 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Select Report Template</label>
       <select name="type" onchange="this.form.submit()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;font-weight:700;background:#fff;color:#0f172a">
-        <option value="face_audit" <?= $report_type === 'face_audit' ? 'selected' : '' ?>>🛡️ Field Officer Face ID & Proxy Audit Report (AI Verification)</option>
-        <option value="field_visits" <?= $report_type === 'field_visits' ? 'selected' : '' ?>>🌾 Field Officer Plot Visits & Crop Inspection Summary</option>
-        <option value="staff_audit" <?= $report_type === 'staff_audit' ? 'selected' : '' ?>>📱 Staff Daily Activity & Tracking Audit Report</option>
-        <option value="dept_section" <?= $report_type === 'dept_section' ? 'selected' : '' ?>>📊 Section & Department Telematics Summary</option>
+        <option value="fuel_graph" <?= $report_type === 'fuel_graph' ? 'selected' : '' ?>>⛽ Fuel Graph 1 / common (Wialon Standard)</option>
+        <option value="fuel_summary" <?= $report_type === 'fuel_summary' ? 'selected' : '' ?>>⛽ Fleet Fuel Consumption, Fillings &amp; Thefts Summary</option>
+        <option value="face_audit" <?= $report_type === 'face_audit' ? 'selected' : '' ?>>🛡️ Field Officer Face ID &amp; Proxy Audit Report (AI Verification)</option>
+        <option value="field_visits" <?= $report_type === 'field_visits' ? 'selected' : '' ?>>🌾 Field Officer Plot Visits &amp; Crop Inspection Summary</option>
+        <option value="staff_audit" <?= $report_type === 'staff_audit' ? 'selected' : '' ?>>📱 Staff Daily Activity &amp; Tracking Audit Report</option>
+        <option value="dept_section" <?= $report_type === 'dept_section' ? 'selected' : '' ?>>📊 Section &amp; Department Telematics Summary</option>
         <option value="engine_hours" <?= $report_type === 'engine_hours' ? 'selected' : '' ?>>🚜 Engine Hours - Galoya</option>
-        <option value="trips" <?= $report_type === 'trips' ? 'selected' : '' ?>>🚗 Trips & Route Mileage Report</option>
+        <option value="trips" <?= $report_type === 'trips' ? 'selected' : '' ?>>🚗 Trips &amp; Route Mileage Report</option>
         <option value="battery_level" <?= $report_type === 'battery_level' ? 'selected' : '' ?>>🔋 Battery Level Report</option>
       </select>
     </div>
 
-    <?php if ($report_type === 'field_visits' || $report_type === 'face_audit'): ?>
+    <?php if ($isFuelReport): ?>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Fleet Vehicle / Object</label>
+      <select name="unit_id" style="padding:7px 12px;border:1px solid #0284c7;border-radius:4px;font-size:13px;background:#f0f9ff;font-weight:700;color:#0369a1">
+        <?php foreach ($fleetUnits as $fu): ?>
+          <option value="<?= $fu['id'] ?>" <?= $unit_id == $fu['id'] ? 'selected' : '' ?>>
+            🚜 <?= h($fu['name']) ?> <?= $fu['code'] ? '('.h($fu['code']).')' : '' ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <?php elseif ($report_type === 'field_visits' || $report_type === 'face_audit'): ?>
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Field Staff / Officer</label>
       <select name="unit_id" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;background:#fff">
@@ -1395,7 +1782,42 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 
 <!-- Compact Single-Line KPI Summary Strip -->
 <div class="card" style="margin-bottom:12px;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03)">
-  <?php if ($report_type === 'face_audit'): ?>
+  <?php if ($isFuelReport && $fuelReportData): ?>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">â›½ Initial Fuel:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $fuelReportData['initial_fuel'] ?> L</span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">â›½ Final Fuel:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $fuelReportData['final_fuel'] ?> L</span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">ðŸ”¥ Consumed:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#ea580c;background:#fff7ed;border:1px solid #fed7aa;padding:2px 10px;border-radius:12px"><?= $fuelReportData['total_consumed'] ?> L</span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">ðŸ›£ï¸ Mileage:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:2px 10px;border-radius:12px"><?= $fuelReportData['total_mileage'] ?> km</span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">âš¡ Rate:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= $fuelReportData['avg_consumption'] ?> L/100km</span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">â›½ Fillings:</span>
+      <span style="font-size:13.5px;font-weight:800;color:#059669;background:#ecfdf5;border:1px solid #a7f3d0;padding:2px 10px;border-radius:12px"><?= count($fuelReportData['fillings']) ?></span>
+    </div>
+    <span style="color:#cbd5e1;font-weight:300">|</span>
+    <div style="display:inline-flex;align-items:center;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">ðŸš¨ Thefts / Drains:</span>
+      <span style="font-size:13.5px;font-weight:800;color:<?= count($fuelReportData['thefts']) > 0 ? '#dc2626' : '#64748b' ?>;background:<?= count($fuelReportData['thefts']) > 0 ? '#fef2f2' : '#f8fafc' ?>;border:1px solid <?= count($fuelReportData['thefts']) > 0 ? '#fecaca' : '#e2e8f0' ?>;padding:2px 10px;border-radius:12px"><?= count($fuelReportData['thefts']) ?></span>
+    </div>
+  <?php elseif ($report_type === 'face_audit'): ?>
     <div style="display:inline-flex;align-items:center;gap:8px">
       <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🤳 Total Selfies:</span>
       <span style="font-size:13.5px;font-weight:800;color:#6366f1;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 10px;border-radius:12px"><?= $summary['total_selfies'] ?></span>
@@ -1457,6 +1879,395 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
   <?php endif; ?>
 </div>
+
+<?php if ($report_type === 'fuel_graph' && $fuelReportData): ?>
+<!-- ========================================================================= -->
+<!-- Wialon Standard Fuel Graph 1 / common (Matches User Screenshots)          -->
+<!-- ========================================================================= -->
+<div class="card" style="padding:16px 20px;margin-bottom:16px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f1f5f9">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px">â›½</span>
+      <div>
+        <h3 style="margin:0;font-size:16px;color:#0f172a;font-weight:800">
+          Fuel Graph 1/common &mdash; <?= h($fuelReportData['unit']['name']) ?>
+          <?php if (!empty($fuelReportData['unit']['code'])): ?>
+            <span style="font-size:13px;color:#64748b;font-weight:600">(<?= h($fuelReportData['unit']['code']) ?>)</span>
+          <?php endif; ?>
+        </h3>
+        <div style="font-size:11.5px;color:#64748b;margin-top:2px">
+          Interval: <strong><?= h($fuelReportData['date_from']) ?></strong> to <strong><?= h($fuelReportData['date_to']) ?></strong>
+          &middot; <?= $fuelReportData['total_points'] ?> Telemetry Records
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px">
+      <button type="button" onclick="exportFuelChartImage()" class="btn ghost" style="padding:6px 12px;font-size:12px;font-weight:700;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer">
+        ðŸ“· Export PNG
+      </button>
+      <button type="button" onclick="exportFuelDataCSV()" class="btn ghost" style="padding:6px 12px;font-size:12px;font-weight:700;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:4px;cursor:pointer">
+        ðŸ“¥ Export CSV
+      </button>
+    </div>
+  </div>
+
+  <!-- Wialon Graph Toggles Control Bar (Matches User Screenshot 2) -->
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px">
+    <!-- Backgrounds Control -->
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#334155;cursor:pointer">
+      <input type="checkbox" id="toggleAllBg" checked onchange="toggleFuelBackgrounds(this.checked)" style="cursor:pointer">
+      <span>All backgrounds</span>
+    </label>
+    <div style="display:inline-flex;align-items:center;gap:10px;padding-left:6px;border-left:1px solid #cbd5e1">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;cursor:pointer">
+        <input type="checkbox" id="toggleBgParkings" checked onchange="toggleFuelBgSpecific('parkings', this.checked)">
+        <span style="display:inline-block;width:12px;height:12px;background:#fef08a;border:1px solid #fde047;border-radius:2px"></span>
+        <span>Parkings</span>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;cursor:pointer">
+        <input type="checkbox" id="toggleBgTrips" checked onchange="toggleFuelBgSpecific('trips', this.checked)">
+        <span style="display:inline-block;width:12px;height:12px;background:#fecdd3;border:1px solid #fca5a5;border-radius:2px"></span>
+        <span>Trips</span>
+      </label>
+    </div>
+
+    <div style="width:1px;height:18px;background:#cbd5e1;margin:0 4px"></div>
+
+    <!-- Lines Control -->
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#334155;cursor:pointer">
+      <input type="checkbox" id="toggleAllLines" checked onchange="toggleFuelLines(this.checked)" style="cursor:pointer">
+      <span>All lines</span>
+    </label>
+    <div style="display:inline-flex;align-items:center;gap:10px;padding-left:6px;border-left:1px solid #cbd5e1">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;cursor:pointer">
+        <input type="checkbox" id="toggleLineMileage" checked onchange="toggleFuelLineSpecific(1, this.checked)">
+        <span style="display:inline-block;width:14px;height:3px;background:#dc2626;border-radius:1px"></span>
+        <span style="color:#dc2626;font-weight:600">Mileage in trips (km)</span>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;cursor:pointer">
+        <input type="checkbox" id="toggleLineFuel" checked onchange="toggleFuelLineSpecific(0, this.checked)">
+        <span style="display:inline-block;width:14px;height:3px;background:#0284c7;border-radius:1px"></span>
+        <span style="color:#0284c7;font-weight:600">Processed fuel level (liters)</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Chart Canvas Container -->
+  <div style="position:relative;width:100%;height:380px">
+    <canvas id="fuelChartCanvas"></canvas>
+  </div>
+</div>
+
+<!-- Interactive Route, Stops & Refueling Locations Map (Matches User Screenshot 3) -->
+<div class="card" style="padding:16px 20px;margin-bottom:16px;background:#fff;border:1px solid #cbd5e1;border-radius:8px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">ðŸ—ºï¸</span>
+      <h4 style="margin:0;font-size:14px;color:#0f172a;font-weight:800">
+        Vehicle Route, Numbered Stops &amp; Fueling Locations
+      </h4>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:11.5px;color:#64748b">
+      <span>ðŸ›£ï¸ Track Distance: <strong><?= $fuelReportData['total_mileage'] ?> km</strong></span>
+      <span>&middot;</span>
+      <span>ðŸ…¿ï¸ Stops: <strong><?= count($fuelReportData['parkings']) ?></strong></span>
+      <span>&middot;</span>
+      <span>â›½ Fillings: <strong style="color:#16a34a"><?= count($fuelReportData['fillings']) ?></strong></span>
+    </div>
+  </div>
+  <div id="fuelRouteMap" style="width:100%;height:380px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc"></div>
+</div>
+
+<!-- Multi-Tab Detailed Breakdown: Trips/Parkings, Fillings, Thefts -->
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+  <div style="display:flex;align-items:center;background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:0 12px;gap:4px">
+    <button type="button" class="fuel-tab-btn active" onclick="switchFuelTab('trips', this)" style="padding:12px 18px;font-size:13px;font-weight:700;border:none;background:transparent;border-bottom:2px solid #0284c7;color:#0284c7;cursor:pointer">
+      ðŸš— Trips &amp; Parkings (<?= count($fuelReportData['trips']) + count($fuelReportData['parkings']) ?>)
+    </button>
+    <button type="button" class="fuel-tab-btn" onclick="switchFuelTab('fillings', this)" style="padding:12px 18px;font-size:13px;font-weight:700;border:none;background:transparent;border-bottom:2px solid transparent;color:#64748b;cursor:pointer">
+      â›½ Fuel Fillings (<?= count($fuelReportData['fillings']) ?>)
+    </button>
+    <button type="button" class="fuel-tab-btn" onclick="switchFuelTab('thefts', this)" style="padding:12px 18px;font-size:13px;font-weight:700;border:none;background:transparent;border-bottom:2px solid transparent;color:#64748b;cursor:pointer">
+      ðŸš¨ Fuel Drains / Thefts (<?= count($fuelReportData['thefts']) ?>)
+    </button>
+  </div>
+
+  <!-- Tab 1: Trips & Parkings Table -->
+  <div id="fuel-tab-trips" class="fuel-tab-pane" style="display:block;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
+          <th style="padding:10px 14px;text-align:center;width:40px">#</th>
+          <th style="padding:10px 14px;text-align:left">State</th>
+          <th style="padding:10px 14px;text-align:left">Beginning</th>
+          <th style="padding:10px 14px;text-align:left">Ending</th>
+          <th style="padding:10px 14px;text-align:left">Duration</th>
+          <th style="padding:10px 14px;text-align:right">Distance (km)</th>
+          <th style="padding:10px 14px;text-align:right">Initial Fuel (L)</th>
+          <th style="padding:10px 14px;text-align:right">Final Fuel (L)</th>
+          <th style="padding:10px 14px;text-align:right">Consumed (L)</th>
+          <th style="padding:10px 14px;text-align:right">Max Speed</th>
+          <th style="padding:10px 14px;text-align:left">Location</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php 
+        $combined = [];
+        foreach ($fuelReportData['trips'] as $tr) {
+            $combined[] = array_merge($tr, ['state' => 'trip', 'sort_t' => strtotime($tr['start_time'])]);
+        }
+        foreach ($fuelReportData['parkings'] as $pk) {
+            $combined[] = array_merge($pk, [
+                'state' => 'parking',
+                'sort_t' => strtotime($pk['start_time']),
+                'distance_km' => 0,
+                'start_fuel' => $pk['fuel'],
+                'end_fuel' => $pk['fuel'],
+                'fuel_consumed' => 0,
+                'max_speed' => 0,
+                'start_loc' => $pk['loc'],
+                'end_loc' => $pk['loc']
+            ]);
+        }
+        usort($combined, fn($a, $b) => $a['sort_t'] <=> $b['sort_t']);
+
+        if (empty($combined)): ?>
+          <tr><td colspan="11" style="text-align:center;padding:24px;color:#94a3b8">No trips or stationary parkings recorded for selected period.</td></tr>
+        <?php else: 
+          $cIdx = 0;
+          foreach ($combined as $item):
+            $cIdx++;
+            $isTr = ($item['state'] === 'trip');
+            $durH = floor($item['duration_sec'] / 3600);
+            $durM = floor(($item['duration_sec'] % 3600) / 60);
+            $durS = $item['duration_sec'] % 60;
+            $durStr = sprintf('%02d:%02d:%02d', $durH, $durM, $durS);
+        ?>
+          <tr style="border-bottom:1px solid #f1f5f9;background:<?= $isTr ? '#fff' : '#fffbeb' ?>">
+            <td style="padding:8px 12px;text-align:center;color:#94a3b8;font-weight:600"><?= $cIdx ?></td>
+            <td style="padding:8px 12px">
+              <?php if ($isTr): ?>
+                <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">ðŸŒ¸ Trip</span>
+              <?php else: ?>
+                <span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">ðŸŸ¨ Parking</span>
+              <?php endif; ?>
+            </td>
+            <td style="padding:8px 12px;font-family:monospace;font-size:11.5px"><?= $item['start_time'] ?></td>
+            <td style="padding:8px 12px;font-family:monospace;font-size:11.5px"><?= $item['end_time'] ?></td>
+            <td style="padding:8px 12px;font-weight:600;color:#334155"><?= $durStr ?></td>
+            <td style="padding:8px 12px;text-align:right;font-weight:700;color:<?= $isTr ? '#dc2626' : '#94a3b8' ?>">
+              <?= $isTr ? $item['distance_km'] : '0.00' ?>
+            </td>
+            <td style="padding:8px 12px;text-align:right;color:#0284c7;font-weight:600"><?= $item['start_fuel'] !== null ? $item['start_fuel'] : 'â€”' ?></td>
+            <td style="padding:8px 12px;text-align:right;color:#0284c7;font-weight:600"><?= $item['end_fuel'] !== null ? $item['end_fuel'] : 'â€”' ?></td>
+            <td style="padding:8px 12px;text-align:right;font-weight:700;color:<?= $item['fuel_consumed'] > 0 ? '#ea580c' : '#94a3b8' ?>">
+              <?= $item['fuel_consumed'] > 0 ? $item['fuel_consumed'] : '0.00' ?>
+            </td>
+            <td style="padding:8px 12px;text-align:right"><?= $isTr ? $item['max_speed'] . ' km/h' : '0 km/h' ?></td>
+            <td style="padding:8px 12px;font-size:11px;color:#64748b">
+              <span>ðŸ“ <?= h($item['start_loc'] ?? '') ?></span>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tab 2: Fuel Fillings Table -->
+  <div id="fuel-tab-fillings" class="fuel-tab-pane" style="display:none;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="background:#f0fdf4;border-bottom:1px solid #bbf7d0">
+          <th style="padding:10px 14px;text-align:center;width:40px">#</th>
+          <th style="padding:10px 14px;text-align:left">Date &amp; Time</th>
+          <th style="padding:10px 14px;text-align:right">Volume Filled (L)</th>
+          <th style="padding:10px 14px;text-align:right">Fuel Level Before</th>
+          <th style="padding:10px 14px;text-align:right">Fuel Level After</th>
+          <th style="padding:10px 14px;text-align:left">Location (GPS)</th>
+          <th style="padding:10px 14px;text-align:center">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($fuelReportData['fillings'])): ?>
+          <tr><td colspan="7" style="text-align:center;padding:24px;color:#94a3b8">No refueling events detected during this period.</td></tr>
+        <?php else: 
+          $fIdx = 0;
+          foreach ($fuelReportData['fillings'] as $fil): 
+            $fIdx++;
+        ?>
+          <tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:10px 14px;text-align:center;font-weight:700"><?= $fIdx ?></td>
+            <td style="padding:10px 14px;font-family:monospace;font-weight:600"><?= $fil['time'] ?></td>
+            <td style="padding:10px 14px;text-align:right">
+              <span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:12px;font-weight:800;font-size:13px">
+                +<?= $fil['volume'] ?> L
+              </span>
+            </td>
+            <td style="padding:10px 14px;text-align:right;color:#0284c7;font-weight:600"><?= $fil['start_fuel'] ?> L</td>
+            <td style="padding:10px 14px;text-align:right;color:#0284c7;font-weight:600"><?= $fil['end_fuel'] ?> L</td>
+            <td style="padding:10px 14px;font-size:11.5px;color:#475569">
+              <a href="https://maps.google.com/?q=<?= $fil['lat'] ?>,<?= $fil['lng'] ?>" target="_blank" style="color:#0284c7;text-decoration:none">
+                ðŸ“ <?= $fil['location'] ?>
+              </a>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <button type="button" onclick="focusFuelMap(<?= $fil['lat'] ?>, <?= $fil['lng'] ?>)" class="btn ghost" style="padding:3px 8px;font-size:11px;border-radius:4px;background:#fff;border:1px solid #cbd5e1;cursor:pointer">
+                ðŸŽ¯ View on Map
+              </button>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tab 3: Fuel Thefts & Drains Table -->
+  <div id="fuel-tab-thefts" class="fuel-tab-pane" style="display:none;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="background:#fef2f2;border-bottom:1px solid #fecaca">
+          <th style="padding:10px 14px;text-align:center;width:40px">#</th>
+          <th style="padding:10px 14px;text-align:left">Date &amp; Time</th>
+          <th style="padding:10px 14px;text-align:right">Volume Drained (L)</th>
+          <th style="padding:10px 14px;text-align:right">Fuel Level Before</th>
+          <th style="padding:10px 14px;text-align:right">Fuel Level After</th>
+          <th style="padding:10px 14px;text-align:left">Location (GPS)</th>
+          <th style="padding:10px 14px;text-align:center">Security Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($fuelReportData['thefts'])): ?>
+          <tr><td colspan="7" style="text-align:center;padding:24px;color:#16a34a;font-weight:600">ðŸ›¡ï¸ No fuel thefts or abnormal tank drainages detected!</td></tr>
+        <?php else: 
+          $tIdx = 0;
+          foreach ($fuelReportData['thefts'] as $thf): 
+            $tIdx++;
+        ?>
+          <tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:10px 14px;text-align:center;font-weight:700"><?= $tIdx ?></td>
+            <td style="padding:10px 14px;font-family:monospace;font-weight:600"><?= $thf['time'] ?></td>
+            <td style="padding:10px 14px;text-align:right">
+              <span style="background:#fee2e2;color:#b91c1c;padding:3px 10px;border-radius:12px;font-weight:800;font-size:13px">
+                -<?= $thf['volume'] ?> L
+              </span>
+            </td>
+            <td style="padding:10px 14px;text-align:right;color:#0284c7;font-weight:600"><?= $thf['start_fuel'] ?> L</td>
+            <td style="padding:10px 14px;text-align:right;color:#0284c7;font-weight:600"><?= $thf['end_fuel'] ?> L</td>
+            <td style="padding:10px 14px;font-size:11.5px;color:#475569">
+              <a href="https://maps.google.com/?q=<?= $thf['lat'] ?>,<?= $thf['lng'] ?>" target="_blank" style="color:#dc2626;text-decoration:none">
+                ðŸ“ <?= $thf['location'] ?>
+              </a>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <span style="background:#991b1b;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">
+                ðŸš¨ THEFT SUSPECTED
+              </span>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php elseif ($report_type === 'fuel_summary'): ?>
+<!-- ========================================================================= -->
+<!-- Fleet Fuel Consumption, Calibration & Machinery Summary Table             -->
+<!-- ========================================================================= -->
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+  <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <strong style="font-size:14px;color:#1e293b">
+      â›½ Fleet Fuel Consumption, Calibration &amp; Machinery Summary
+    </strong>
+    <span style="font-size:11.5px;color:#64748b"><?= count($fleetUnits) ?> Fleet Vehicles Registered</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1">
+          <th style="padding:10px 14px;text-align:center;width:40px">#</th>
+          <th style="padding:10px 14px;text-align:left">Vehicle / Machinery</th>
+          <th style="padding:10px 14px;text-align:left">Type &amp; Code</th>
+          <th style="padding:10px 14px;text-align:center">FLS Calibration Status</th>
+          <th style="padding:10px 14px;text-align:right">Current Fuel Level</th>
+          <th style="padding:10px 14px;text-align:right">External Battery</th>
+          <th style="padding:10px 14px;text-align:center">Ignition</th>
+          <th style="padding:10px 14px;text-align:left">Last Telematics Ping</th>
+          <th style="padding:10px 14px;text-align:center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php 
+        $fIdx = 0;
+        foreach ($fleetUnits as $u):
+          $fIdx++;
+          $uProps = json_decode($u['properties_json'] ?? '[]', true) ?: [];
+          $uSens = json_decode($u['sensors_json'] ?? '[]', true) ?: [];
+          $fls = null;
+          foreach ($uSens as $sn) {
+              if (strpos(strtolower($sn['type'] ?? ''), 'fuel') !== false || ($sn['param'] ?? '') === 'io_201') {
+                  $fls = $sn;
+                  break;
+              }
+          }
+          $calPoints = !empty($fls['table']) ? count($fls['table']) : 0;
+          $fuelL = $uProps['fuel_liters'] ?? null;
+          $pwr = $uProps['pwr_ext'] ?? null;
+        ?>
+          <tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:10px 14px;text-align:center;color:#94a3b8;font-weight:600"><?= $fIdx ?></td>
+            <td style="padding:10px 14px">
+              <strong style="color:#0f172a;font-size:13px"><?= h($u['name']) ?></strong>
+              <?php if (!empty($u['code'])): ?>
+                <div style="font-size:11px;color:#64748b">Plate / Code: <code><?= h($u['code']) ?></code></div>
+              <?php endif; ?>
+            </td>
+            <td style="padding:10px 14px;color:#475569">
+              <span style="font-weight:600"><?= h(ucfirst($u['unit_type'] ?? 'Vehicle')) ?></span>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <?php if ($calPoints > 0): ?>
+                <span style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">
+                  âœ… Calibrated (<?= $calPoints ?> pts)
+                </span>
+              <?php else: ?>
+                <span style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">
+                  âš ï¸ No Calibration
+                </span>
+              <?php endif; ?>
+            </td>
+            <td style="padding:10px 14px;text-align:right">
+              <?php if ($fuelL !== null): ?>
+                <span style="font-size:14px;font-weight:800;color:#0284c7"><?= round($fuelL, 1) ?> L</span>
+              <?php else: ?>
+                <span style="color:#94a3b8">â€”</span>
+              <?php endif; ?>
+            </td>
+            <td style="padding:10px 14px;text-align:right">
+              <?php if ($pwr !== null): ?>
+                <span style="font-size:12.5px;font-weight:700;color:#334155"><?= round($pwr, 2) ?> V</span>
+              <?php else: ?>
+                <span style="color:#94a3b8">â€”</span>
+              <?php endif; ?>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e" title="Connected"></span>
+            </td>
+            <td style="padding:10px 14px;font-size:11.5px;color:#64748b">
+              <?= $uProps['last_sync'] ?? 'Active' ?>
+            </td>
+            <td style="padding:10px 14px;text-align:center">
+              <a href="?type=fuel_graph&unit_id=<?= $u['id'] ?>&period=today" class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:4px;font-weight:700;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;text-decoration:none">
+                ðŸ“Š Fuel Graph
+              </a>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($report_type === 'field_visits' && !empty($officerStats)): ?>
 <!-- Table 1: Individual Field Officer Visit & Plot Coverage Summary -->
@@ -1803,6 +2614,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 </div>
 <?php endif; ?>
 
+<?php if (!$isFuelReport): ?>
 <!-- Report Table Card -->
 <div class="card" id="report-table-card" style="padding:0;overflow:hidden">
   <div style="padding:10px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -2171,6 +2983,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 <style>
 @media print {
@@ -2415,6 +3228,312 @@ window.addEventListener('afterprint', function() {
 document.addEventListener('DOMContentLoaded', initTablePagination);
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   initTablePagination();
+}
+</script>
+
+<!-- Libraries for Fuel Graph & Interactive Route Map -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+window.fuelReportData = <?= json_encode($fuelReportData ? [
+    'chart_points' => $fuelReportData['chart_points'],
+    'route_coords' => $fuelReportData['route_coords'],
+    'parkings' => $fuelReportData['parkings'],
+    'fillings' => $fuelReportData['fillings'],
+    'thefts' => $fuelReportData['thefts'],
+    'unit_name' => $fuelReportData['unit']['name']
+] : null, JSON_UNESCAPED_UNICODE) ?>;
+
+window.showBackgrounds = true;
+window.showParkingsBg = true;
+window.showTripsBg = true;
+window.showMileageLine = true;
+window.showFuelLine = true;
+
+function initFuelChart() {
+  var canvas = document.getElementById('fuelChartCanvas');
+  if (!canvas || !window.fuelReportData || !window.fuelReportData.chart_points.length) return;
+  var pts = window.fuelReportData.chart_points;
+
+  var bgPlugin = {
+    id: 'fuelBgPlugin',
+    beforeDraw: function(chart) {
+      if (!window.showBackgrounds) return;
+      var ctx = chart.ctx;
+      var chartArea = chart.chartArea;
+      var x = chart.scales.x;
+      if (!chartArea || !x) return;
+
+      var top = chartArea.top;
+      var height = chartArea.height;
+      var n = pts.length;
+      if (n < 2) return;
+
+      ctx.save();
+      for (var i = 0; i < n; i++) {
+        var p = pts[i];
+        var isTrip = p.is_trip;
+        if (isTrip && !window.showTripsBg) continue;
+        if (!isTrip && !window.showParkingsBg) continue;
+
+        var xStart = i === 0 ? x.getPixelForValue(0) : (x.getPixelForValue(i - 1) + x.getPixelForValue(i)) / 2;
+        var xEnd = i === n - 1 ? x.getPixelForValue(n - 1) : (x.getPixelForValue(i) + x.getPixelForValue(i + 1)) / 2;
+
+        ctx.fillStyle = isTrip ? 'rgba(254, 205, 211, 0.45)' : 'rgba(254, 240, 138, 0.45)';
+        ctx.fillRect(xStart, top, Math.max(1, xEnd - xStart), height);
+      }
+      ctx.restore();
+    }
+  };
+
+  var chart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: pts.map(function(p) { return p.time_str; }),
+      datasets: [
+        {
+          label: 'Processed fuel level, liters',
+          data: pts.map(function(p) { return p.fuel; }),
+          borderColor: '#0284c7',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: pts.length > 100 ? 0 : 2,
+          pointHoverRadius: 5,
+          tension: 0.15,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Mileage in trips, km',
+          data: pts.map(function(p) { return p.mileage; }),
+          borderColor: '#dc2626',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: pts.length > 100 ? 0 : 2,
+          pointHoverRadius: 5,
+          tension: 0.1,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.92)',
+          titleColor: '#fff',
+          titleFont: { weight: 'bold', size: 12 },
+          bodyColor: '#e2e8f0',
+          bodyFont: { size: 12 },
+          padding: 10,
+          borderColor: '#334155',
+          borderWidth: 1,
+          callbacks: {
+            title: function(items) {
+              var idx = items[0].dataIndex;
+              var p = pts[idx];
+              return p.time_str + ' ' + p.date_str;
+            },
+            label: function(item) {
+              if (item.datasetIndex === 0) {
+                return 'Processed fuel level: ' + (item.parsed.y !== null ? item.parsed.y + ' liters' : 'No data');
+              } else if (item.datasetIndex === 1) {
+                return 'Mileage in trips: ' + item.parsed.y + ' km';
+              }
+              return '';
+            },
+            afterBody: function(items) {
+              var idx = items[0].dataIndex;
+              var p = pts[idx];
+              return 'Speed: ' + p.speed + ' km/h';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(226, 232, 240, 0.6)' },
+          ticks: { maxTicksLimit: 14, font: { size: 11 } }
+        },
+        y: {
+          type: 'linear',
+          position: 'left',
+          title: { display: true, text: 'Volume, litres', font: { weight: 'bold', size: 11 }, color: '#0284c7' },
+          grid: { color: 'rgba(226, 232, 240, 0.6)' }
+        },
+        y1: {
+          type: 'linear',
+          position: 'right',
+          title: { display: true, text: 'Mileage, km', font: { weight: 'bold', size: 11 }, color: '#dc2626' },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    },
+    plugins: [bgPlugin]
+  });
+
+  window.fuelChart = chart;
+}
+
+function toggleFuelBackgrounds(checked) {
+  window.showBackgrounds = checked;
+  document.getElementById('toggleBgParkings').checked = checked;
+  document.getElementById('toggleBgTrips').checked = checked;
+  window.showParkingsBg = checked;
+  window.showTripsBg = checked;
+  if (window.fuelChart) window.fuelChart.update();
+}
+
+function toggleFuelBgSpecific(type, checked) {
+  if (type === 'parkings') window.showParkingsBg = checked;
+  if (type === 'trips') window.showTripsBg = checked;
+  window.showBackgrounds = window.showParkingsBg || window.showTripsBg;
+  document.getElementById('toggleAllBg').checked = (window.showParkingsBg && window.showTripsBg);
+  if (window.fuelChart) window.fuelChart.update();
+}
+
+function toggleFuelLines(checked) {
+  window.showMileageLine = checked;
+  window.showFuelLine = checked;
+  document.getElementById('toggleLineMileage').checked = checked;
+  document.getElementById('toggleLineFuel').checked = checked;
+  if (window.fuelChart) {
+    window.fuelChart.setDatasetVisibility(0, checked);
+    window.fuelChart.setDatasetVisibility(1, checked);
+    window.fuelChart.update();
+  }
+}
+
+function toggleFuelLineSpecific(dsIdx, checked) {
+  if (window.fuelChart) {
+    window.fuelChart.setDatasetVisibility(dsIdx, checked);
+    window.fuelChart.update();
+  }
+  var m = document.getElementById('toggleLineMileage').checked;
+  var f = document.getElementById('toggleLineFuel').checked;
+  document.getElementById('toggleAllLines').checked = (m && f);
+}
+
+function initFuelMap() {
+  var container = document.getElementById('fuelRouteMap');
+  if (!container || !window.fuelReportData) return;
+  var coords = window.fuelReportData.route_coords;
+
+  var map = L.map('fuelRouteMap');
+  window.fuelMap = map;
+
+  var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: '&copy; Esri'
+  });
+
+  L.control.layers({ "Street": osm, "Satellite": sat }).addTo(map);
+
+  if (coords && coords.length > 0) {
+    var poly = L.polyline(coords, { color: '#2563eb', weight: 4, opacity: 0.85 }).addTo(map);
+    map.fitBounds(poly.getBounds(), { padding: [30, 30] });
+  } else {
+    map.setView([7.15, 81.65], 11);
+  }
+
+  // Numbered stop markers
+  if (window.fuelReportData.parkings) {
+    window.fuelReportData.parkings.forEach(function(pk, idx) {
+      var num = idx + 1;
+      var icon = L.divIcon({
+        className: 'stop-marker',
+        html: '<div style="background:#1e293b;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;box-shadow:0 2px 4px rgba(0,0,0,0.3)">' + num + '</div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+      L.marker([pk.lat, pk.lng], { icon: icon })
+        .bindPopup('<b>Stop #' + num + '</b><br>Time: ' + pk.start_time + '<br>Duration: ' + Math.round(pk.duration_sec / 60) + ' mins<br>Fuel: ' + pk.fuel + ' L')
+        .addTo(map);
+    });
+  }
+
+  // Refueling markers (Green â›½)
+  if (window.fuelReportData.fillings) {
+    window.fuelReportData.fillings.forEach(function(fil, idx) {
+      var num = idx + 1;
+      var icon = L.divIcon({
+        className: 'fuel-marker',
+        html: '<div style="background:#16a34a;color:#fff;border:2px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.4)">â›½</div>',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+      L.marker([fil.lat, fil.lng], { icon: icon })
+        .bindPopup('<div style="font-size:12px"><b>â›½ Refueling #' + num + '</b><br><span style="color:#16a34a;font-weight:bold">+' + fil.volume + ' Liters</span><br>Time: ' + fil.time + '<br>Fuel: ' + fil.start_fuel + 'L &rarr; ' + fil.end_fuel + 'L</div>')
+        .addTo(map);
+    });
+  }
+}
+
+function switchFuelTab(name, btn) {
+  document.querySelectorAll('.fuel-tab-pane').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.fuel-tab-btn').forEach(function(b) {
+    b.style.borderBottomColor = 'transparent';
+    b.style.color = '#64748b';
+  });
+  var pane = document.getElementById('fuel-tab-' + name);
+  if (pane) pane.style.display = 'block';
+  btn.style.borderBottomColor = '#0284c7';
+  btn.style.color = '#0284c7';
+}
+
+function focusFuelMap(lat, lng) {
+  if (window.fuelMap) {
+    window.fuelMap.setView([lat, lng], 16);
+    var el = document.getElementById('fuelRouteMap');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function exportFuelChartImage() {
+  if (!window.fuelChart) return;
+  var link = document.createElement('a');
+  link.download = 'Fuel_Graph_' + (window.fuelReportData ? window.fuelReportData.unit_name.replace(/[^a-zA-Z0-9]/g, '_') : 'export') + '.png';
+  link.href = window.fuelChart.toBase64Image();
+  link.click();
+}
+
+function exportFuelDataCSV() {
+  if (!window.fuelReportData || !window.fuelReportData.chart_points.length) return;
+  var pts = window.fuelReportData.chart_points;
+  var csv = 'Time,Date,Fuel_Liters,Mileage_km,Speed_kmh,State\n';
+  pts.forEach(function(p) {
+    csv += [p.time_str, p.date_str, p.fuel !== null ? p.fuel : '', p.mileage, p.speed, p.is_trip ? 'Trip' : 'Parking'].join(',') + '\n';
+  });
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'Fuel_Report_' + (window.fuelReportData.unit_name.replace(/[^a-zA-Z0-9]/g, '_')) + '.csv');
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initFuelChart();
+  initFuelMap();
+});
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  initFuelChart();
+  initFuelMap();
 }
 </script>
 

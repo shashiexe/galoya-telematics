@@ -137,7 +137,10 @@ if (isset($_GET['test_report'])) {
         include __DIR__ . '/admin/reports.php';
         $out = ob_get_clean();
         echo "SUCCESS! Output length: " . strlen($out) . " bytes\n\n";
-        echo htmlspecialchars(substr($out, 0, 1500));
+        echo "Contains fuelChartCanvas: " . (strpos($out, 'fuelChartCanvas') !== false ? 'YES' : 'NO') . "\n";
+        echo "Contains Fuel Graph 1/common: " . (strpos($out, 'Fuel Graph 1/common') !== false ? 'YES' : 'NO') . "\n";
+        echo "Contains fuelReportData: " . (strpos($out, 'fuelReportData') !== false ? 'YES' : 'NO') . "\n";
+        echo "First 1500 chars:\n" . htmlspecialchars(substr($out, 0, 1500));
     } catch (Throwable $e) {
         if (ob_get_level() > 0) ob_end_clean();
         echo "CAUGHT EXCEPTION: " . $e->getMessage() . "\n";

@@ -140,7 +140,20 @@ if (isset($_GET['test_report'])) {
         echo "Contains fuelChartCanvas: " . (strpos($out, 'fuelChartCanvas') !== false ? 'YES' : 'NO') . "\n";
         echo "Contains Fuel Graph 1/common: " . (strpos($out, 'Fuel Graph 1/common') !== false ? 'YES' : 'NO') . "\n";
         echo "Contains fuelReportData: " . (strpos($out, 'fuelReportData') !== false ? 'YES' : 'NO') . "\n";
-        echo "First 1500 chars:\n" . htmlspecialchars(substr($out, 0, 1500));
+        if (preg_match('/window\.fuelReportData\s*=\s*(\{.*?\});/s', $out, $m)) {
+            $fData = json_decode($m[1], true);
+            echo "Unit: " . ($fData['unit_name'] ?? 'None') . "\n";
+            echo "Chart points count: " . count($fData['chart_points'] ?? []) . "\n";
+            echo "Route coords count: " . count($fData['route_coords'] ?? []) . "\n";
+            echo "Parkings count: " . count($fData['parkings'] ?? []) . "\n";
+            echo "Fillings count: " . count($fData['fillings'] ?? []) . "\n";
+            if (!empty($fData['chart_points'])) {
+                echo "First point: " . json_encode($fData['chart_points'][0]) . "\n";
+                echo "Last point: " . json_encode(end($fData['chart_points'])) . "\n";
+            }
+        } else {
+            echo "Regex did NOT match window.fuelReportData in output!\n";
+        }
     } catch (Throwable $e) {
         if (ob_get_level() > 0) ob_end_clean();
         echo "CAUGHT EXCEPTION: " . $e->getMessage() . "\n";

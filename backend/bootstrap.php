@@ -470,6 +470,11 @@ try {
     try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled` TINYINT(1) DEFAULT 0 AFTER `profile_photo`"); } catch (Throwable $e) {}
     try { q("ALTER TABLE `users` ADD COLUMN `face_enrolled_at` DATETIME NULL AFTER `face_enrolled`"); } catch (Throwable $e) {}
 
+    // 8. Alter locations table for precise telematics & fuel history
+    try { q("ALTER TABLE `locations` ADD COLUMN `fuel_liters` DECIMAL(7,2) NULL AFTER `battery`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `locations` ADD COLUMN `temperature` DECIMAL(5,2) NULL AFTER `fuel_liters`"); } catch (Throwable $e) {}
+    try { q("ALTER TABLE `locations` ADD COLUMN `raw_params` TEXT NULL AFTER `temperature`"); } catch (Throwable $e) {}
+
     // Ensure location interval setting is 15 seconds default
     try {
         $curIv = (int)q("SELECT `val` FROM `settings` WHERE `key`='location_interval'")->fetchColumn();

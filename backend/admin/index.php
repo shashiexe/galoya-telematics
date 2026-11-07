@@ -1276,7 +1276,10 @@ layout_start('Monitoring', 'index.php', true);
 
     <!-- Window Footer -->
     <div class="w-prop-footer">
-      <a href="#" onclick="exportUnitProperties();return false;" style="font-size:12px;color:#0284c7;text-decoration:none">Export properties</a>
+      <div style="display:flex;gap:14px;align-items:center">
+        <a href="#" onclick="exportUnitProperties();return false;" style="font-size:12px;color:#0284c7;text-decoration:none">Export properties</a>
+        <a href="#" id="btn-prop-fuel-report" target="_blank" style="font-size:12px;color:#16a34a;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">⛽ Open Fuel Graph Report ↗</a>
+      </div>
       <div style="display:flex;gap:10px">
         <button type="button" class="w-prop-btn" onclick="closeUnitPropertiesModal()">Cancel</button>
         <button type="button" class="w-prop-btn primary" id="btn-save-unit-prop" onclick="saveUnitProperties()">OK</button>
@@ -2933,6 +2936,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Service intervals
     renderServiceIntervals(u.properties?.service_intervals || []);
+
+    // Quick Fuel Report link
+    const frLink = document.getElementById('btn-prop-fuel-report');
+    if (frLink) {
+      frLink.href = 'reports.php?type=fuel_graph&unit_id=' + u.id;
+    }
   }
 
   window.selectUnitIcon = function(iconKey) {
@@ -2951,20 +2960,20 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderSensorsTable(sensors) {
     const tbody = document.getElementById('sensors-tbody');
     if (!tbody) return;
-    tbody.innerHTML = sensors.map((s, idx) => `
-      <tr data-sensor-idx="${idx}">
+    tbody.innerHTML = (sensors || []).map((s, idx) => `
+      <tr data-sensor-idx="${idx}" ondblclick="openSensorPropertiesModal(${idx})" style="cursor:pointer" title="Double-click to edit sensor properties & calibration table">
         <td style="color:#94a3b8;cursor:move">↕</td>
         <td><strong>${s.name}</strong></td>
         <td>${s.type}</td>
         <td>${s.unit}</td>
         <td><code>${s.param}</code></td>
         <td style="color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.desc || ''}">${s.desc || ''}</td>
-        <td style="text-align:center">
+        <td style="text-align:center" onclick="event.stopPropagation()">
           <input type="checkbox" ${s.visible ? 'checked' : ''} onchange="toggleSensorVisible(${idx}, this.checked)">
         </td>
-        <td style="text-align:center;white-space:nowrap">
-          <button type="button" class="w-icon-btn" onclick="openSensorPropertiesModal(${idx})" title="Edit sensor properties & calibration table">🔧</button>
-          <button type="button" class="w-icon-btn red" onclick="deleteSensor(${idx})" title="Delete sensor">✕</button>
+        <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
+          <button type="button" class="w-icon-btn" onclick="openSensorPropertiesModal(${idx})" title="Edit sensor properties & calibration table" style="background:#f0f9ff;border:1px solid #0284c7;color:#0284c7;border-radius:4px;padding:2px 7px;font-size:11.5px;font-weight:700">✏️ Edit</button>
+          <button type="button" class="w-icon-btn red" onclick="deleteSensor(${idx})" title="Delete sensor" style="padding:2px 6px">✕</button>
         </td>
       </tr>
     `).join('');
@@ -2973,7 +2982,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderCustomFields(fields) {
     const container = document.getElementById('custom-fields-container');
     if (!container) return;
-    container.innerHTML = Object.entries(fields).map(([k, v]) => `
+    container.innerHTML = Object.entries(fields || {}).map(([k, v]) => `
       <label>${k}:</label>
       <input type="text" class="w-prop-input custom-field-val" data-key="${k}" value="${v}">
     `).join('');
@@ -2982,7 +2991,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderServiceIntervals(intervals) {
     const tbody = document.getElementById('service-intervals-tbody');
     if (!tbody) return;
-    tbody.innerHTML = intervals.map(item => `
+    tbody.innerHTML = (intervals || []).map(item => `
       <tr>
         <td><strong>${item.name}</strong></td>
         <td>${item.interval}</td>
@@ -3006,124 +3015,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  window.openSensorPropertiesModal = function(idx) {
-    editingSensorIdx = (idx !== null && idx !== undefined) ? idx : null;
-    const modal = document.getElementById('sensor-properties-modal');
-    if (!modal) return;
-
-    if (editingSensorIdx !== null && currentUnitProp && currentUnitProp.sensors && currentUnitProp.sensors[editingSensorIdx]) {
-      const s = currentUnitProp.sensors[editingSensorIdx];
-      document.getElementById('sp-modal-title').textContent = 'Sensor properties — ' + (s.name || 'Sensor');
-      document.getElementById('sp-name').value = s.name || '';
-      document.getElementById('sp-type').value = s.type || 'Custom digital sensor';
-      document.getElementById('sp-desc').value = s.desc || '';
-      document.getElementById('sp-param').value = s.param || '';
-      document.getElementById('sp-unit').value = s.unit || '';
-      document.getElementById('sp-last-msg').checked = !!s.last_msg;
-      document.getElementById('sp-validator').value = s.validator || 'None';
-      
-      document.getElementById('sp-lower-bound').value = (s.lower_bound !== undefined && s.lower_bound !== null) ? s.lower_bound : 0;
-      document.getElementById('sp-upper-bound').value = (s.upper_bound !== undefined && s.upper_bound !== null) ? s.upper_bound : 45;
-      document.getElementById('sp-apply-bounds').checked = (s.apply_bounds !== false);
-      document.getElementById('sp-min-filling').value = (s.min_filling !== undefined && s.min_filling !== null) ? s.min_filling : 5;
-      document.getElementById('sp-min-theft').value = (s.min_theft !== undefined && s.min_theft !== null) ? s.min_theft : 10;
-
-      // Populate XY table
-      const xyTbody = document.getElementById('sp-xy-tbody');
-      xyTbody.innerHTML = '';
-      
-      let xyList = [];
-      if (Array.isArray(s.xy_pairs) && s.xy_pairs.length > 0) {
-        xyList = s.xy_pairs;
-      } else if (s.desc && s.desc.includes('|')) {
-        // Parse Wialon description format: |x1:y1:x2:y2...
-        const rawPart = s.desc.split('|')[1] || '';
-        const tokens = rawPart.split(':');
-        for (let i = 0; i < tokens.length - 1; i += 2) {
-          const xVal = parseFloat(tokens[i]);
-          const yVal = parseFloat(tokens[i + 1]);
-          if (!isNaN(xVal) && !isNaN(yVal)) {
-            xyList.push({ x: xVal, y: yVal });
-          }
-        }
-      } else if (Array.isArray(s.table) && s.table.length > 0) {
-        // Reconstruct from slopes
-        s.table.forEach(seg => {
-          const xVal = seg.x;
-          const yVal = Math.round((seg.a * seg.x + seg.b) * 10) / 10;
-          xyList.push({ x: xVal, y: yVal });
-        });
-      }
-
-      xyList.forEach(pt => addXyPairRow(pt.x, pt.y));
-
-      // Populate Slopes table
-      const slopesTbody = document.getElementById('sp-slopes-tbody');
-      slopesTbody.innerHTML = '';
-      if (Array.isArray(s.table) && s.table.length > 0) {
-        s.table.forEach(seg => renderSlopeRow(seg.x, seg.a, seg.b));
-        updateSlopesCount();
-      } else if (xyList.length >= 2) {
-        generateSlopesFromXyTable(false);
-      }
-    } else {
-      // New Sensor defaults
-      document.getElementById('sp-modal-title').textContent = 'New sensor';
-      document.getElementById('sp-name').value = 'New sensor';
-      document.getElementById('sp-type').value = 'Fuel level sensor';
-      document.getElementById('sp-desc').value = '';
-      document.getElementById('sp-param').value = '';
-      document.getElementById('sp-unit').value = 'l';
-      document.getElementById('sp-last-msg').checked = false;
-      document.getElementById('sp-lower-bound').value = 0;
-      document.getElementById('sp-upper-bound').value = 45;
-      document.getElementById('sp-apply-bounds').checked = true;
-      document.getElementById('sp-min-filling').value = 5;
-      document.getElementById('sp-min-theft').value = 10;
-      document.getElementById('sp-xy-tbody').innerHTML = '';
-      document.getElementById('sp-slopes-tbody').innerHTML = '';
-      document.getElementById('sp-xy-count').textContent = '0 points';
-      document.getElementById('sp-slopes-count').textContent = '0 rows';
-    }
-
-    onSensorTypeChanged();
-    switchSensorPropTab('general');
-    modal.style.display = 'flex';
-    testCalculateSensorValue();
-  };
-
-  window.closeSensorPropertiesModal = function() {
-    const modal = document.getElementById('sensor-properties-modal');
-    if (modal) modal.style.display = 'none';
-  };
-
-  window.switchSensorPropTab = function(tabId) {
-    document.querySelectorAll('.w-sp-tab-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === tabId);
+  function reindexXyTable() {
+    const rows = document.querySelectorAll('#sp-xy-tbody tr');
+    rows.forEach((r, idx) => {
+      const idxCell = r.querySelector('.sp-xy-idx');
+      if (idxCell) idxCell.textContent = (idx + 1);
     });
-    document.querySelectorAll('.w-sp-pane').forEach(p => {
-      p.classList.toggle('active', p.id === 'sp-pane-' + tabId);
-    });
-  };
+    const cnt = document.getElementById('sp-xy-count');
+    if (cnt) cnt.textContent = rows.length + (rows.length === 1 ? ' point' : ' points');
+  }
 
-  window.onSensorTypeChanged = function() {
-    const type = (document.getElementById('sp-type').value || '').toLowerCase();
-    const fuelSec = document.getElementById('sp-fuel-section');
-    if (fuelSec) {
-      fuelSec.style.display = (type.includes('fuel')) ? 'block' : 'none';
-    }
-    const unitInput = document.getElementById('sp-unit');
-    if (!unitInput.value || unitInput.value === 'l' || unitInput.value === 'V' || unitInput.value === '°C' || unitInput.value === 'km' || unitInput.value === 'On/Off' || unitInput.value === 'Ok/Not Ok') {
-      if (type.includes('fuel')) unitInput.value = 'l';
-      else if (type.includes('voltage')) unitInput.value = 'V';
-      else if (type.includes('temperature')) unitInput.value = '°C';
-      else if (type.includes('mileage') || type.includes('odometer')) unitInput.value = 'km';
-      else if (type.includes('ignition')) unitInput.value = 'On/Off';
-      else if (type.includes('digital')) unitInput.value = 'Ok/Not Ok';
-    }
-  };
-
-  window.addXyPairRow = function(x = '', y = '') {
+  function addXyPairRow(x = '', y = '') {
     const tbody = document.getElementById('sp-xy-tbody');
     if (!tbody) return;
     const tr = document.createElement('tr');
@@ -3135,26 +3037,18 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     tbody.appendChild(tr);
     reindexXyTable();
-  };
+  }
+  window.addXyPairRow = addXyPairRow;
 
-  window.deleteXyPairRow = function(btn) {
+  function deleteXyPairRow(btn) {
     const tr = btn.closest('tr');
     if (tr) {
       tr.remove();
       reindexXyTable();
       testCalculateSensorValue();
     }
-  };
-
-  function reindexXyTable() {
-    const rows = document.querySelectorAll('#sp-xy-tbody tr');
-    rows.forEach((r, idx) => {
-      const idxCell = r.querySelector('.sp-xy-idx');
-      if (idxCell) idxCell.textContent = (idx + 1);
-    });
-    const cnt = document.getElementById('sp-xy-count');
-    if (cnt) cnt.textContent = rows.length + (rows.length === 1 ? ' point' : ' points');
   }
+  window.deleteXyPairRow = deleteXyPairRow;
 
   function renderSlopeRow(x, a, b) {
     const tbody = document.getElementById('sp-slopes-tbody');
@@ -3169,6 +3063,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     tbody.appendChild(tr);
   }
+  window.renderSlopeRow = renderSlopeRow;
 
   function updateSlopesCount() {
     const rows = document.querySelectorAll('#sp-slopes-tbody tr');
@@ -3179,8 +3074,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const cnt = document.getElementById('sp-slopes-count');
     if (cnt) cnt.textContent = rows.length + (rows.length === 1 ? ' row' : ' rows');
   }
+  window.updateSlopesCount = updateSlopesCount;
 
-  window.generateSlopesFromXyTable = function(notify = true) {
+  function generateSlopesFromXyTable(notify = true) {
     const rows = document.querySelectorAll('#sp-xy-tbody tr');
     const points = [];
     rows.forEach(r => {
@@ -3221,19 +3117,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const dy = p2.y - p1.y;
         const a = (dx !== 0) ? (dy / dx) : 0;
         const b = p1.y - a * p1.x;
-        const aRound = Math.round(a * 100000) / 100000;
-        const bRound = Math.round(b * 100) / 100;
+        const aRound = Math.round(a * 100000000) / 100000000;
+        const bRound = Math.round(b * 10000) / 10000;
         slopes.push({ x: p1.x, a: aRound, b: bRound });
         renderSlopeRow(p1.x, aRound, bRound);
       } else {
-        // Last boundary point
         slopes.push({ x: p1.x, a: 0, b: p1.y });
         renderSlopeRow(p1.x, 0, p1.y);
       }
     }
     updateSlopesCount();
 
-    // Auto set upper/lower bounds
     const maxY = Math.max(...points.map(p => p.y));
     const minY = Math.min(...points.map(p => p.y));
     const ubEl = document.getElementById('sp-upper-bound');
@@ -3247,14 +3141,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     testCalculateSensorValue();
     if (notify) alert(`✓ Successfully generated ${slopes.length} slope segments from ${points.length} calibration points!`);
-  };
+  }
+  window.generateSlopesFromXyTable = generateSlopesFromXyTable;
 
-  window.toggleCsvImportBox = function() {
+  function toggleCsvImportBox() {
     const box = document.getElementById('sp-csv-paste-box');
     if (box) box.style.display = (box.style.display === 'none') ? 'block' : 'none';
-  };
+  }
+  window.toggleCsvImportBox = toggleCsvImportBox;
 
-  window.handleCsvFileUpload = function(input) {
+  function handleCsvFileUpload(input) {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
     const reader = new FileReader();
@@ -3263,9 +3159,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (ta) ta.value = e.target.result;
     };
     reader.readAsText(file);
-  };
+  }
+  window.handleCsvFileUpload = handleCsvFileUpload;
 
-  window.parseAndApplyCsvData = function() {
+  function parseAndApplyCsvData() {
     const ta = document.getElementById('sp-csv-textarea');
     if (!ta || !ta.value.trim()) {
       alert('Please paste calibration lines in format X;Y or X,Y');
@@ -3300,9 +3197,10 @@ document.addEventListener('DOMContentLoaded', () => {
     generateSlopesFromXyTable(false);
     toggleCsvImportBox();
     alert(`✓ Successfully loaded ${parsedPoints.length} calibration points from CSV and generated slopes table!`);
-  };
+  }
+  window.parseAndApplyCsvData = parseAndApplyCsvData;
 
-  window.exportCalibrationCsv = function() {
+  function exportCalibrationCsv() {
     const rows = document.querySelectorAll('#sp-xy-tbody tr');
     const lines = [];
     rows.forEach(r => {
@@ -3324,9 +3222,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const sName = (document.getElementById('sp-name').value || 'Sensor').replace(/\s+/g, '_');
     a.download = `${sName}_calibration.csv`;
     a.click();
-  };
+  }
+  window.exportCalibrationCsv = exportCalibrationCsv;
 
-  window.testCalculateSensorValue = function() {
+  function testCalculateSensorValue() {
     const testInput = document.getElementById('sp-test-x');
     const resEl = document.getElementById('sp-test-result');
     if (!testInput || !resEl) return;
@@ -3400,9 +3299,141 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       resEl.textContent = 'Need ≥ 2 points';
     }
-  };
+  }
+  window.testCalculateSensorValue = testCalculateSensorValue;
 
-  window.saveSensorPropertiesModal = function() {
+  function onSensorTypeChanged() {
+    const type = (document.getElementById('sp-type').value || '').toLowerCase();
+    const fuelSec = document.getElementById('sp-fuel-section');
+    if (fuelSec) {
+      fuelSec.style.display = (type.includes('fuel')) ? 'block' : 'none';
+    }
+    const unitInput = document.getElementById('sp-unit');
+    if (!unitInput.value || unitInput.value === 'l' || unitInput.value === 'V' || unitInput.value === '°C' || unitInput.value === 'km' || unitInput.value === 'On/Off' || unitInput.value === 'Ok/Not Ok') {
+      if (type.includes('fuel')) unitInput.value = 'l';
+      else if (type.includes('voltage')) unitInput.value = 'V';
+      else if (type.includes('temperature')) unitInput.value = '°C';
+      else if (type.includes('mileage') || type.includes('odometer')) unitInput.value = 'km';
+      else if (type.includes('ignition')) unitInput.value = 'On/Off';
+      else if (type.includes('digital')) unitInput.value = 'Ok/Not Ok';
+    }
+  }
+  window.onSensorTypeChanged = onSensorTypeChanged;
+
+  function switchSensorPropTab(tabId) {
+    document.querySelectorAll('.w-sp-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === tabId);
+    });
+    document.querySelectorAll('.w-sp-pane').forEach(p => {
+      p.classList.toggle('active', p.id === 'sp-pane-' + tabId);
+    });
+  }
+  window.switchSensorPropTab = switchSensorPropTab;
+
+  function openSensorPropertiesModal(idx) {
+    editingSensorIdx = (idx !== null && idx !== undefined) ? idx : null;
+    const modal = document.getElementById('sensor-properties-modal');
+    if (!modal) return;
+
+    if (editingSensorIdx !== null && currentUnitProp && currentUnitProp.sensors && currentUnitProp.sensors[editingSensorIdx]) {
+      const s = currentUnitProp.sensors[editingSensorIdx];
+      document.getElementById('sp-modal-title').textContent = 'Sensor properties — ' + (s.name || 'Sensor');
+      document.getElementById('sp-name').value = s.name || '';
+
+      // Flexible type matching
+      const typeSelect = document.getElementById('sp-type');
+      const rawType = (s.type || '').toLowerCase();
+      let matchedOpt = null;
+      for (const opt of typeSelect.options) {
+        const optVal = opt.value.toLowerCase();
+        if (optVal === rawType || (rawType.includes('fuel') && optVal.includes('fuel level sensor')) || (rawType.includes('ignition') && optVal.includes('ignition')) || (rawType.includes('digital') && optVal.includes('digital'))) {
+          matchedOpt = opt.value;
+          break;
+        }
+      }
+      typeSelect.value = matchedOpt || 'Custom digital sensor';
+
+      document.getElementById('sp-desc').value = s.desc || '';
+      document.getElementById('sp-param').value = s.param || '';
+      document.getElementById('sp-unit').value = s.unit || '';
+      document.getElementById('sp-last-msg').checked = !!s.last_msg;
+      document.getElementById('sp-validator').value = s.validator || 'None';
+      
+      document.getElementById('sp-lower-bound').value = (s.lower_bound !== undefined && s.lower_bound !== null) ? s.lower_bound : 0;
+      document.getElementById('sp-upper-bound').value = (s.upper_bound !== undefined && s.upper_bound !== null) ? s.upper_bound : 45;
+      document.getElementById('sp-apply-bounds').checked = (s.apply_bounds !== false);
+      document.getElementById('sp-min-filling').value = (s.min_filling !== undefined && s.min_filling !== null) ? s.min_filling : 5;
+      document.getElementById('sp-min-theft').value = (s.min_theft !== undefined && s.min_theft !== null) ? s.min_theft : 10;
+
+      // Populate XY table
+      const xyTbody = document.getElementById('sp-xy-tbody');
+      xyTbody.innerHTML = '';
+      
+      let xyList = [];
+      if (Array.isArray(s.xy_pairs) && s.xy_pairs.length > 0) {
+        xyList = s.xy_pairs;
+      } else if (s.desc && s.desc.includes('|')) {
+        const rawPart = s.desc.split('|')[1] || '';
+        const tokens = rawPart.split(':');
+        for (let i = 0; i < tokens.length - 1; i += 2) {
+          const xVal = parseFloat(tokens[i]);
+          const yVal = parseFloat(tokens[i + 1]);
+          if (!isNaN(xVal) && !isNaN(yVal)) {
+            xyList.push({ x: xVal, y: yVal });
+          }
+        }
+      } else if (Array.isArray(s.table) && s.table.length > 0) {
+        s.table.forEach(seg => {
+          const xVal = seg.x;
+          const yVal = Math.round((seg.a * seg.x + seg.b) * 10) / 10;
+          xyList.push({ x: xVal, y: yVal });
+        });
+      }
+
+      xyList.forEach(pt => addXyPairRow(pt.x, pt.y));
+
+      // Populate Slopes table
+      const slopesTbody = document.getElementById('sp-slopes-tbody');
+      slopesTbody.innerHTML = '';
+      if (Array.isArray(s.table) && s.table.length > 0) {
+        s.table.forEach(seg => renderSlopeRow(seg.x, seg.a, seg.b));
+        updateSlopesCount();
+      } else if (xyList.length >= 2) {
+        generateSlopesFromXyTable(false);
+      }
+    } else {
+      document.getElementById('sp-modal-title').textContent = 'New sensor';
+      document.getElementById('sp-name').value = 'New sensor';
+      document.getElementById('sp-type').value = 'Fuel level sensor';
+      document.getElementById('sp-desc').value = '';
+      document.getElementById('sp-param').value = '';
+      document.getElementById('sp-unit').value = 'l';
+      document.getElementById('sp-last-msg').checked = false;
+      document.getElementById('sp-lower-bound').value = 0;
+      document.getElementById('sp-upper-bound').value = 45;
+      document.getElementById('sp-apply-bounds').checked = true;
+      document.getElementById('sp-min-filling').value = 5;
+      document.getElementById('sp-min-theft').value = 10;
+      document.getElementById('sp-xy-tbody').innerHTML = '';
+      document.getElementById('sp-slopes-tbody').innerHTML = '';
+      document.getElementById('sp-xy-count').textContent = '0 points';
+      document.getElementById('sp-slopes-count').textContent = '0 rows';
+    }
+
+    onSensorTypeChanged();
+    switchSensorPropTab('general');
+    modal.style.display = 'flex';
+    testCalculateSensorValue();
+  }
+  window.openSensorPropertiesModal = openSensorPropertiesModal;
+
+  function closeSensorPropertiesModal() {
+    const modal = document.getElementById('sensor-properties-modal');
+    if (modal) modal.style.display = 'none';
+  }
+  window.closeSensorPropertiesModal = closeSensorPropertiesModal;
+
+  function saveSensorPropertiesModal() {
     const name = document.getElementById('sp-name').value.trim();
     const param = document.getElementById('sp-param').value.trim();
     if (!name) {
@@ -3418,7 +3449,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Gather XY pairs
     const xyPairs = [];
     document.querySelectorAll('#sp-xy-tbody tr').forEach(r => {
       const x = parseFloat(r.querySelector('.sp-xy-x')?.value);
@@ -3428,7 +3458,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Gather Slopes
     let table = [];
     document.querySelectorAll('#sp-slopes-tbody tr').forEach(r => {
       const x = parseFloat(r.querySelector('.sp-slope-x')?.value);
@@ -3439,7 +3468,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // If XY pairs exist but table empty, auto-generate table
     if (table.length === 0 && xyPairs.length >= 2) {
       xyPairs.sort((p1, p2) => p1.x - p2.x);
       for (let i = 0; i < xyPairs.length; i++) {
@@ -3450,14 +3478,13 @@ document.addEventListener('DOMContentLoaded', () => {
           const dy = p2.y - p1.y;
           const a = dx !== 0 ? (dy / dx) : 0;
           const b = p1.y - a * p1.x;
-          table.push({ x: p1.x, a: Math.round(a * 100000) / 100000, b: Math.round(b * 100) / 100 });
+          table.push({ x: p1.x, a: Math.round(a * 100000000) / 100000000, b: Math.round(b * 10000) / 10000 });
         } else {
           table.push({ x: p1.x, a: 0, b: p1.y });
         }
       }
     }
 
-    // Wialon description representation: |x1:y1:x2:y2...
     let desc = document.getElementById('sp-desc').value.trim();
     if (xyPairs.length > 0) {
       const calibStr = '|' + xyPairs.map(p => `${p.x}:${p.y}`).join(':');
@@ -3497,7 +3524,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderSensorsTable(currentUnitProp.sensors);
     closeSensorPropertiesModal();
-  };
+
+    // Auto-save immediately to database
+    saveUnitProperties(true);
+  }
+  window.saveSensorPropertiesModal = saveSensorPropertiesModal;
 
   window.addVoltageSensor = function() {
     if (!currentUnitProp.sensors) currentUnitProp.sensors = [];
@@ -3524,6 +3555,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentUnitProp && currentUnitProp.sensors) {
       currentUnitProp.sensors.splice(idx, 1);
       renderSensorsTable(currentUnitProp.sensors);
+      saveUnitProperties(true);
     }
   };
 
@@ -3555,14 +3587,15 @@ document.addEventListener('DOMContentLoaded', () => {
     a.click();
   };
 
-  window.saveUnitProperties = function() {
+  window.saveUnitProperties = function(silent = false) {
     if (!currentUnitProp) return;
 
     const btn = document.getElementById('btn-save-unit-prop');
-    btn.textContent = 'Saving...';
-    btn.disabled = true;
+    if (!silent && btn) {
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+    }
 
-    // Gather custom fields
     const customFields = {};
     document.querySelectorAll('.custom-field-val').forEach(inp => {
       customFields[inp.dataset.key] = inp.value;
@@ -3595,20 +3628,26 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .then(r => r.json())
     .then(data => {
-      btn.textContent = 'OK';
-      btn.disabled = false;
+      if (btn) {
+        btn.textContent = 'OK';
+        btn.disabled = false;
+      }
       if (data.success) {
-        alert('✓ ' + (data.message || 'Unit properties saved successfully!'));
-        closeUnitPropertiesModal();
+        if (!silent) {
+          alert('✓ ' + (data.message || 'Unit properties saved successfully!'));
+          closeUnitPropertiesModal();
+        }
         fetchFeed();
       } else {
-        alert('Error saving properties: ' + (data.error || 'Failed'));
+        if (!silent) alert('Error saving properties: ' + (data.error || 'Failed'));
       }
     })
     .catch(err => {
-      btn.textContent = 'OK';
-      btn.disabled = false;
-      alert('Failed to connect to server');
+      if (btn) {
+        btn.textContent = 'OK';
+        btn.disabled = false;
+      }
+      if (!silent) alert('Failed to connect to server');
     });
   };
 });

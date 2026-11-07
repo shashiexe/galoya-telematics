@@ -18,7 +18,7 @@ if (isset($_GET['show_web_users'])) {
     header('Content-Type: application/json');
     $u = q('SELECT id, name, phone, role, active, web_access, section_id, section_ids, department_id, staff_ids FROM users WHERE web_access=1 OR role != "staff"')->fetchAll();
     $fieldPhotos = q('SELECT id, user_id, taken_at, file_path, is_selfie FROM field_photos ORDER BY id DESC LIMIT 5')->fetchAll();
-    $debugProps = q('SELECT id, name, code, properties_json, last_seen, speed, ignition FROM users WHERE id IN (33, 34, 38, 39, 40)')->fetchAll();
+    $debugProps = q('SELECT id, name, code, phone, unique_id, device_type, properties_json, last_seen, speed, ignition FROM users WHERE id IN (33, 34, 38, 39, 40)')->fetchAll();
     echo json_encode(['users' => $u, 'cabs' => $debugProps, 'recent_photos' => $fieldPhotos], JSON_PRETTY_PRINT);
     exit;
 }

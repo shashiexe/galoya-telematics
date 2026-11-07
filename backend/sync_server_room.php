@@ -72,11 +72,51 @@ function sync_wialon_fleet_fast() {
     ];
 
     $unitDefs = [
-        28160408 => ['code' => 'SRV-ROOM', 'unit_type' => 'other',  'role' => 'facility', 'icon' => 'server_temp',   'device' => 'Teltonika FMB920'],
-        14086277 => ['code' => 'LK-3313',  'unit_type' => 'bolero', 'role' => 'unit',     'icon' => 'bolero_silver', 'device' => 'Teltonika FMB125'],
-        13275566 => ['code' => 'PY-3029',  'unit_type' => 'bolero', 'role' => 'unit',     'icon' => 'bolero_silver', 'device' => 'Teltonika FMB125'],
-        26684057 => ['code' => 'DAH-8851', 'unit_type' => 'bolero', 'role' => 'unit',     'icon' => 'bolero_silver', 'device' => 'Teltonika FMB125'],
-        13265179 => ['code' => 'LK-1539',  'unit_type' => 'bowser', 'role' => 'unit',     'icon' => 'bowser_yellow', 'device' => 'Teltonika FMB125']
+        28160408 => [
+            'code' => 'SRV-ROOM',
+            'unit_type' => 'other',
+            'role' => 'facility',
+            'icon' => 'server_temp',
+            'device' => 'Teltonika FMB920',
+            'imei' => '354018110429762',
+            'phone' => '+94764429460'
+        ],
+        14086277 => [
+            'code' => 'LK-3313',
+            'unit_type' => 'bolero',
+            'role' => 'unit',
+            'icon' => 'bolero_silver',
+            'device' => 'Teltonika FMB125',
+            'imei' => '350544508657437',
+            'phone' => '+94764397219'
+        ],
+        13275566 => [
+            'code' => 'PY-3029',
+            'unit_type' => 'bolero',
+            'role' => 'unit',
+            'icon' => 'bolero_silver',
+            'device' => 'Teltonika FMB125',
+            'imei' => '350544508198895',
+            'phone' => '+94741227168'
+        ],
+        26684057 => [
+            'code' => 'DAH-8851',
+            'unit_type' => 'bolero',
+            'role' => 'unit',
+            'icon' => 'bolero_silver',
+            'device' => 'Teltonika FMB125',
+            'imei' => '350544508661272',
+            'phone' => '+94768752781'
+        ],
+        13265179 => [
+            'code' => 'LK-1539',
+            'unit_type' => 'bowser',
+            'role' => 'unit',
+            'icon' => 'bowser_yellow',
+            'device' => 'Teltonika FMB125',
+            'imei' => '350544508198994',
+            'phone' => '+94740666438'
+        ]
     ];
 
     // Login
@@ -126,8 +166,9 @@ function sync_wialon_fleet_fast() {
         if (!$cfg) continue;
 
         $name = $item['nm'];
-        $uid = !empty($item['uid']) ? (string)$item['uid'] : 'WIA-' . $wId;
-        $phone = !empty($item['ph']) ? (string)$item['ph'] : ('veh_' . preg_replace('/[^A-Za-z0-9]/', '', $cfg['code']));
+        $uid = !empty($cfg['imei']) ? (string)$cfg['imei'] : (!empty($item['uid']) ? (string)$item['uid'] : 'WIA-' . $wId);
+        $phone = !empty($cfg['phone']) ? (string)$cfg['phone'] : (!empty($item['ph']) ? (string)$item['ph'] : ('veh_' . preg_replace('/[^A-Za-z0-9]/', '', $cfg['code'])));
+        $deviceType = $cfg['device'] ?? 'Teltonika FMB125';
         $lat = !empty($item['pos']['y']) ? (float)$item['pos']['y'] : 7.222895;
         $lng = !empty($item['pos']['x']) ? (float)$item['pos']['x'] : 81.675295;
         $speed = !empty($item['pos']['s']) ? (float)$item['pos']['s'] : 0.0;
@@ -190,18 +231,18 @@ function sync_wialon_fleet_fast() {
         $propertiesJson = json_encode($props, JSON_UNESCAPED_UNICODE);
 
         // Upsert into users table
-        $existing = q("SELECT id FROM users WHERE unique_id = ? OR code = ? LIMIT 1", [$uid, $cfg['code']])->fetch();
+        $existing = q("SELECT id FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
 
         if ($existing) {
             $dbId = (int)$existing['id'];
             q("UPDATE users SET 
                 name = ?, code = ?, unit_type = ?, role = ?, device_type = ?,
-                phone = ?, last_lat = ?, last_lng = ?, speed = ?, ignition = ?, motion_state = ?,
+                phone = ?, unique_id = ?, last_lat = ?, last_lng = ?, speed = ?, ignition = ?, motion_state = ?,
                 on_duty = 1, active = 1, last_seen = ?, sensors_json = ?, properties_json = ?,
                 icon_key = ?, last_battery = ?
                WHERE id = ?",
-              [$name, $cfg['code'], $cfg['unit_type'], $cfg['role'], $cfg['device'],
-               $phone, $lat, $lng, $speed, $ignition, $motionState, $posTime, $sensorsJson, $propertiesJson,
+              [$name, $cfg['code'], $cfg['unit_type'], $cfg['role'], $deviceType,
+               $phone, $uid, $lat, $lng, $speed, $ignition, $motionState, $posTime, $sensorsJson, $propertiesJson,
                $cfg['icon'], ($fuelLiters !== null ? (int)$fuelLiters : ($tempCelsius !== null ? (int)$tempCelsius : (int)$pwrExt)), $dbId]);
         } else {
             $pwd = password_hash('unit_' . bin2hex(random_bytes(6)), PASSWORD_DEFAULT);
@@ -213,7 +254,7 @@ function sync_wialon_fleet_fast() {
                (?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, 1, 1, ?,
                 ?, ?, ?)",
-              [$name, $cfg['code'], $cfg['role'], $cfg['unit_type'], $cfg['device'], $phone, $pwd, $uid, $cfg['icon'],
+              [$name, $cfg['code'], $cfg['role'], $cfg['unit_type'], $deviceType, $phone, $pwd, $uid, $cfg['icon'],
                $lat, $lng, $speed, $ignition, $motionState, $posTime,
                $sensorsJson, $propertiesJson, ($fuelLiters !== null ? (int)$fuelLiters : ($tempCelsius !== null ? (int)$tempCelsius : (int)$pwrExt))]);
             $dbId = (int)db()->lastInsertId();

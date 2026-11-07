@@ -352,6 +352,7 @@ $filesToUpdate = [
     'expansion_geofences_payload.json' => 'backend/expansion_geofences_payload.json',
     'sync_server_room.php' => 'backend/sync_server_room.php',
     'sync_wialon_sensors.php' => 'backend/sync_wialon_sensors.php',
+    'calibrations_parsed.json' => 'backend/calibrations_parsed.json',
     'admin/ai_assistant.php' => 'backend/admin/ai_assistant.php',
     'admin/assets/ai_widget.js' => 'backend/admin/assets/ai_widget.js',
     'admin/assets/ai_widget.css' => 'backend/admin/assets/ai_widget.css',
@@ -959,6 +960,63 @@ try {
         $todayPoints = (int)$pdo->query("SELECT COUNT(*) FROM locations WHERE user_id=$cId AND DATE(recorded_at) = CURDATE()")->fetchColumn();
         $results[] = ["📊 Points: Yesterday = $yesterdayPoints pts | Today = $todayPoints pts", "color:#22c55e;font-weight:bold"];
     }
+
+// Apply user FLS calibration CSV tables to fleet units
+try {
+    $calibJsonFile = __DIR__ . '/calibrations_parsed.json';
+    if (file_exists($calibJsonFile)) {
+        $cData = json_decode(file_get_contents($calibJsonFile), true);
+        foreach ($cData as $vCode => $cItem) {
+            $uRow = q("SELECT id, name, sensors_json FROM users WHERE code LIKE ? OR name LIKE ? LIMIT 1", ["%$vCode%", "%$vCode%"])->fetch();
+            if ($uRow) {
+                $curSensors = json_decode($uRow['sensors_json'] ?? '[]', true) ?: [];
+                $flsFound = false;
+                $descStr = '|' . implode(':', array_map(fn($p) => "{$p['x']}:{$p['y']}", $cItem['points']));
+                foreach ($curSensors as &$s) {
+                    $st = strtolower($s['type'] ?? '');
+                    $sp = $s['param'] ?? '';
+                    if (strpos($st, 'fuel') !== false || $sp === 'io_201') {
+                        $s['name'] = 'FLS';
+                        $s['type'] = 'Fuel level sensor';
+                        $s['param'] = 'io_201';
+                        $s['unit'] = 'l';
+                        $s['desc'] = $descStr;
+                        $s['lower_bound'] = 0;
+                        $s['upper_bound'] = (float)$cItem['max_y'];
+                        $s['min_filling'] = 5;
+                        $s['min_theft'] = 10;
+                        $s['xy_pairs'] = $cItem['points'];
+                        $s['table'] = $cItem['slopes'];
+                        $flsFound = true;
+                        break;
+                    }
+                }
+                unset($s);
+                if (!$flsFound) {
+                    $curSensors[] = [
+                        'id' => 1,
+                        'name' => 'FLS',
+                        'type' => 'Fuel level sensor',
+                        'param' => 'io_201',
+                        'unit' => 'l',
+                        'desc' => $descStr,
+                        'visible' => true,
+                        'lower_bound' => 0,
+                        'upper_bound' => (float)$cItem['max_y'],
+                        'min_filling' => 5,
+                        'min_theft' => 10,
+                        'xy_pairs' => $cItem['points'],
+                        'table' => $cItem['slopes']
+                    ];
+                }
+                q("UPDATE users SET sensors_json = ? WHERE id = ?", [json_encode($curSensors, JSON_UNESCAPED_UNICODE), $uRow['id']]);
+                $results[] = ["⛽ Applied Calibration for {$uRow['name']} ({$vCode}): {$cItem['max_y']}L max tank capacity, " . count($cItem['points']) . " points", "color:#10b981;font-weight:bold"];
+            }
+        }
+    }
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Calibration import warning: " . $e->getMessage(), "color:#f59e0b"];
+}
 
 try {
     $latestPhotos = $pdo->query("SELECT id, user_id, lat, lng, taken_at, activity_type, geofence_name FROM field_photos ORDER BY id DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);

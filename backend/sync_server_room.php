@@ -260,7 +260,7 @@ function sync_wialon_fleet_fast() {
             $dbId = (int)db()->lastInsertId();
         }
 
-        q("INSERT INTO locations (user_id, lat, lng, speed, battery, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        q("INSERT IGNORE INTO locations (user_id, lat, lng, speed, battery, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
           [$dbId, $lat, $lng, (int)$speed, ($fuelLiters !== null ? (int)$fuelLiters : (int)$pwrExt), $posTime]);
 
         $results[] = [

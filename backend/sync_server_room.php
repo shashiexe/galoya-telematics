@@ -204,18 +204,57 @@ function sync_wialon_fleet_fast() {
             }
         }
 
-        // Sensors definition
+        // Upsert into users table
+        $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
+
+        // Preserve and update existing sensors configuration
         $sensors = [];
-        if ($isServerRoom) {
-            $sensors[] = ['id' => 1, 'name' => 'Server Room Temperature', 'type' => 'temperature', 'unit' => '°C', 'param' => 'io_25', 'val' => $tempCelsius, 'desc' => 'BLE Temp Sensor', 'visible' => true];
-            $sensors[] = ['id' => 2, 'name' => 'Main UPS Power', 'type' => 'voltage', 'unit' => 'V', 'param' => 'pwr_ext', 'val' => $pwrExt, 'desc' => '12V DC UPS', 'visible' => true];
-            $sensors[] = ['id' => 3, 'name' => 'Internal Battery', 'type' => 'voltage', 'unit' => 'V', 'param' => 'pwr_int', 'val' => $pwrInt, 'desc' => 'Li-ion Battery', 'visible' => true];
-        } else {
-            if ($fuelLiters !== null) {
-                $sensors[] = ['id' => 1, 'name' => 'Fuel Level (FLS)', 'type' => 'fuel', 'unit' => 'L', 'param' => 'io_201', 'val' => $fuelLiters, 'desc' => 'Diesel Fuel Tank', 'visible' => true];
+        if (!empty($existing['sensors_json'])) {
+            $existingSens = json_decode($existing['sensors_json'], true);
+            if (is_array($existingSens) && !empty($existingSens)) {
+                $sensors = $existingSens;
             }
-            $sensors[] = ['id' => 2, 'name' => 'Engine Ignition', 'type' => 'ignition', 'unit' => 'On/Off', 'param' => 'io_1', 'val' => $ignition ? 'On' : 'Off', 'desc' => 'Engine Status', 'visible' => true];
-            $sensors[] = ['id' => 3, 'name' => 'Main Battery', 'type' => 'voltage', 'unit' => 'V', 'param' => 'pwr_ext', 'val' => $pwrExt, 'desc' => 'Alternator/Battery Voltage', 'visible' => true];
+        }
+
+        if (!empty($sensors)) {
+            // Update live values on the configured sensors
+            foreach ($sensors as &$s) {
+                $p = $s['param'] ?? '';
+                $t = strtolower($s['type'] ?? '');
+                if ($t === 'fuel level' || $p === 'io_201' || $t === 'fuel') {
+                    $s['val'] = $fuelLiters;
+                } elseif ($t === 'engine operation' || $p === 'io_1' || $t === 'ignition') {
+                    $s['val'] = $ignition ? 'On' : 'Off';
+                } elseif ($p === 'pwr_ext') {
+                    if ($t === 'digital') {
+                        $s['val'] = ($pwrExt >= 10.5 ? 'Ok' : 'Not Ok');
+                    } else {
+                        $s['val'] = $pwrExt;
+                    }
+                } elseif ($p === 'pwr_int') {
+                    $s['val'] = $pwrInt;
+                } elseif ($p === 'speed') {
+                    $s['val'] = $speed;
+                } elseif ($t === 'temperature' || strpos($p, 'io_25') !== false) {
+                    $s['val'] = $tempCelsius;
+                } elseif (isset($lmsg[$p])) {
+                    $s['val'] = $lmsg[$p];
+                }
+            }
+            unset($s);
+        } else {
+            // Fallback initial sensors
+            if ($isServerRoom) {
+                $sensors[] = ['id' => 1, 'name' => 'Server Room Temperature', 'type' => 'temperature', 'unit' => '°C', 'param' => 'io_25', 'val' => $tempCelsius, 'desc' => 'BLE Temp Sensor', 'visible' => true];
+                $sensors[] = ['id' => 2, 'name' => 'Main UPS Power', 'type' => 'voltage', 'unit' => 'V', 'param' => 'pwr_ext', 'val' => $pwrExt, 'desc' => '12V DC UPS', 'visible' => true];
+                $sensors[] = ['id' => 3, 'name' => 'Internal Battery', 'type' => 'voltage', 'unit' => 'V', 'param' => 'pwr_int', 'val' => $pwrInt, 'desc' => 'Li-ion Battery', 'visible' => true];
+            } else {
+                if ($fuelLiters !== null) {
+                    $sensors[] = ['id' => 1, 'name' => 'FLS', 'type' => 'fuel level', 'unit' => 'l', 'param' => 'io_201', 'val' => $fuelLiters, 'desc' => 'Diesel Fuel Tank', 'visible' => true];
+                }
+                $sensors[] = ['id' => 2, 'name' => 'Engine', 'type' => 'engine operation', 'unit' => 'On/Off', 'param' => 'io_1', 'val' => $ignition ? 'On' : 'Off', 'desc' => 'Engine Status', 'visible' => true];
+                $sensors[] = ['id' => 3, 'name' => 'Battery', 'type' => 'digital', 'unit' => 'Ok/Not Ok', 'param' => 'pwr_ext', 'val' => ($pwrExt >= 10.5 ? 'Ok' : 'Not Ok'), 'desc' => 'Battery health', 'visible' => true];
+            }
         }
         $sensorsJson = json_encode($sensors, JSON_UNESCAPED_UNICODE);
 
@@ -230,9 +269,6 @@ function sync_wialon_fleet_fast() {
         if ($tempCelsius !== null) $props['temperature'] = $tempCelsius;
         if ($fuelLiters !== null) $props['fuel_liters'] = $fuelLiters;
         $propertiesJson = json_encode($props, JSON_UNESCAPED_UNICODE);
-
-        // Upsert into users table
-        $existing = q("SELECT id FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
 
         if ($existing) {
             $dbId = (int)$existing['id'];

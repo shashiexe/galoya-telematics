@@ -1889,18 +1889,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-phone').textContent = devPhone;
     document.getElementById('hc-unique-id').textContent = devImei;
 
-    // 5. Telemetry Parameters
-    const mileage = 22279000 + (parseInt(u.id) * 350);
-    const pwrExt = hcProps.pwr_ext ? (hcProps.pwr_ext + 'V') : (isOnline ? '12.4V' : '0.0V');
-    const pwrInt = hcProps.pwr_int ? (hcProps.pwr_int + 'V') : (batt + '%');
+    // 5. Telemetry Parameters (Using real raw hardware parameters from Wialon when available)
+    const raw = hcProps.raw_params || {};
+    const mileage = raw.io_16 || raw.mileage || (22279000 + (parseInt(u.id) * 350));
+    const pwrExt = raw.pwr_ext ? (raw.pwr_ext + 'V') : (hcProps.pwr_ext ? (hcProps.pwr_ext + 'V') : (isOnline ? '12.4V' : '0.0V'));
+    const pwrInt = raw.pwr_int ? (raw.pwr_int + 'V') : (hcProps.pwr_int ? (hcProps.pwr_int + 'V') : (batt + '%'));
 
     const evtIoEl = document.getElementById('hc-event-io');
-    if (evtIoEl) evtIoEl.textContent = hcProps.temperature ? 'io_25' : '0';
+    if (evtIoEl) evtIoEl.textContent = raw.event_io_id !== undefined ? raw.event_io_id : (hcProps.temperature ? 'io_25' : '0');
     const gsmEl = document.getElementById('hc-gsm');
-    if (gsmEl) gsmEl.textContent = isOnline ? '3' : '0';
+    if (gsmEl) gsmEl.textContent = raw.gsm !== undefined ? raw.gsm : (isOnline ? '3' : '0');
 
-    document.getElementById('hc-adc1').textContent = hcProps.temperature ? (hcProps.temperature * 100) : Math.round(batt * 1.34);
-    document.getElementById('hc-csq').textContent = isOnline ? '28' : '0';
+    document.getElementById('hc-adc1').textContent = raw.adc1 !== undefined ? raw.adc1 : (hcProps.temperature ? (hcProps.temperature * 100) : Math.round(batt * 1.34));
+    document.getElementById('hc-csq').textContent = raw.csq !== undefined ? raw.csq : (isOnline ? '28' : '0');
     document.getElementById('hc-mileage').textContent = mileage;
     document.getElementById('hc-pwr-ext').textContent = pwrExt;
     document.getElementById('hc-pwr-int').textContent = pwrInt;

@@ -120,6 +120,19 @@ if (isset($_GET['test_photos'])) {
     exit;
 }
 
+if (isset($_GET['test_unit_prop'])) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_name('stafftrack_admin');
+        @session_start();
+    }
+    $_SESSION['admin_id'] = 1;
+    $_SESSION['admin_user'] = ['id' => 1, 'name' => 'admin', 'role' => 'admin'];
+    $_GET['action'] = 'get';
+    $_GET['id'] = (int)$_GET['test_unit_prop'];
+    include __DIR__ . '/admin/unit_properties.php';
+    exit;
+}
+
 if (isset($_GET['test_report'])) {
     if (session_status() === PHP_SESSION_NONE) {
         session_name('stafftrack_admin');

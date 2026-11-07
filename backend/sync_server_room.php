@@ -281,6 +281,15 @@ function sync_wialon_fleet_fast() {
 // Standalone execution if requested directly
 if (!debug_backtrace()) {
     header('Content-Type: application/json');
-    $res = sync_wialon_fleet_fast();
-    echo json_encode($res, JSON_PRETTY_PRINT);
+    try {
+        $res = sync_wialon_fleet_fast();
+        echo json_encode($res, JSON_PRETTY_PRINT);
+    } catch (Throwable $e) {
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ], JSON_PRETTY_PRINT);
+    }
 }

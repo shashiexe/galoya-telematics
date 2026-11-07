@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require __DIR__ . '/_common.php';
 $me = require_admin();
 require_perm('reports', 'view');
@@ -166,6 +166,87 @@ function generate_wialon_fuel_report($unit, $dateFrom, $dateTo) {
     $upperB = (float)($flsSensor['upper_bound'] ?? 9999);
     $minFilling = (float)($flsSensor['min_filling'] ?? 5.0);
     $minTheft = (float)($flsSensor['min_theft'] ?? 10.0);
+
+    // Fallback to fleet calibration models if unit has no custom sensor table yet
+    if (empty($calibTbl)) {
+        $uCode = strtoupper(trim($unit['code'] ?? ''));
+        $uName = strtoupper(trim($unit['name'] ?? ''));
+        if (strpos($uCode, '1539') !== false || strpos($uName, '1539') !== false) {
+            $calibTbl = [
+                ['x' => 1, 'a' => 0.625, 'b' => -0.625],
+                ['x' => 17, 'a' => 0.25, 'b' => 5.75],
+                ['x' => 57, 'a' => 0.29411765, 'b' => 3.2353],
+                ['x' => 125, 'a' => 0.34482759, 'b' => -3.1034],
+                ['x' => 183, 'a' => 0.37037037, 'b' => -7.7778],
+                ['x' => 237, 'a' => 0.42553191, 'b' => -20.8511],
+                ['x' => 284, 'a' => 0.40816327, 'b' => -15.9184],
+                ['x' => 333, 'a' => 0.43478261, 'b' => -24.7826],
+                ['x' => 379, 'a' => 0.43478261, 'b' => -24.7826],
+                ['x' => 425, 'a' => 0.45454545, 'b' => -33.1818],
+                ['x' => 469, 'a' => 0.44444444, 'b' => -28.4444],
+                ['x' => 514, 'a' => 0.43478261, 'b' => -23.4783],
+                ['x' => 560, 'a' => 0.43478261, 'b' => -23.4783],
+                ['x' => 606, 'a' => 0.42553191, 'b' => -17.8723],
+                ['x' => 653, 'a' => 0.42553191, 'b' => -17.8723],
+                ['x' => 700, 'a' => 0.39215686, 'b' => 5.4902],
+                ['x' => 751, 'a' => 0.36363636, 'b' => 26.9091],
+                ['x' => 806, 'a' => 0.32258065, 'b' => 60],
+                ['x' => 868, 'a' => 0.25316456, 'b' => 120.2532],
+                ['x' => 947, 'a' => 0.13157895, 'b' => 235.3947],
+                ['x' => 1023, 'a' => 0, 'b' => 370]
+            ];
+            $upperB = 370;
+        } elseif (strpos($uCode, '3029') !== false || strpos($uName, '3029') !== false) {
+            $calibTbl = [
+                ['x' => 1, 'a' => 0.41666667, 'b' => -0.4167],
+                ['x' => 13, 'a' => 0.05681818, 'b' => 4.2614],
+                ['x' => 101, 'a' => 0.0617284, 'b' => 3.7654],
+                ['x' => 182, 'a' => 0.05952381, 'b' => 4.1667],
+                ['x' => 266, 'a' => 0.0617284, 'b' => 3.5802],
+                ['x' => 347, 'a' => 0.0617284, 'b' => 3.5802],
+                ['x' => 428, 'a' => 0.06578947, 'b' => 1.8421],
+                ['x' => 504, 'a' => 0.0625, 'b' => 3.5],
+                ['x' => 584, 'a' => 0.0617284, 'b' => 3.9506],
+                ['x' => 665, 'a' => 0.05813953, 'b' => 6.3372],
+                ['x' => 751, 'a' => 0.05494505, 'b' => 8.7363],
+                ['x' => 842, 'a' => 0.04672897, 'b' => 15.6542],
+                ['x' => 949, 'a' => 0.02702703, 'b' => 34.3514],
+                ['x' => 1023, 'a' => 0, 'b' => 62]
+            ];
+            $upperB = 62;
+        } elseif (strpos($uCode, '3313') !== false || strpos($uName, '3313') !== false) {
+            $calibTbl = [
+                ['x' => 1, 'a' => 0.09259259, 'b' => -0.0926],
+                ['x' => 55, 'a' => 0.06666667, 'b' => 1.3333],
+                ['x' => 130, 'a' => 0.07462687, 'b' => 0.2985],
+                ['x' => 197, 'a' => 0.07352941, 'b' => 0.5147],
+                ['x' => 265, 'a' => 0.07462687, 'b' => 0.2239],
+                ['x' => 332, 'a' => 0.07462687, 'b' => 0.2239],
+                ['x' => 399, 'a' => 0.07462687, 'b' => 0.2239],
+                ['x' => 466, 'a' => 0.07692308, 'b' => -0.8462],
+                ['x' => 596, 'a' => 0.14705882, 'b' => -42.6471],
+                ['x' => 664, 'a' => 0.07352941, 'b' => 6.1765],
+                ['x' => 732, 'a' => 0.07246377, 'b' => 6.9565],
+                ['x' => 801, 'a' => 0.06849315, 'b' => 10.137],
+                ['x' => 874, 'a' => 0.06493506, 'b' => 13.2468],
+                ['x' => 951, 'a' => 0.06944444, 'b' => 8.9583],
+                ['x' => 1023, 'a' => 0, 'b' => 80]
+            ];
+            $upperB = 80;
+        } elseif (strpos($uCode, '8851') !== false || strpos($uName, '8851') !== false) {
+            $calibTbl = [
+                ['x' => 5, 'a' => 0.13157895, 'b' => -0.6579],
+                ['x' => 43, 'a' => 0.04132231, 'b' => 3.2231],
+                ['x' => 164, 'a' => 0.04347826, 'b' => 2.8696],
+                ['x' => 279, 'a' => 0.04347826, 'b' => 2.8696],
+                ['x' => 394, 'a' => 0.04310345, 'b' => 3.0172],
+                ['x' => 510, 'a' => 0.04385965, 'b' => 2.6316],
+                ['x' => 624, 'a' => 0.04464286, 'b' => 2.1429],
+                ['x' => 736, 'a' => 0.03030303, 'b' => 12.697]
+            ];
+            $upperB = 45;
+        }
+    }
 
     $calcFuel = function($rawX) use ($calibTbl, $lowerB, $upperB) {
         if ($rawX === null || $rawX === '') return null;
@@ -1692,7 +1773,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <?php if ($isFuelReport): ?>
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Fleet Vehicle / Object</label>
-      <select name="unit_id" style="padding:7px 12px;border:1px solid #0284c7;border-radius:4px;font-size:13px;background:#f0f9ff;font-weight:700;color:#0369a1">
+      <select name="unit_id" onchange="this.form.submit()" style="padding:7px 12px;border:1px solid #0284c7;border-radius:4px;font-size:13px;background:#f0f9ff;font-weight:700;color:#0369a1;cursor:pointer">
         <?php foreach ($fleetUnits as $fu): ?>
           <option value="<?= $fu['id'] ?>" <?= $unit_id == $fu['id'] ? 'selected' : '' ?>>
             🚜 <?= h($fu['name']) ?> <?= $fu['code'] ? '('.h($fu['code']).')' : '' ?>

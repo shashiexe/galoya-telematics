@@ -33,8 +33,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (empty($name)) throw new Exception("Vehicle / Unit name is required");
 
+            if (!empty($unique_id)) {
+                $dup = q("SELECT id, name FROM users WHERE unique_id = ? AND id != ? LIMIT 1", [$unique_id, $id])->fetch();
+                if ($dup) {
+                    throw new Exception("This IMEI ($unique_id) is already registered to '{$dup['name']}'");
+                }
+            }
+
             if ($id > 0) {
-                q("UPDATE users SET name=?, code=?, phone=?, unit_type=?, device_type=?, unique_id=?, icon_key=?, department_id=?, section_id=? WHERE id=?",
+                q("UPDATE users SET name=?, code=?, phone=?, unit_type=?, device_type=?, unique_id=?, icon_key=?, department_id=?, section_id=?, role='unit' WHERE id=?",
                   [$name, $code, $phone, $unit_type, $device_type, $unique_id, $icon_key, $department_id, $section_id, $id]);
                 if (!empty($_POST['password'])) {
                     q("UPDATE users SET password_hash=? WHERE id=?", [password_hash($_POST['password'], PASSWORD_DEFAULT), $id]);
@@ -51,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $phoneVal = !empty($phone) ? $phone : 'veh_' . time() . '_' . rand(100, 999);
                 
                 q("INSERT INTO users (name, code, phone, password_hash, role, unit_type, device_type, unique_id, icon_key, department_id, section_id, active, on_duty) 
-                   VALUES (?,?,?,?,'staff',?,?,?,?,?,?,1,1)",
+                   VALUES (?,?,?,?,'unit',?,?,?,?,?,?,1,1)",
                   [$name, $code, $phoneVal, $pwd, $unit_type, $device_type, $unique_id, $icon_key, $department_id, $section_id]);
                 $newId = (int)db()->lastInsertId();
 

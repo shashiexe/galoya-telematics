@@ -190,22 +190,55 @@ function sync_wialon_fleet_fast() {
             $motionState = 'stationary';
             $ignition = 1;
         } else {
-            $rawFuel = $lmsg['io_201'] ?? null;
-            if ($rawFuel !== null && isset($calibrations[$wId])) {
-                $rawVal = (float)$rawFuel;
-                $tbl = $calibrations[$wId];
-                $matched = null;
-                foreach ($tbl as $seg) {
-                    if ($rawVal >= $seg['x']) $matched = $seg;
-                    else break;
+            // Check if vehicle has custom sensor calibration table in database
+            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
+            $customTbl = null;
+            $lowerB = 0;
+            $upperB = null;
+            $fuelParam = 'io_201';
+
+            if (!empty($existing['sensors_json'])) {
+                $dbSens = json_decode($existing['sensors_json'], true);
+                if (is_array($dbSens)) {
+                    foreach ($dbSens as $s) {
+                        $st = strtolower($s['type'] ?? '');
+                        $p = $s['param'] ?? '';
+                        if (strpos($st, 'fuel') !== false || $p === 'io_201') {
+                            if (!empty($s['table']) && is_array($s['table'])) {
+                                $customTbl = $s['table'];
+                                if (isset($s['lower_bound'])) $lowerB = (float)$s['lower_bound'];
+                                if (isset($s['upper_bound'])) $upperB = (float)$s['upper_bound'];
+                                if (!empty($s['param'])) $fuelParam = $s['param'];
+                                break;
+                            }
+                        }
+                    }
                 }
-                if (!$matched) $matched = $tbl[0];
-                $fuelLiters = max(0, round($matched['a'] * $rawVal + $matched['b'], 1));
+            }
+
+            $rawFuel = $lmsg[$fuelParam] ?? ($lmsg['io_201'] ?? null);
+            if ($rawFuel !== null) {
+                $tbl = $customTbl ?: ($calibrations[$wId] ?? null);
+                if ($tbl && is_array($tbl)) {
+                    $rawVal = (float)$rawFuel;
+                    $matched = null;
+                    foreach ($tbl as $seg) {
+                        if ($rawVal >= $seg['x']) $matched = $seg;
+                        else break;
+                    }
+                    if (!$matched) $matched = $tbl[0];
+                    $calcLiters = $matched['a'] * $rawVal + $matched['b'];
+                    if ($lowerB !== null && $calcLiters < $lowerB) $calcLiters = $lowerB;
+                    if ($upperB !== null && $calcLiters > $upperB) $calcLiters = $upperB;
+                    $fuelLiters = round(max(0, $calcLiters), 1);
+                }
             }
         }
 
-        // Upsert into users table
-        $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
+        // Upsert into users table (fetch existing if not already fetched)
+        if (!isset($existing)) {
+            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
+        }
 
         // Preserve and update existing sensors configuration
         $sensors = [];

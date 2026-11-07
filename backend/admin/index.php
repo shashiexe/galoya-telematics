@@ -432,6 +432,182 @@ layout_start('Monitoring', 'index.php', true);
   .w-hc-param-cell:nth-child(odd) {
     border-right: 1px solid #e2e8f0;
   }
+
+  /* ================= WIALON SENSOR PROPERTIES MODAL ================= */
+  #sensor-properties-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(3px);
+    z-index: 10050;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: fadeIn 0.15s ease-out;
+  }
+  .w-sp-window {
+    background: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #64748b;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+    width: 860px;
+    max-width: 96vw;
+    height: 600px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 12.5px;
+    animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .w-sp-header {
+    height: 38px;
+    background: #2c3b4d;
+    color: #ffffff;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    font-weight: 700;
+    user-select: none;
+  }
+  .w-sp-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    color: #ffffff;
+  }
+  .w-sp-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    color: #cbd5e1;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .w-sp-close-btn:hover {
+    background: #dc2626;
+    color: #fff;
+  }
+  .w-sp-body-wrap {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .w-sp-sidebar {
+    width: 170px;
+    background: #f8fafc;
+    border-right: 1px solid #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    user-select: none;
+  }
+  .w-sp-tab-btn {
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    padding: 9px 16px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .w-sp-tab-btn:hover {
+    background: #f1f5f9;
+    color: #0284c7;
+  }
+  .w-sp-tab-btn.active {
+    background: #ffffff;
+    color: #0284c7;
+    border-left-color: #0284c7;
+    font-weight: 700;
+  }
+  .w-sp-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    background: #ffffff;
+  }
+  .w-sp-pane {
+    display: none;
+  }
+  .w-sp-pane.active {
+    display: block;
+  }
+  .w-sp-form-grid {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    row-gap: 12px;
+    column-gap: 16px;
+    align-items: center;
+    max-width: 680px;
+  }
+  .w-sp-form-grid label {
+    font-size: 12px;
+    color: #334155;
+    font-weight: 600;
+  }
+  .w-sp-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 1px solid #94a3b8;
+    color: #64748b;
+    font-size: 10px;
+    margin-left: 4px;
+    cursor: help;
+  }
+  .w-sp-footer {
+    height: 48px;
+    background: #f8fafc;
+    border-top: 1px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 0 16px;
+  }
+  .w-sp-calib-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .w-sp-calib-table th {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    padding: 5px 8px;
+    font-weight: 700;
+    color: #334155;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .w-sp-calib-table td {
+    border: 1px solid #e2e8f0;
+    padding: 4px 6px;
+  }
+  .w-sp-calib-table input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    font-size: 11.5px;
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+  }
 </style>
 
 <div class="w-monitoring-layout">
@@ -937,7 +1113,7 @@ layout_start('Monitoring', 'index.php', true);
         <div class="w-sensors-layout">
           <div class="w-sensors-toolbar">
             <div style="display:flex;gap:8px">
-              <button type="button" class="w-btn-new-sensor" onclick="promptAddSensor()">+ New Sensor</button>
+              <button type="button" class="w-btn-new-sensor" onclick="openSensorPropertiesModal(null)">+ New Sensor</button>
               <button type="button" class="w-prop-btn" onclick="alert('Mathematical consumption wizard ready')">Math consumption wizard</button>
             </div>
             <div style="display:flex;align-items:center;gap:6px">
@@ -1105,6 +1281,260 @@ layout_start('Monitoring', 'index.php', true);
         <button type="button" class="w-prop-btn" onclick="closeUnitPropertiesModal()">Cancel</button>
         <button type="button" class="w-prop-btn primary" id="btn-save-unit-prop" onclick="saveUnitProperties()">OK</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== WIALON SENSOR PROPERTIES MODAL DIALOG (USER SCREENSHOTS) ==================== -->
+<div id="sensor-properties-modal" style="display:none">
+  <div class="w-sp-window">
+    <!-- Header -->
+    <div class="w-sp-header">
+      <div class="w-sp-header-title">
+        <span>⚙️</span>
+        <span id="sp-modal-title">Sensor properties — FLS</span>
+      </div>
+      <button type="button" class="w-sp-close-btn" onclick="closeSensorPropertiesModal()" title="Close">✕</button>
+    </div>
+
+    <!-- Body Layout with Sidebar -->
+    <div class="w-sp-body-wrap">
+      <!-- Sidebar Tabs (Matching Wialon Screenshots) -->
+      <div class="w-sp-sidebar">
+        <button type="button" class="w-sp-tab-btn active" data-tab="general" onclick="switchSensorPropTab('general')">General</button>
+        <button type="button" class="w-sp-tab-btn" data-tab="calc" onclick="switchSensorPropTab('calc')">Calculation table</button>
+      </div>
+
+      <!-- Right Content Panels -->
+      <div class="w-sp-content">
+        <!-- TAB 1: GENERAL -->
+        <div class="w-sp-pane active" id="sp-pane-general">
+          <div class="w-sp-form-grid">
+            <label>Name: <span style="color:#dc2626">*</span></label>
+            <input type="text" id="sp-name" class="w-prop-input" placeholder="e.g. FLS, Battery, Engine" required>
+
+            <label>Sensor type: <span class="w-sp-help" title="Wialon standard sensor categories">?</span></label>
+            <select id="sp-type" class="w-prop-input" onchange="onSensorTypeChanged()">
+              <optgroup label="Mileage">
+                <option value="Mileage sensor">Mileage sensor</option>
+                <option value="Relative odometer">Relative odometer</option>
+              </optgroup>
+              <optgroup label="Digital">
+                <option value="Engine ignition sensor">Engine ignition sensor</option>
+                <option value="Alarm trigger">Alarm trigger</option>
+                <option value="Private mode">Private mode</option>
+                <option value="Real-time motion sensor">Real-time motion sensor</option>
+                <option value="Custom digital sensor">Custom digital sensor</option>
+              </optgroup>
+              <optgroup label="Gauges">
+                <option value="Voltage sensor">Voltage sensor</option>
+                <option value="Weight sensor">Weight sensor</option>
+                <option value="Accelerometer">Accelerometer</option>
+                <option value="Temperature sensor">Temperature sensor</option>
+                <option value="Temperature coefficient">Temperature coefficient</option>
+              </optgroup>
+              <optgroup label="Engine">
+                <option value="Engine revolution sensor">Engine revolution sensor</option>
+                <option value="Engine efficiency sensor">Engine efficiency sensor</option>
+                <option value="Absolute engine hours">Absolute engine hours</option>
+                <option value="Relative engine hours">Relative engine hours</option>
+              </optgroup>
+              <optgroup label="Fuel and energy">
+                <option value="Fuel level sensor" selected>Fuel level sensor</option>
+                <option value="Impulse fuel consumption sensor">Impulse fuel consumption sensor</option>
+                <option value="Absolute fuel consumption sensor">Absolute fuel consumption sensor</option>
+                <option value="Instant fuel consumption sensor">Instant fuel consumption sensor</option>
+                <option value="Impulse fuel level sensor">Impulse fuel level sensor</option>
+                <option value="Battery level sensor">Battery level sensor</option>
+              </optgroup>
+              <optgroup label="Other">
+                <option value="Counter sensor">Counter sensor</option>
+                <option value="Custom sensor">Custom sensor</option>
+                <option value="Driver assignment">Driver assignment</option>
+                <option value="Trailer assignment">Trailer assignment</option>
+                <option value="Passenger sensor">Passenger sensor</option>
+              </optgroup>
+            </select>
+
+            <label>Description:</label>
+            <input type="text" id="sp-desc" class="w-prop-input" placeholder="e.g. Fuel tank 1 calibration or Main battery">
+
+            <label>Parameter: <span style="color:#dc2626">*</span> <span class="w-sp-help" title="Hardware parameter sent by tracker">?</span></label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="text" id="sp-param" class="w-prop-input" placeholder="e.g. io_201" style="max-width:200px" required>
+              <select id="sp-param-quick" class="w-prop-input" style="max-width:160px" onchange="if(this.value){document.getElementById('sp-param').value=this.value;this.value='';}">
+                <option value="">Quick Preset...</option>
+                <option value="io_201">io_201 (FLS Fuel Level)</option>
+                <option value="io_1">io_1 (Ignition Status)</option>
+                <option value="pwr_ext">pwr_ext (External 12V/24V)</option>
+                <option value="pwr_int">pwr_int (Internal Battery)</option>
+                <option value="io_25">io_25 (BLE Temp Sensor)</option>
+                <option value="speed">speed (GPS Speed)</option>
+                <option value="csq">csq (GSM Signal Level)</option>
+                <option value="adc1">adc1 (Analog Input 1)</option>
+              </select>
+            </div>
+
+            <label>Measurement system:</label>
+            <select id="sp-meas-system" class="w-prop-input" style="max-width:200px">
+              <option value="metric" selected>Metric</option>
+              <option value="us">U.S.</option>
+            </select>
+
+            <label>Unit of measurement:</label>
+            <input type="text" id="sp-unit" class="w-prop-input" placeholder="l, V, °C, km/h, On/Off, Ok/Not Ok" style="max-width:200px">
+
+            <label>Last message only: <span class="w-sp-help" title="Do not interpolate historic values">?</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="sp-last-msg"> Calculate only by last message
+            </label>
+
+            <label>Validator: <span class="w-sp-help" title="Validation condition">?</span></label>
+            <select id="sp-validator" class="w-prop-input" style="max-width:200px">
+              <option value="None" selected>None</option>
+            </select>
+          </div>
+
+          <!-- Fuel Level Specific Section (Wialon Screenshot 1 & 2) -->
+          <div id="sp-fuel-section" style="margin-top:16px;padding-top:14px;border-top:1px solid #e2e8f0">
+            <div class="w-sp-form-grid">
+              <label>Calculate data by sensor:</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="sp-calc-fuel" checked> Enabled
+              </label>
+
+              <label>Filtering type: <span class="w-sp-help" title="Smooth out fuel sloshing in tank">?</span></label>
+              <select id="sp-filtering-type" class="w-prop-input" style="max-width:200px">
+                <option value="None" selected>None</option>
+                <option value="Median 3">Median (3 points)</option>
+                <option value="Median 5">Median (5 points)</option>
+                <option value="Adaptive">Adaptive</option>
+              </select>
+
+              <label>Minimum fuel filling volume, l:</label>
+              <input type="number" id="sp-min-filling" class="w-prop-input" value="5" step="0.5" style="max-width:140px">
+
+              <label>Minimum fuel drain volume, l:</label>
+              <input type="number" id="sp-min-theft" class="w-prop-input" value="10" step="0.5" style="max-width:140px">
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: CALCULATION TABLE (Wialon Screenshot 1, 2 & CSV Data) -->
+        <div class="w-sp-pane" id="sp-pane-calc">
+          <!-- Upper / Lower Bounds (Screenshot 1) -->
+          <div style="background:#f8fafc;padding:10px 14px;border:1px solid #cbd5e1;border-radius:4px;display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <label style="font-weight:700">Lower bound:</label>
+              <input type="number" id="sp-lower-bound" class="w-prop-input" style="width:90px" value="0" step="0.1">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <label style="font-weight:700">Upper bound:</label>
+              <input type="number" id="sp-upper-bound" class="w-prop-input" style="width:90px" value="45" step="0.1">
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+              <input type="checkbox" id="sp-apply-bounds" checked> Apply after calculation
+            </label>
+          </div>
+
+          <!-- Toolbar for XY Pairs & CSV Import -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="display:flex;gap:6px">
+              <button type="button" class="w-prop-btn primary" onclick="addXyPairRow()">+ Add Line</button>
+              <button type="button" class="w-prop-btn" style="background:#0284c7;color:#fff" onclick="generateSlopesFromXyTable()" title="Calculate Piecewise Slopes a and b from XY calibration pairs">⚡ Generate</button>
+              <button type="button" class="w-prop-btn" onclick="toggleCsvImportBox()">📋 Paste / Import CSV (X;Y)</button>
+              <button type="button" class="w-prop-btn" onclick="exportCalibrationCsv()">💾 Export to CSV</button>
+            </div>
+            <div style="font-size:11.5px;color:#64748b">
+              Formula: <code>Y = a·X + b</code>
+            </div>
+          </div>
+
+          <!-- Inline CSV / Excel Paste Box -->
+          <div id="sp-csv-paste-box" style="display:none;background:#f1f5f9;border:1px solid #0284c7;border-radius:6px;padding:10px;margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <strong style="color:#0284c7">📋 Paste Calibration Data from Excel or Wialon CSV:</strong>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="file" id="sp-csv-file-input" accept=".csv,.txt" style="font-size:11px" onchange="handleCsvFileUpload(this)">
+                <button type="button" class="w-icon-btn red" onclick="toggleCsvImportBox()">✕</button>
+              </div>
+            </div>
+            <textarea id="sp-csv-textarea" style="width:100%;height:85px;font-family:monospace;font-size:11.5px;padding:6px;border:1px solid #cbd5e1;border-radius:4px" placeholder="Format: X;Y or X,Y (one pair per line)&#10;5;0&#10;43;5&#10;164;10&#10;279;15&#10;394;20&#10;510;25&#10;624;30&#10;736;35&#10;901;40"></textarea>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+              <button type="button" class="w-prop-btn primary" onclick="parseAndApplyCsvData()">Apply to Calibration Table &amp; Generate Slopes</button>
+            </div>
+          </div>
+
+          <!-- Calibration Columns (Left: XY Pairs Table; Right: Slopes a,b Table) -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <!-- Left Column: XY Pairs (Matching Screenshot 1 & 2) -->
+            <div style="border:1px solid #cbd5e1;border-radius:4px;overflow:hidden">
+              <div style="background:#e2e8f0;padding:6px 10px;font-weight:700;font-size:11.5px;color:#1e293b;display:flex;justify-content:space-between;align-items:center">
+                <span>Calibration Points (X → Y)</span>
+                <span id="sp-xy-count" style="font-size:11px;color:#64748b">0 points</span>
+              </div>
+              <div style="max-height:220px;overflow-y:auto">
+                <table class="w-sp-calib-table">
+                  <thead>
+                    <tr>
+                      <th style="width:30px;text-align:center">#</th>
+                      <th>X (Raw ADC / Param)</th>
+                      <th>Y (Volume in Liters)</th>
+                      <th style="width:40px;text-align:center">✕</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sp-xy-tbody">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Right Column: Piecewise Slopes (a, b) -->
+            <div style="border:1px solid #cbd5e1;border-radius:4px;overflow:hidden">
+              <div style="background:#e2e8f0;padding:6px 10px;font-weight:700;font-size:11.5px;color:#1e293b;display:flex;justify-content:space-between;align-items:center">
+                <span>Calculated Slopes (X, a, b)</span>
+                <span id="sp-slopes-count" style="font-size:11px;color:#64748b">0 rows</span>
+              </div>
+              <div style="max-height:220px;overflow-y:auto">
+                <table class="w-sp-calib-table">
+                  <thead>
+                    <tr>
+                      <th style="width:30px;text-align:center">#</th>
+                      <th>X (Interval)</th>
+                      <th>a (Slope)</th>
+                      <th>b (Offset)</th>
+                      <th style="width:40px;text-align:center">✕</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sp-slopes-tbody">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-time Live Calculation Tester -->
+          <div style="margin-top:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 14px;display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:700;color:#166534">🧪 Test Calibration Calculation:</span>
+              <span>Raw X:</span>
+              <input type="number" id="sp-test-x" class="w-prop-input" style="width:100px" placeholder="e.g. 510" oninput="testCalculateSensorValue()">
+            </div>
+            <div>
+              <span style="font-size:12px;color:#334155">Calculated Result: </span>
+              <strong id="sp-test-result" style="font-size:15px;color:#16a34a">—</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Buttons (Cancel / OK) -->
+    <div class="w-sp-footer">
+      <button type="button" class="w-prop-btn" onclick="closeSensorPropertiesModal()">Cancel</button>
+      <button type="button" class="w-prop-btn primary" onclick="saveSensorPropertiesModal()">OK</button>
     </div>
   </div>
 </div>
@@ -2516,6 +2946,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  let editingSensorIdx = null;
+
   function renderSensorsTable(sensors) {
     const tbody = document.getElementById('sensors-tbody');
     if (!tbody) return;
@@ -2526,12 +2958,12 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${s.type}</td>
         <td>${s.unit}</td>
         <td><code>${s.param}</code></td>
-        <td style="color:#64748b">${s.desc || ''}</td>
+        <td style="color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.desc || ''}">${s.desc || ''}</td>
         <td style="text-align:center">
           <input type="checkbox" ${s.visible ? 'checked' : ''} onchange="toggleSensorVisible(${idx}, this.checked)">
         </td>
-        <td style="text-align:center">
-          <button type="button" class="w-icon-btn" onclick="editSensor(${idx})" title="Edit sensor">🔧</button>
+        <td style="text-align:center;white-space:nowrap">
+          <button type="button" class="w-icon-btn" onclick="openSensorPropertiesModal(${idx})" title="Edit sensor properties & calibration table">🔧</button>
           <button type="button" class="w-icon-btn red" onclick="deleteSensor(${idx})" title="Delete sensor">✕</button>
         </td>
       </tr>
@@ -2574,23 +3006,497 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  window.promptAddSensor = function() {
-    const name = prompt('Enter sensor name (e.g. Fuel Level Tank 2, PTO RPM, Engine Oil Pressure):');
-    if (!name) return;
-    const param = prompt('Enter parameter identifier (e.g. io_202, can_fuel, pwr_ext):', 'io_' + Math.floor(Math.random() * 100));
-    if (!param) return;
-    
-    if (!currentUnitProp.sensors) currentUnitProp.sensors = [];
-    currentUnitProp.sensors.push({
-      id: Date.now(),
-      name: name,
-      type: 'Custom analog/digital sensor',
-      unit: 'l',
-      param: param,
-      desc: 'Configured by Admin',
-      visible: true
+  window.openSensorPropertiesModal = function(idx) {
+    editingSensorIdx = (idx !== null && idx !== undefined) ? idx : null;
+    const modal = document.getElementById('sensor-properties-modal');
+    if (!modal) return;
+
+    if (editingSensorIdx !== null && currentUnitProp && currentUnitProp.sensors && currentUnitProp.sensors[editingSensorIdx]) {
+      const s = currentUnitProp.sensors[editingSensorIdx];
+      document.getElementById('sp-modal-title').textContent = 'Sensor properties — ' + (s.name || 'Sensor');
+      document.getElementById('sp-name').value = s.name || '';
+      document.getElementById('sp-type').value = s.type || 'Custom digital sensor';
+      document.getElementById('sp-desc').value = s.desc || '';
+      document.getElementById('sp-param').value = s.param || '';
+      document.getElementById('sp-unit').value = s.unit || '';
+      document.getElementById('sp-last-msg').checked = !!s.last_msg;
+      document.getElementById('sp-validator').value = s.validator || 'None';
+      
+      document.getElementById('sp-lower-bound').value = (s.lower_bound !== undefined && s.lower_bound !== null) ? s.lower_bound : 0;
+      document.getElementById('sp-upper-bound').value = (s.upper_bound !== undefined && s.upper_bound !== null) ? s.upper_bound : 45;
+      document.getElementById('sp-apply-bounds').checked = (s.apply_bounds !== false);
+      document.getElementById('sp-min-filling').value = (s.min_filling !== undefined && s.min_filling !== null) ? s.min_filling : 5;
+      document.getElementById('sp-min-theft').value = (s.min_theft !== undefined && s.min_theft !== null) ? s.min_theft : 10;
+
+      // Populate XY table
+      const xyTbody = document.getElementById('sp-xy-tbody');
+      xyTbody.innerHTML = '';
+      
+      let xyList = [];
+      if (Array.isArray(s.xy_pairs) && s.xy_pairs.length > 0) {
+        xyList = s.xy_pairs;
+      } else if (s.desc && s.desc.includes('|')) {
+        // Parse Wialon description format: |x1:y1:x2:y2...
+        const rawPart = s.desc.split('|')[1] || '';
+        const tokens = rawPart.split(':');
+        for (let i = 0; i < tokens.length - 1; i += 2) {
+          const xVal = parseFloat(tokens[i]);
+          const yVal = parseFloat(tokens[i + 1]);
+          if (!isNaN(xVal) && !isNaN(yVal)) {
+            xyList.push({ x: xVal, y: yVal });
+          }
+        }
+      } else if (Array.isArray(s.table) && s.table.length > 0) {
+        // Reconstruct from slopes
+        s.table.forEach(seg => {
+          const xVal = seg.x;
+          const yVal = Math.round((seg.a * seg.x + seg.b) * 10) / 10;
+          xyList.push({ x: xVal, y: yVal });
+        });
+      }
+
+      xyList.forEach(pt => addXyPairRow(pt.x, pt.y));
+
+      // Populate Slopes table
+      const slopesTbody = document.getElementById('sp-slopes-tbody');
+      slopesTbody.innerHTML = '';
+      if (Array.isArray(s.table) && s.table.length > 0) {
+        s.table.forEach(seg => renderSlopeRow(seg.x, seg.a, seg.b));
+        updateSlopesCount();
+      } else if (xyList.length >= 2) {
+        generateSlopesFromXyTable(false);
+      }
+    } else {
+      // New Sensor defaults
+      document.getElementById('sp-modal-title').textContent = 'New sensor';
+      document.getElementById('sp-name').value = 'New sensor';
+      document.getElementById('sp-type').value = 'Fuel level sensor';
+      document.getElementById('sp-desc').value = '';
+      document.getElementById('sp-param').value = '';
+      document.getElementById('sp-unit').value = 'l';
+      document.getElementById('sp-last-msg').checked = false;
+      document.getElementById('sp-lower-bound').value = 0;
+      document.getElementById('sp-upper-bound').value = 45;
+      document.getElementById('sp-apply-bounds').checked = true;
+      document.getElementById('sp-min-filling').value = 5;
+      document.getElementById('sp-min-theft').value = 10;
+      document.getElementById('sp-xy-tbody').innerHTML = '';
+      document.getElementById('sp-slopes-tbody').innerHTML = '';
+      document.getElementById('sp-xy-count').textContent = '0 points';
+      document.getElementById('sp-slopes-count').textContent = '0 rows';
+    }
+
+    onSensorTypeChanged();
+    switchSensorPropTab('general');
+    modal.style.display = 'flex';
+    testCalculateSensorValue();
+  };
+
+  window.closeSensorPropertiesModal = function() {
+    const modal = document.getElementById('sensor-properties-modal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.switchSensorPropTab = function(tabId) {
+    document.querySelectorAll('.w-sp-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === tabId);
     });
+    document.querySelectorAll('.w-sp-pane').forEach(p => {
+      p.classList.toggle('active', p.id === 'sp-pane-' + tabId);
+    });
+  };
+
+  window.onSensorTypeChanged = function() {
+    const type = (document.getElementById('sp-type').value || '').toLowerCase();
+    const fuelSec = document.getElementById('sp-fuel-section');
+    if (fuelSec) {
+      fuelSec.style.display = (type.includes('fuel')) ? 'block' : 'none';
+    }
+    const unitInput = document.getElementById('sp-unit');
+    if (!unitInput.value || unitInput.value === 'l' || unitInput.value === 'V' || unitInput.value === '°C' || unitInput.value === 'km' || unitInput.value === 'On/Off' || unitInput.value === 'Ok/Not Ok') {
+      if (type.includes('fuel')) unitInput.value = 'l';
+      else if (type.includes('voltage')) unitInput.value = 'V';
+      else if (type.includes('temperature')) unitInput.value = '°C';
+      else if (type.includes('mileage') || type.includes('odometer')) unitInput.value = 'km';
+      else if (type.includes('ignition')) unitInput.value = 'On/Off';
+      else if (type.includes('digital')) unitInput.value = 'Ok/Not Ok';
+    }
+  };
+
+  window.addXyPairRow = function(x = '', y = '') {
+    const tbody = document.getElementById('sp-xy-tbody');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="text-align:center;color:#64748b" class="sp-xy-idx"></td>
+      <td><input type="number" class="sp-xy-x" value="${x !== '' ? x : ''}" step="any" placeholder="X" oninput="testCalculateSensorValue()"></td>
+      <td><input type="number" class="sp-xy-y" value="${y !== '' ? y : ''}" step="any" placeholder="Y" oninput="testCalculateSensorValue()"></td>
+      <td style="text-align:center"><button type="button" class="w-icon-btn red" onclick="deleteXyPairRow(this)" title="Delete point">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+    reindexXyTable();
+  };
+
+  window.deleteXyPairRow = function(btn) {
+    const tr = btn.closest('tr');
+    if (tr) {
+      tr.remove();
+      reindexXyTable();
+      testCalculateSensorValue();
+    }
+  };
+
+  function reindexXyTable() {
+    const rows = document.querySelectorAll('#sp-xy-tbody tr');
+    rows.forEach((r, idx) => {
+      const idxCell = r.querySelector('.sp-xy-idx');
+      if (idxCell) idxCell.textContent = (idx + 1);
+    });
+    const cnt = document.getElementById('sp-xy-count');
+    if (cnt) cnt.textContent = rows.length + (rows.length === 1 ? ' point' : ' points');
+  }
+
+  function renderSlopeRow(x, a, b) {
+    const tbody = document.getElementById('sp-slopes-tbody');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="text-align:center;color:#64748b" class="sp-slope-idx"></td>
+      <td><input type="number" class="sp-slope-x" value="${x}" step="any"></td>
+      <td><input type="number" class="sp-slope-a" value="${a}" step="any"></td>
+      <td><input type="number" class="sp-slope-b" value="${b}" step="any"></td>
+      <td style="text-align:center"><button type="button" class="w-icon-btn red" onclick="this.closest('tr').remove();updateSlopesCount();testCalculateSensorValue();">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  function updateSlopesCount() {
+    const rows = document.querySelectorAll('#sp-slopes-tbody tr');
+    rows.forEach((r, idx) => {
+      const idxCell = r.querySelector('.sp-slope-idx');
+      if (idxCell) idxCell.textContent = (idx + 1);
+    });
+    const cnt = document.getElementById('sp-slopes-count');
+    if (cnt) cnt.textContent = rows.length + (rows.length === 1 ? ' row' : ' rows');
+  }
+
+  window.generateSlopesFromXyTable = function(notify = true) {
+    const rows = document.querySelectorAll('#sp-xy-tbody tr');
+    const points = [];
+    rows.forEach(r => {
+      const xInput = r.querySelector('.sp-xy-x');
+      const yInput = r.querySelector('.sp-xy-y');
+      if (xInput && yInput && xInput.value !== '' && yInput.value !== '') {
+        const x = parseFloat(xInput.value);
+        const y = parseFloat(yInput.value);
+        if (!isNaN(x) && !isNaN(y)) {
+          points.push({ x, y });
+        }
+      }
+    });
+
+    if (points.length < 2) {
+      if (notify) alert('Please add at least 2 calibration points (X;Y).');
+      return;
+    }
+
+    // Sort ascending by X
+    points.sort((p1, p2) => p1.x - p2.x);
+
+    // Re-render sorted points into XY table
+    const xyTbody = document.getElementById('sp-xy-tbody');
+    xyTbody.innerHTML = '';
+    points.forEach(pt => addXyPairRow(pt.x, pt.y));
+
+    // Calculate piecewise linear slopes
+    const slopesTbody = document.getElementById('sp-slopes-tbody');
+    slopesTbody.innerHTML = '';
+
+    const slopes = [];
+    for (let i = 0; i < points.length; i++) {
+      const p1 = points[i];
+      if (i < points.length - 1) {
+        const p2 = points[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const a = (dx !== 0) ? (dy / dx) : 0;
+        const b = p1.y - a * p1.x;
+        const aRound = Math.round(a * 100000) / 100000;
+        const bRound = Math.round(b * 100) / 100;
+        slopes.push({ x: p1.x, a: aRound, b: bRound });
+        renderSlopeRow(p1.x, aRound, bRound);
+      } else {
+        // Last boundary point
+        slopes.push({ x: p1.x, a: 0, b: p1.y });
+        renderSlopeRow(p1.x, 0, p1.y);
+      }
+    }
+    updateSlopesCount();
+
+    // Auto set upper/lower bounds
+    const maxY = Math.max(...points.map(p => p.y));
+    const minY = Math.min(...points.map(p => p.y));
+    const ubEl = document.getElementById('sp-upper-bound');
+    const lbEl = document.getElementById('sp-lower-bound');
+    if (ubEl && (!ubEl.value || parseFloat(ubEl.value) <= 0 || parseFloat(ubEl.value) < maxY)) {
+      ubEl.value = Math.ceil(maxY);
+    }
+    if (lbEl && (!lbEl.value || parseFloat(lbEl.value) < 0)) {
+      lbEl.value = Math.floor(minY);
+    }
+
+    testCalculateSensorValue();
+    if (notify) alert(`✓ Successfully generated ${slopes.length} slope segments from ${points.length} calibration points!`);
+  };
+
+  window.toggleCsvImportBox = function() {
+    const box = document.getElementById('sp-csv-paste-box');
+    if (box) box.style.display = (box.style.display === 'none') ? 'block' : 'none';
+  };
+
+  window.handleCsvFileUpload = function(input) {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const ta = document.getElementById('sp-csv-textarea');
+      if (ta) ta.value = e.target.result;
+    };
+    reader.readAsText(file);
+  };
+
+  window.parseAndApplyCsvData = function() {
+    const ta = document.getElementById('sp-csv-textarea');
+    if (!ta || !ta.value.trim()) {
+      alert('Please paste calibration lines in format X;Y or X,Y');
+      return;
+    }
+
+    const lines = ta.value.split(/\r?\n/);
+    const parsedPoints = [];
+
+    lines.forEach(l => {
+      const line = l.trim();
+      if (!line || line.startsWith('#')) return;
+      const parts = line.split(/[;,\t\s]+/);
+      if (parts.length >= 2) {
+        const x = parseFloat(parts[0]);
+        const y = parseFloat(parts[1]);
+        if (!isNaN(x) && !isNaN(y)) {
+          parsedPoints.push({ x, y });
+        }
+      }
+    });
+
+    if (parsedPoints.length < 2) {
+      alert('Could not find at least 2 valid X;Y pairs. Example:\n5;0\n43;5\n164;10');
+      return;
+    }
+
+    const xyTbody = document.getElementById('sp-xy-tbody');
+    xyTbody.innerHTML = '';
+    parsedPoints.forEach(pt => addXyPairRow(pt.x, pt.y));
+
+    generateSlopesFromXyTable(false);
+    toggleCsvImportBox();
+    alert(`✓ Successfully loaded ${parsedPoints.length} calibration points from CSV and generated slopes table!`);
+  };
+
+  window.exportCalibrationCsv = function() {
+    const rows = document.querySelectorAll('#sp-xy-tbody tr');
+    const lines = [];
+    rows.forEach(r => {
+      const xInput = r.querySelector('.sp-xy-x');
+      const yInput = r.querySelector('.sp-xy-y');
+      if (xInput && yInput && xInput.value !== '' && yInput.value !== '') {
+        lines.push(`${xInput.value};${yInput.value}`);
+      }
+    });
+
+    if (lines.length === 0) {
+      alert('No calibration points to export.');
+      return;
+    }
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const sName = (document.getElementById('sp-name').value || 'Sensor').replace(/\s+/g, '_');
+    a.download = `${sName}_calibration.csv`;
+    a.click();
+  };
+
+  window.testCalculateSensorValue = function() {
+    const testInput = document.getElementById('sp-test-x');
+    const resEl = document.getElementById('sp-test-result');
+    if (!testInput || !resEl) return;
+
+    const rawVal = parseFloat(testInput.value);
+    if (isNaN(rawVal)) {
+      resEl.textContent = '—';
+      return;
+    }
+
+    const slopeRows = document.querySelectorAll('#sp-slopes-tbody tr');
+    const slopes = [];
+    slopeRows.forEach(r => {
+      const x = parseFloat(r.querySelector('.sp-slope-x')?.value);
+      const a = parseFloat(r.querySelector('.sp-slope-a')?.value);
+      const b = parseFloat(r.querySelector('.sp-slope-b')?.value);
+      if (!isNaN(x) && !isNaN(a) && !isNaN(b)) {
+        slopes.push({ x, a, b });
+      }
+    });
+
+    const unit = document.getElementById('sp-unit')?.value || 'l';
+    const applyBounds = document.getElementById('sp-apply-bounds')?.checked;
+    const lowerB = parseFloat(document.getElementById('sp-lower-bound')?.value) || 0;
+    const upperB = parseFloat(document.getElementById('sp-upper-bound')?.value) || 9999;
+
+    let result = null;
+
+    if (slopes.length > 0) {
+      slopes.sort((s1, s2) => s1.x - s2.x);
+      let matched = null;
+      for (const seg of slopes) {
+        if (rawVal >= seg.x) matched = seg;
+        else break;
+      }
+      if (!matched) matched = slopes[0];
+      result = matched.a * rawVal + matched.b;
+    } else {
+      const xyRows = document.querySelectorAll('#sp-xy-tbody tr');
+      const pts = [];
+      xyRows.forEach(r => {
+        const x = parseFloat(r.querySelector('.sp-xy-x')?.value);
+        const y = parseFloat(r.querySelector('.sp-xy-y')?.value);
+        if (!isNaN(x) && !isNaN(y)) pts.push({ x, y });
+      });
+      if (pts.length >= 2) {
+        pts.sort((p1, p2) => p1.x - p2.x);
+        if (rawVal <= pts[0].x) {
+          result = pts[0].y;
+        } else if (rawVal >= pts[pts.length - 1].x) {
+          result = pts[pts.length - 1].y;
+        } else {
+          for (let i = 0; i < pts.length - 1; i++) {
+            if (rawVal >= pts[i].x && rawVal <= pts[i + 1].x) {
+              const dx = pts[i + 1].x - pts[i].x;
+              const dy = pts[i + 1].y - pts[i].y;
+              result = pts[i].y + (dy / dx) * (rawVal - pts[i].x);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (result !== null) {
+      if (applyBounds) {
+        if (result < lowerB) result = lowerB;
+        if (result > upperB) result = upperB;
+      }
+      resEl.textContent = `${result.toFixed(2)} ${unit}`;
+    } else {
+      resEl.textContent = 'Need ≥ 2 points';
+    }
+  };
+
+  window.saveSensorPropertiesModal = function() {
+    const name = document.getElementById('sp-name').value.trim();
+    const param = document.getElementById('sp-param').value.trim();
+    if (!name) {
+      alert('Please enter a sensor name.');
+      switchSensorPropTab('general');
+      document.getElementById('sp-name').focus();
+      return;
+    }
+    if (!param) {
+      alert('Please specify the hardware parameter (e.g. io_201).');
+      switchSensorPropTab('general');
+      document.getElementById('sp-param').focus();
+      return;
+    }
+
+    // Gather XY pairs
+    const xyPairs = [];
+    document.querySelectorAll('#sp-xy-tbody tr').forEach(r => {
+      const x = parseFloat(r.querySelector('.sp-xy-x')?.value);
+      const y = parseFloat(r.querySelector('.sp-xy-y')?.value);
+      if (!isNaN(x) && !isNaN(y)) {
+        xyPairs.push({ x, y });
+      }
+    });
+
+    // Gather Slopes
+    let table = [];
+    document.querySelectorAll('#sp-slopes-tbody tr').forEach(r => {
+      const x = parseFloat(r.querySelector('.sp-slope-x')?.value);
+      const a = parseFloat(r.querySelector('.sp-slope-a')?.value);
+      const b = parseFloat(r.querySelector('.sp-slope-b')?.value);
+      if (!isNaN(x) && !isNaN(a) && !isNaN(b)) {
+        table.push({ x, a, b });
+      }
+    });
+
+    // If XY pairs exist but table empty, auto-generate table
+    if (table.length === 0 && xyPairs.length >= 2) {
+      xyPairs.sort((p1, p2) => p1.x - p2.x);
+      for (let i = 0; i < xyPairs.length; i++) {
+        const p1 = xyPairs[i];
+        if (i < xyPairs.length - 1) {
+          const p2 = xyPairs[i + 1];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const a = dx !== 0 ? (dy / dx) : 0;
+          const b = p1.y - a * p1.x;
+          table.push({ x: p1.x, a: Math.round(a * 100000) / 100000, b: Math.round(b * 100) / 100 });
+        } else {
+          table.push({ x: p1.x, a: 0, b: p1.y });
+        }
+      }
+    }
+
+    // Wialon description representation: |x1:y1:x2:y2...
+    let desc = document.getElementById('sp-desc').value.trim();
+    if (xyPairs.length > 0) {
+      const calibStr = '|' + xyPairs.map(p => `${p.x}:${p.y}`).join(':');
+      if (!desc.includes('|')) {
+        desc = (desc ? desc + ' ' : '') + calibStr;
+      } else {
+        desc = desc.split('|')[0].trim() + (desc.split('|')[0].trim() ? ' ' : '') + calibStr;
+      }
+    }
+
+    const sensorObj = {
+      id: (editingSensorIdx !== null && currentUnitProp.sensors && currentUnitProp.sensors[editingSensorIdx]?.id) ? currentUnitProp.sensors[editingSensorIdx].id : Date.now(),
+      name: name,
+      type: document.getElementById('sp-type').value,
+      desc: desc,
+      param: param,
+      unit: document.getElementById('sp-unit').value.trim() || 'l',
+      last_msg: document.getElementById('sp-last-msg').checked,
+      validator: document.getElementById('sp-validator').value,
+      lower_bound: parseFloat(document.getElementById('sp-lower-bound').value) || 0,
+      upper_bound: parseFloat(document.getElementById('sp-upper-bound').value) || 45,
+      apply_bounds: document.getElementById('sp-apply-bounds').checked,
+      min_filling: parseFloat(document.getElementById('sp-min-filling').value) || 5,
+      min_theft: parseFloat(document.getElementById('sp-min-theft').value) || 10,
+      table: table,
+      xy_pairs: xyPairs,
+      visible: (editingSensorIdx !== null && currentUnitProp.sensors && currentUnitProp.sensors[editingSensorIdx]?.visible !== undefined) ? currentUnitProp.sensors[editingSensorIdx].visible : true
+    };
+
+    if (!currentUnitProp.sensors) currentUnitProp.sensors = [];
+
+    if (editingSensorIdx !== null && currentUnitProp.sensors[editingSensorIdx]) {
+      currentUnitProp.sensors[editingSensorIdx] = Object.assign({}, currentUnitProp.sensors[editingSensorIdx], sensorObj);
+    } else {
+      currentUnitProp.sensors.push(sensorObj);
+    }
+
     renderSensorsTable(currentUnitProp.sensors);
+    closeSensorPropertiesModal();
   };
 
   window.addVoltageSensor = function() {
@@ -2617,15 +3523,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!confirm('Delete this sensor?')) return;
     if (currentUnitProp && currentUnitProp.sensors) {
       currentUnitProp.sensors.splice(idx, 1);
-      renderSensorsTable(currentUnitProp.sensors);
-    }
-  };
-
-  window.editSensor = function(idx) {
-    const s = currentUnitProp.sensors[idx];
-    const newName = prompt('Sensor Name:', s.name);
-    if (newName) {
-      s.name = newName;
       renderSensorsTable(currentUnitProp.sensors);
     }
   };

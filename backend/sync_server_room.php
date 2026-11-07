@@ -161,6 +161,7 @@ function sync_wialon_fleet_fast() {
     $results = [];
 
     foreach ($items as $item) {
+        $existing = null;
         $wId = (int)$item['id'];
         $cfg = $unitDefs[$wId] ?? null;
         if (!$cfg) continue;
@@ -169,6 +170,9 @@ function sync_wialon_fleet_fast() {
         $uid = !empty($cfg['imei']) ? (string)$cfg['imei'] : (!empty($item['uid']) ? (string)$item['uid'] : 'WIA-' . $wId);
         $phone = !empty($cfg['phone']) ? (string)$cfg['phone'] : (!empty($item['ph']) ? (string)$item['ph'] : ('veh_' . preg_replace('/[^A-Za-z0-9]/', '', $cfg['code'])));
         $deviceType = $cfg['device'] ?? 'Teltonika FMB125';
+
+        // Find existing unit in DB by code, IMEI (unique_id), or phone
+        $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR (unique_id = ? AND unique_id IS NOT NULL AND unique_id != '') OR (phone = ? AND phone IS NOT NULL AND phone != '') LIMIT 1", [$cfg['code'], $uid, $phone])->fetch();
         $lat = !empty($item['pos']['y']) ? (float)$item['pos']['y'] : 7.222895;
         $lng = !empty($item['pos']['x']) ? (float)$item['pos']['x'] : 81.675295;
         $speed = !empty($item['pos']['s']) ? (float)$item['pos']['s'] : 0.0;
@@ -190,8 +194,6 @@ function sync_wialon_fleet_fast() {
             $motionState = 'stationary';
             $ignition = 1;
         } else {
-            // Check if vehicle has custom sensor calibration table in database
-            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR (unique_id = ? AND unique_id IS NOT NULL AND unique_id != '') OR (phone = ? AND phone IS NOT NULL AND phone != '') LIMIT 1", [$cfg['code'], $uid, $phone])->fetch();
             $customTbl = null;
             $lowerB = 0;
             $upperB = null;
@@ -233,11 +235,6 @@ function sync_wialon_fleet_fast() {
                     $fuelLiters = round(max(0, $calcLiters), 1);
                 }
             }
-        }
-
-        // Upsert into users table (fetch existing if not already fetched)
-        if (!isset($existing)) {
-            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR (unique_id = ? AND unique_id IS NOT NULL AND unique_id != '') OR (phone = ? AND phone IS NOT NULL AND phone != '') LIMIT 1", [$cfg['code'], $uid, $phone])->fetch();
         }
 
         // Preserve and update existing sensors configuration

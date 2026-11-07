@@ -219,12 +219,13 @@ function sync_wialon_fleet_fast() {
         }
         $sensorsJson = json_encode($sensors, JSON_UNESCAPED_UNICODE);
 
-        // Properties JSON
+        // Properties JSON with Full Raw Telematics Parameters
         $props = [
             'wialon_id' => $wId,
             'pwr_ext' => $pwrExt,
             'pwr_int' => $pwrInt,
-            'last_sync' => date('Y-m-d H:i:s')
+            'last_sync' => date('Y-m-d H:i:s'),
+            'raw_params' => $lmsg
         ];
         if ($tempCelsius !== null) $props['temperature'] = $tempCelsius;
         if ($fuelLiters !== null) $props['fuel_liters'] = $fuelLiters;
@@ -260,8 +261,16 @@ function sync_wialon_fleet_fast() {
             $dbId = (int)db()->lastInsertId();
         }
 
-        q("INSERT IGNORE INTO locations (user_id, lat, lng, speed, battery, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
-          [$dbId, $lat, $lng, (int)$speed, ($fuelLiters !== null ? (int)$fuelLiters : (int)$pwrExt), $posTime]);
+        static $colsChecked = false;
+        if (!$colsChecked) {
+            try { q("ALTER TABLE `locations` ADD COLUMN `fuel_liters` DECIMAL(7,2) NULL AFTER `battery`"); } catch (Throwable $e) {}
+            try { q("ALTER TABLE `locations` ADD COLUMN `temperature` DECIMAL(5,2) NULL AFTER `fuel_liters`"); } catch (Throwable $e) {}
+            try { q("ALTER TABLE `locations` ADD COLUMN `raw_params` TEXT NULL AFTER `temperature`"); } catch (Throwable $e) {}
+            $colsChecked = true;
+        }
+
+        q("INSERT IGNORE INTO locations (user_id, lat, lng, speed, battery, fuel_liters, temperature, raw_params, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [$dbId, $lat, $lng, (int)$speed, ($fuelLiters !== null ? (int)$fuelLiters : (int)$pwrExt), $fuelLiters, $tempCelsius, json_encode($lmsg), $posTime]);
 
         $results[] = [
             'id' => $dbId,

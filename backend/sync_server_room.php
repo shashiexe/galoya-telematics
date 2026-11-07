@@ -191,7 +191,7 @@ function sync_wialon_fleet_fast() {
             $ignition = 1;
         } else {
             // Check if vehicle has custom sensor calibration table in database
-            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
+            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR (unique_id = ? AND unique_id IS NOT NULL AND unique_id != '') OR (phone = ? AND phone IS NOT NULL AND phone != '') LIMIT 1", [$cfg['code'], $uid, $phone])->fetch();
             $customTbl = null;
             $lowerB = 0;
             $upperB = null;
@@ -237,7 +237,7 @@ function sync_wialon_fleet_fast() {
 
         // Upsert into users table (fetch existing if not already fetched)
         if (!isset($existing)) {
-            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR unique_id = ? LIMIT 1", [$cfg['code'], $uid])->fetch();
+            $existing = q("SELECT id, sensors_json FROM users WHERE code = ? OR (unique_id = ? AND unique_id IS NOT NULL AND unique_id != '') OR (phone = ? AND phone IS NOT NULL AND phone != '') LIMIT 1", [$cfg['code'], $uid, $phone])->fetch();
         }
 
         // Preserve and update existing sensors configuration

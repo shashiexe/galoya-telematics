@@ -147,4 +147,15 @@ if os.path.exists(kts_path):
         f.write(content)
     print("[Patch] Updated android/app/build.gradle.kts successfully")
 
+# 4. Patch Gradle wrapper (Pin to fast, stable 8.10.2 to prevent Gradle 9.3.1 504 timeouts)
+wrapper_path = "android/gradle/wrapper/gradle-wrapper.properties"
+if os.path.exists(wrapper_path):
+    with open(wrapper_path, "r", encoding="utf-8") as f:
+        wrapper_content = f.read()
+    import re
+    wrapper_content = re.sub(r'distributionUrl=.*', 'distributionUrl=https\\\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip', wrapper_content)
+    with open(wrapper_path, "w", encoding="utf-8") as f:
+        f.write(wrapper_content)
+    print("[Patch] Pinned Gradle wrapper to gradle-8.10.2-bin.zip successfully")
+
 print("[Patch] Patching completed.")

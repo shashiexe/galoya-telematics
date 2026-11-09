@@ -53,8 +53,8 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.4.2');
-    $latestBuild = (int)setting('latest_app_build', 28);
+    $latestVersion = setting('latest_app_version', '1.4.5');
+    $latestBuild = (int)setting('latest_app_build', 31);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -75,10 +75,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.4.4');
-        $latestBuild = (int)setting('latest_app_build', 30);
+        $latestVersion = setting('latest_app_version', '1.4.5');
+        $latestBuild = (int)setting('latest_app_build', 31);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
-        $changelog = setting('app_update_changelog', "• Real-Time AI Face Liveness Detection (Automatic Eye Blink, Smile & Straight Face check)\n• Automatic photo capture upon liveness confirmation\n• Compact Task/Activity dialog layout (Fits screen without scrolling)\n• Hard-locked Front Camera (Selfie) & Rear Camera (Field)");
+        $changelog = setting('app_update_changelog', "• Smart Field Visit Selfie Verification (Day's first photo, every 4 field visits & 3-hour check)\n• Anti-evasion rear camera lockout until selfie verified\n• Removed Skip button in Face ID / Selfie\n• Long-press camera icon for manual selfie option");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));

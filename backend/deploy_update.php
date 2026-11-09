@@ -1036,8 +1036,8 @@ try {
     $testP = $pdo->query("SELECT fp.id, fp.user_id, fp.taken_at FROM field_photos fp JOIN users u ON u.id = fp.user_id WHERE fp.taken_at BETWEEN '$from_dt' AND '$to_dt'")->fetchAll(PDO::FETCH_ASSOC);
     $results[] = ["📸 Photos in date range ('$from_dt' - '$to_dt'): " . count($testP), "color:#ec4899;font-weight:bold"];
 
-    // Test photos.php exact $sql1
-    $secScopeU = '1=1';
+    $allUsersDiag = $pdo->query("SELECT id, name, code, phone, role, unit_type, web_access, active FROM users ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $results[] = ["🔍 ALL USERS IN DB DIAGNOSTIC: " . json_encode($allUsersDiag, JSON_UNESCAPED_UNICODE), "color:#facc15;font-weight:bold"];
     $sql1_test = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, 
                     COALESCE(fp.activity_type, 'Field Photo') as activity_type,
                     fp.auto_geofence, fp.selected_geofence,

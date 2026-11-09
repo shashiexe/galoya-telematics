@@ -1270,12 +1270,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 return AlertDialog(
                   backgroundColor: const Color(0xff1e293b),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                   title: Row(
                     children: [
-                      Icon(isSelfie ? Icons.face : Icons.camera_alt, color: isSelfie ? const Color(0xffa855f7) : const Color(0xff38bdf8), size: 22),
+                      Icon(isSelfie ? Icons.face : Icons.camera_alt, color: isSelfie ? const Color(0xffa855f7) : const Color(0xff38bdf8), size: 20),
                       const SizedBox(width: 8),
                       Text(isSelfie ? 'Officer Selfie Verification' : 'Field Photo & Task Details',
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   content: SizedBox(
@@ -1287,11 +1290,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         children: [
                           // 1. Activity / Task Category Selector
                           const Text('1. Activity / Task Type:',
-                              style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
+                              style: TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 5),
                           Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
+                            spacing: 5,
+                            runSpacing: 5,
                             children: [
                               if (isSelfie) 'Officer Verification Selfie',
                               'Field Visit',
@@ -1306,21 +1309,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                               'Other'
                             ].map((item) {
                               final isSel = act == item;
-                              return ChoiceChip(
-                                label: Text(item,
-                                    style: TextStyle(
-                                      color: isSel ? Colors.white : Colors.white70,
-                                      fontSize: 11,
-                                      fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                                    )),
-                                selected: isSel,
-                                selectedColor: const Color(0xff0284c7),
-                                backgroundColor: const Color(0xff0f172a),
-                                onSelected: (_) => setDlgState(() => act = item),
+                              return InkWell(
+                                onTap: () => setDlgState(() => act = item),
+                                borderRadius: BorderRadius.circular(6),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 120),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: isSel ? const Color(0xff0284c7) : const Color(0xff0f172a),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: isSel ? const Color(0xff38bdf8) : const Color(0xff334155),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isSel) ...[
+                                        const Icon(Icons.check, size: 12, color: Colors.white),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Text(
+                                        item,
+                                        style: TextStyle(
+                                          color: isSel ? Colors.white : const Color(0xffcbd5e1),
+                                          fontSize: 10.5,
+                                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               );
                             }).toList(),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 10),
 
                           // 2. Geofence Location (Plot)
                           const Text('2. Location & Plot:',
@@ -1407,22 +1431,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 8),
                               ],
                             );
                           }(),
 
                           // 3. Optional Remarks
                           const Text('3. Optional Remarks / Note:',
-                              style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
                           TextField(
                             controller: ctl,
-                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
                             decoration: const InputDecoration(
                               hintText: 'Additional details (e.g. 50kg urea applied)...',
-                              hintStyle: TextStyle(color: Colors.white38, fontSize: 12),
+                              hintStyle: TextStyle(color: Colors.white38, fontSize: 11),
                               isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                               border: OutlineInputBorder(),
                             ),
                           ),

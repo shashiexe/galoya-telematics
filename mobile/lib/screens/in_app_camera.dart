@@ -2,12 +2,19 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Full In-App Camera Screen with Real-Time Front Viewfinder,
-/// Interactive Oval Alignment, and Liveness Actions (Blink/Smile prompts).
+/// Interactive Oval Alignment, and Automated ML Kit Face Liveness Detection:
+/// 1. Look Straight (Head alignment)
+/// 2. Blink Eyes (left/right eye probability drop & rise)
+/// 3. Smile Slightly (smiling probability detection)
+/// 4. Auto-Captures immediately upon confirmation.
 class InAppCameraScreen extends StatefulWidget {
   final CameraLensDirection preferredLens;
   final bool isSelfie;
@@ -32,6 +39,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
     with SingleTickerProviderStateMixin {
   CameraController? _controller;
   List<CameraDescription> _availableCameras = [];
+  CameraDescription? _selectedCamera;
   bool _isInit = false;
   bool _initError = false;
   String? _errorMessage;
@@ -39,12 +47,39 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
   File? _capturedFile;
   bool _isTakingPicture = false;
 
-  // Liveness challenge state (0: Align, 1: Blink, 2: Smile, 3: Ready)
-  int _challengeStep = 0;
-  Timer? _challengeTimer;
+  // ML Kit Face Detector
+  FaceDetector? _faceDetector;
+  bool _isStreaming = false;
+  bool _isProcessingFrame = false;
+
+  // Real-Time Liveness State Machine
+  // Step 1: Look straight
+  bool _stepLookStraight = false;
+  // Step 2: Blink
+  bool _eyesClosedSeen = false;
+  bool _stepBlink = false;
+  // Step 3: Smile
+  bool _stepSmile = false;
+  // Step 4: All verified
+  bool _allVerified = false;
+
+  String _livenessStatus = 'මුහුණ Oval එක ඇතුළට කෙලින් තබන්න';
+  String _livenessSubStatus = 'Look Straight at Camera';
+  Color _ovalBorderColor = const Color(0xff38bdf8); // Sky blue initially
+
+  // Manual fallback override timer (in case low light or thick glasses)
+  bool _showManualOverride = false;
+  Timer? _manualOverrideTimer;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  static const Map<DeviceOrientation, int> _orientations = {
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
 
   @override
   void initState() {
@@ -57,15 +92,45 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    if (widget.isSelfie) {
+      _initFaceDetector();
+      // Show manual fallback shutter button after 12 seconds if liveness takes too long
+      _manualOverrideTimer = Timer(const Duration(seconds: 12), () {
+        if (mounted) setState(() => _showManualOverride = true);
+      });
+    }
+
     _startCamera();
+  }
+
+  void _initFaceDetector() {
+    _faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        enableClassification: true,
+        enableTracking: true,
+        performanceMode: FaceDetectorMode.fast,
+        minFaceSize: 0.25,
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _challengeTimer?.cancel();
+    _manualOverrideTimer?.cancel();
     _pulseController.dispose();
+    _stopImageStreamSafe();
+    _faceDetector?.close();
     _controller?.dispose();
     super.dispose();
+  }
+
+  Future<void> _stopImageStreamSafe() async {
+    if (_controller != null && _isStreaming) {
+      try {
+        _isStreaming = false;
+        await _controller!.stopImageStream();
+      } catch (_) {}
+    }
   }
 
   // Hard-lock lens direction: strictly front lens for selfie, strictly rear lens for field photo
@@ -87,19 +152,21 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
 
       // Hard-lock: Selfie must use front lens; Field photos must use rear lens.
       final targetLens = widget.isSelfie ? CameraLensDirection.front : CameraLensDirection.back;
-      CameraDescription selectedCam = _availableCameras.firstWhere(
+      _selectedCamera = _availableCameras.firstWhere(
         (c) => c.lensDirection == targetLens,
         orElse: () => _availableCameras.firstWhere(
-          (c) => widget.isSelfie ? c.lensDirection == CameraLensDirection.front : c.lensDirection == CameraLensDirection.back,
+          (c) => widget.isSelfie
+              ? c.lensDirection == CameraLensDirection.front
+              : c.lensDirection == CameraLensDirection.back,
           orElse: () => _availableCameras.first,
         ),
       );
 
       _controller = CameraController(
-        selectedCam,
+        _selectedCamera!,
         ResolutionPreset.high,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
       await _controller!.initialize();
@@ -109,6 +176,11 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
         _isInit = true;
         _initError = false;
       });
+
+      // Start live face detection stream for Selfie / Face ID
+      if (widget.isSelfie && _faceDetector != null) {
+        await _startImageStream();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -118,10 +190,173 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
     }
   }
 
-  void _startLivenessSequence() {
-    // Live Front Camera alignment
-    _challengeTimer?.cancel();
-    setState(() => _challengeStep = 3);
+  Future<void> _startImageStream() async {
+    if (_controller == null || !_controller!.value.isInitialized || _isStreaming) return;
+    _isStreaming = true;
+    _controller!.startImageStream((CameraImage image) {
+      if (!_isStreaming || _isProcessingFrame || _allVerified || _isTakingPicture) return;
+      _processCameraFrame(image);
+    });
+  }
+
+  Future<void> _processCameraFrame(CameraImage image) async {
+    _isProcessingFrame = true;
+    try {
+      final inputImage = _inputImageFromCameraImage(image, _selectedCamera!);
+      if (inputImage == null) {
+        _isProcessingFrame = false;
+        return;
+      }
+
+      final faces = await _faceDetector!.processImage(inputImage);
+      if (!mounted || _allVerified || _isTakingPicture) {
+        _isProcessingFrame = false;
+        return;
+      }
+
+      _handleLivenessDetection(faces);
+    } catch (_) {
+      // Ignore transient frame parsing errors
+    } finally {
+      _isProcessingFrame = false;
+    }
+  }
+
+  InputImage? _inputImageFromCameraImage(CameraImage image, CameraDescription camera) {
+    final sensorOrientation = camera.sensorOrientation;
+    InputImageRotation? rotation;
+    if (Platform.isAndroid) {
+      var rotationCompensation = _orientations[_controller?.value.deviceOrientation ?? DeviceOrientation.portraitUp];
+      if (rotationCompensation == null) return null;
+      if (camera.lensDirection == CameraLensDirection.front) {
+        rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
+      } else {
+        rotationCompensation = (sensorOrientation - rotationCompensation + 360) % 360;
+      }
+      rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
+    } else if (Platform.isIOS) {
+      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    }
+    rotation ??= InputImageRotation.rotation270deg;
+
+    InputImageFormat? format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (format == null) {
+      format = Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888;
+    }
+
+    final WriteBuffer allBytes = WriteBuffer();
+    for (final Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+    final bytes = allBytes.done().buffer.asUint8List();
+
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: image.planes[0].bytesPerRow,
+      ),
+    );
+  }
+
+  void _handleLivenessDetection(List<Face> faces) {
+    if (faces.isEmpty) {
+      setState(() {
+        _livenessStatus = 'මුහුණ Oval එක ඇතුළට ගන්න';
+        _livenessSubStatus = 'Center Face Inside Oval';
+        _ovalBorderColor = const Color(0xfff87171); // Reddish
+      });
+      return;
+    }
+
+    if (faces.length > 1) {
+      setState(() {
+        _livenessStatus = 'එක් අයෙකුගේ මුහුණක් පමණක් තබන්න';
+        _livenessSubStatus = 'Only 1 Face Allowed';
+        _ovalBorderColor = const Color(0xfff87171);
+      });
+      return;
+    }
+
+    final face = faces.first;
+    final rotY = face.headEulerAngleY ?? 0.0;
+    final rotX = face.headEulerAngleX ?? 0.0;
+    final leftEye = face.leftEyeOpenProbability ?? 0.9;
+    final rightEye = face.rightEyeOpenProbability ?? 0.9;
+    final smile = face.smilingProbability ?? 0.0;
+
+    // 1. Step 1: Look Straight Check
+    if (!_stepLookStraight) {
+      if (rotY.abs() < 14 && rotX.abs() < 14) {
+        setState(() {
+          _stepLookStraight = true;
+          _livenessStatus = '✓ මුහුණ තහවුරුයි! දැන් ඇස් පියා අරින්න';
+          _livenessSubStatus = 'Step 2: Blink Eyes Naturally';
+          _ovalBorderColor = const Color(0xfffacc15); // Yellow
+        });
+      } else {
+        setState(() {
+          _livenessStatus = 'කැමරාව කෙලින් බලන්න (Look Straight)';
+          _livenessSubStatus = 'Keep head straight';
+          _ovalBorderColor = const Color(0xff38bdf8); // Sky blue
+        });
+      }
+      return;
+    }
+
+    // 2. Step 2: Eye Blink Check (Closed then Open)
+    if (!_stepBlink) {
+      if (leftEye < 0.30 && rightEye < 0.30) {
+        _eyesClosedSeen = true;
+      }
+      if (_eyesClosedSeen && (leftEye > 0.65 && rightEye > 0.65)) {
+        setState(() {
+          _stepBlink = true;
+          _livenessStatus = '✓ ඇස් පියවීම තහවුරුයි! දැන් මදක් සිනාසෙන්න';
+          _livenessSubStatus = 'Step 3: Smile Slightly';
+          _ovalBorderColor = const Color(0xffc084fc); // Purple
+        });
+      } else {
+        setState(() {
+          _livenessStatus = 'ඇස් දෙක පියා අරින්න (Blink eyes)';
+          _livenessSubStatus = _eyesClosedSeen ? 'Now open eyes' : 'Close and open eyes naturally';
+          _ovalBorderColor = const Color(0xfffacc15);
+        });
+      }
+      return;
+    }
+
+    // 3. Step 3: Smile Check
+    if (!_stepSmile) {
+      if (smile > 0.50) {
+        setState(() {
+          _stepSmile = true;
+          _allVerified = true;
+          _livenessStatus = '🎉 Liveness තහවුරුයි! ඡායාරූපය ගන්නවා...';
+          _livenessSubStatus = '✓ Verified! Capturing...';
+          _ovalBorderColor = const Color(0xff22c55e); // Green
+        });
+        // Auto capture after brief delay
+        Future.delayed(const Duration(milliseconds: 350), () {
+          _triggerAutoCapture();
+        });
+      } else {
+        setState(() {
+          _livenessStatus = 'ස්වභාවිකව මදක් සිනාසෙන්න (Smile)';
+          _livenessSubStatus = 'Smile gently at camera';
+          _ovalBorderColor = const Color(0xffc084fc);
+        });
+      }
+      return;
+    }
+  }
+
+  Future<void> _triggerAutoCapture() async {
+    if (_isTakingPicture || !mounted) return;
+    await _stopImageStreamSafe();
+    await _takePicture();
   }
 
   Future<void> _takePicture() async {
@@ -129,6 +364,8 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
 
     try {
       setState(() => _isTakingPicture = true);
+      await _stopImageStreamSafe();
+
       final xFile = await _controller!.takePicture();
       final file = File(xFile.path);
 
@@ -175,29 +412,101 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
 
   Widget _buildLivenessBadge() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xff0f172a).withOpacity(0.85),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xff22c55e).withOpacity(0.8), width: 1.5),
+        color: const Color(0xff0f172a).withOpacity(0.92),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _ovalBorderColor.withOpacity(0.9), width: 1.8),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xff22c55e).withOpacity(0.25),
-            blurRadius: 10,
-            spreadRadius: 1,
+            color: _ovalBorderColor.withOpacity(0.35),
+            blurRadius: 14,
+            spreadRadius: 2,
           ),
         ],
       ),
-      child: const Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.face, color: Color(0xff22c55e), size: 18),
-          SizedBox(width: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _allVerified
+                    ? Icons.check_circle
+                    : (_stepSmile
+                        ? Icons.sentiment_very_satisfied
+                        : (_stepBlink
+                            ? Icons.visibility
+                            : (_stepLookStraight ? Icons.face : Icons.center_focus_strong))),
+                color: _ovalBorderColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  _livenessStatus,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
           Text(
-            '👤 Live Front Camera · Center face inside oval',
+            _livenessSubStatus,
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 12.5,
+              color: _ovalBorderColor.withOpacity(0.9),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Interactive 3-Step Progress Indicators
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildStepIndicator('1. Face Straight', _stepLookStraight),
+              const SizedBox(width: 8),
+              _buildStepIndicator('2. Blink Eyes', _stepBlink),
+              const SizedBox(width: 8),
+              _buildStepIndicator('3. Smile', _stepSmile),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepIndicator(String label, bool isDone) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDone ? const Color(0xff22c55e).withOpacity(0.2) : Colors.white10,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDone ? const Color(0xff22c55e) : Colors.white24,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: isDone ? const Color(0xff22c55e) : Colors.white38,
+            size: 11,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isDone ? const Color(0xff4ade80) : Colors.white54,
+              fontSize: 10,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -223,7 +532,15 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                     IconButton(
                       icon: const Icon(Icons.arrow_back, color: Colors.white),
                       onPressed: () {
-                        setState(() => _capturedFile = null);
+                        setState(() {
+                          _capturedFile = null;
+                          _stepLookStraight = false;
+                          _eyesClosedSeen = false;
+                          _stepBlink = false;
+                          _stepSmile = false;
+                          _allVerified = false;
+                          if (widget.isSelfie) _startImageStream();
+                        });
                       },
                     ),
                     const SizedBox(width: 8),
@@ -270,9 +587,12 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                         onPressed: () {
                           setState(() {
                             _capturedFile = null;
-                            if (widget.isEnrollment || widget.isSelfie) {
-                              _startLivenessSequence();
-                            }
+                            _stepLookStraight = false;
+                            _eyesClosedSeen = false;
+                            _stepBlink = false;
+                            _stepSmile = false;
+                            _allVerified = false;
+                            if (widget.isSelfie) _startImageStream();
                           });
                         },
                       ),
@@ -386,7 +706,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
             ),
           ),
 
-          // Dark Oval Vignette / Guide Frame for Face ID & Selfies
+          // Dynamic Color-Changing Oval Frame for Face ID & Selfies
           if (widget.isEnrollment || widget.isSelfie)
             Center(
               child: ScaleTransition(
@@ -397,12 +717,12 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(160),
                     border: Border.all(
-                      color: const Color(0xff22c55e),
+                      color: _ovalBorderColor,
                       width: 3.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xff22c55e).withOpacity(0.3),
+                        color: _ovalBorderColor.withOpacity(0.35),
                         blurRadius: 25,
                         spreadRadius: 2,
                       ),
@@ -447,7 +767,9 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                             ),
                           ),
                           Text(
-                            widget.subtitle,
+                            widget.isSelfie
+                                ? 'Real-Time AI Face Liveness Detection'
+                                : widget.subtitle,
                             style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11.5),
                           ),
                         ],
@@ -462,7 +784,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
           // Liveness Challenge Badge (Above bottom controls)
           if (widget.isEnrollment || widget.isSelfie)
             Positioned(
-              bottom: 115,
+              bottom: 125,
               left: 20,
               right: 20,
               child: Center(
@@ -485,45 +807,90 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                     end: Alignment.bottomCenter,
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Left spacer to keep shutter centered (Bypassing camera is strictly disabled)
-                    const SizedBox(width: 48),
-
-                    // Main Big Shutter Button
-                    GestureDetector(
-                      onTap: _isTakingPicture ? null : _takePicture,
-                      child: Container(
-                        width: 76,
-                        height: 76,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          color: _isTakingPicture ? Colors.grey : Colors.white24,
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _isTakingPicture
-                                  ? Colors.grey
-                                  : (widget.isSelfie
-                                      ? const Color(0xff8b5cf6)
-                                      : const Color(0xff0284c7)),
-                            ),
-                            child: _isTakingPicture
-                                ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
-                                : const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+                    // Manual Override Hint (Shows after 12s if low light/glasses)
+                    if (widget.isSelfie && _showManualOverride && !_allVerified)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: TextButton.icon(
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.white12,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
+                          icon: const Icon(Icons.touch_app, color: Colors.amber, size: 16),
+                          label: const Text(
+                            'Take Photo Manually (Manual Override)',
+                            style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: _isTakingPicture ? null : _takePicture,
                         ),
                       ),
-                    ),
 
-                    // Flash or Spacer
-                    const SizedBox(width: 48),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // Left spacer
+                        const SizedBox(width: 48),
+
+                        // Shutter Button: For Rear camera (direct capture), or when Selfie is verified/override
+                        GestureDetector(
+                          onTap: _isTakingPicture
+                              ? null
+                              : (!widget.isSelfie || _showManualOverride || _allVerified
+                                  ? _takePicture
+                                  : null),
+                          child: Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: (widget.isSelfie && !_allVerified && !_showManualOverride)
+                                    ? Colors.white24
+                                    : Colors.white,
+                                width: 4,
+                              ),
+                              color: _isTakingPicture ? Colors.grey : Colors.white24,
+                            ),
+                            child: Center(
+                              child: Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _isTakingPicture
+                                      ? Colors.grey
+                                      : (!widget.isSelfie
+                                          ? const Color(0xff0284c7) // Rear camera: Blue
+                                          : (_allVerified
+                                              ? const Color(0xff22c55e) // Verified: Green
+                                              : (_showManualOverride
+                                                  ? const Color(0xff8b5cf6)
+                                                  : Colors.white12))),
+                                ),
+                                child: _isTakingPicture
+                                    ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
+                                    : Icon(
+                                        _allVerified
+                                            ? Icons.check
+                                            : (widget.isSelfie && !_showManualOverride
+                                                ? Icons.auto_awesome
+                                                : Icons.camera_alt),
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Right spacer
+                        const SizedBox(width: 48),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -534,4 +901,3 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
     );
   }
 }
-

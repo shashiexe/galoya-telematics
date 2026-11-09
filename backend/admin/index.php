@@ -666,7 +666,7 @@ layout_start('Monitoring', 'index.php', true);
             </th>
             <th style="text-align:center;cursor:pointer;padding:6px 2px" onclick="sortByMotion()" title="Motion State / Speed (Click to sort)">➔</th>
             <th style="text-align:center;cursor:pointer;padding:6px 2px" onclick="sortByOnlineStatus()" title="Connection Status (Click to sort Online units to top)"><span style="font-size:12px" title="GPS Signal">📡</span></th>
-            <th style="text-align:right;cursor:pointer;padding:6px 4px" onclick="sortBySensors()" title="Battery Status (Click to sort)">🔋</th>
+            <th style="text-align:right;cursor:pointer;padding:6px 4px" onclick="sortBySensors()" title="Battery Status (Click to sort)">&#128267;</th>
             <th style="text-align:center;padding:6px 2px" title="Actions: Solo Focus, Properties, Delete">Actions</th>
           </tr>
         </thead>
@@ -709,7 +709,7 @@ layout_start('Monitoring', 'index.php', true);
 
       <div class="w-hc-speed-sat-row" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px">
         <div style="display:flex;align-items:center;gap:6px;color:#0284c7">
-          <span>⏱️</span>
+          <span>&#9201;&#65039;</span>
           <strong id="hc-speed">0 km/h</strong>
         </div>
         <div style="display:flex;align-items:center;gap:4px;color:#475569;font-weight:700">
@@ -799,15 +799,15 @@ layout_start('Monitoring', 'index.php', true);
         <label><strong>Category / Type: *</strong></label>
         <select id="new-unit-type" class="w-prop-input" style="height:32px">
           <optgroup label="👨‍💼 Personnel & Field Staff">
-            <option value="field_staff">👨‍🌾 Field Staff / Officer</option>
+            <option value="field_staff">👨‍&#127806; Field Staff / Officer</option>
             <option value="supervisor">👷‍♂️ Field Supervisor</option>
             <option value="manager">👔 Division / Estate Manager</option>
             <option value="security">🛡️ Field Security / Watcher</option>
-            <option value="staff">📱 WiaTag Mobile Staff</option>
+            <option value="staff">&#128241; WiaTag Mobile Staff</option>
           </optgroup>
-          <optgroup label="🚜 Agricultural Machinery">
-            <option value="tractor" selected>🚜 Agricultural Tractor</option>
-            <option value="harvester">🌾 Sugarcane Harvester</option>
+          <optgroup label="&#128668; Agricultural Machinery">
+            <option value="tractor" selected>&#128668; Agricultural Tractor</option>
+            <option value="harvester">&#127806; Sugarcane Harvester</option>
             <option value="infielder">🚛 Infield Transporter</option>
             <option value="excavator">🏗️ Backhoe / Excavator</option>
           </optgroup>
@@ -886,15 +886,15 @@ layout_start('Monitoring', 'index.php', true);
           <label>Unit type:</label>
           <select class="w-prop-input" id="prop-unit-type" style="height:30px">
             <optgroup label="👨‍💼 Personnel & Field Staff">
-              <option value="field_staff">👨‍🌾 Field Staff / Officer</option>
+              <option value="field_staff">👨‍&#127806; Field Staff / Officer</option>
               <option value="supervisor">👷‍♂️ Field Supervisor</option>
               <option value="manager">👔 Division / Estate Manager</option>
               <option value="security">🛡️ Field Security / Watcher</option>
-              <option value="staff">📱 WiaTag Mobile App / Staff</option>
+              <option value="staff">&#128241; WiaTag Mobile App / Staff</option>
             </optgroup>
-            <optgroup label="🚜 Agricultural Machinery">
-              <option value="tractor">🚜 Tractor (Estate Agriculture)</option>
-              <option value="harvester">🌾 Harvester (Sugarcane Combine)</option>
+            <optgroup label="&#128668; Agricultural Machinery">
+              <option value="tractor">&#128668; Tractor (Estate Agriculture)</option>
+              <option value="harvester">&#127806; Harvester (Sugarcane Combine)</option>
               <option value="infielder">🚛 Infielder / Cane Loader</option>
               <option value="excavator">🏗️ Excavator / Backhoe</option>
             </optgroup>
@@ -1046,7 +1046,7 @@ layout_start('Monitoring', 'index.php', true);
       <div class="w-prop-pane" id="pane-icon">
         <div class="w-icon-tab-layout">
           <div class="w-icon-preview-box">
-            <div class="w-icon-selected-display" id="prop-icon-big-preview">🚜</div>
+            <div class="w-icon-selected-display" id="prop-icon-big-preview">&#128668;</div>
             <div>
               <input type="hidden" id="prop-icon-key" value="tractor_blue">
               <div style="font-weight:700;font-size:14px;color:#0f172a" id="prop-icon-label">Tractor (Blue Agriculture)</div>
@@ -1444,7 +1444,7 @@ layout_start('Monitoring', 'index.php', true);
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <div style="display:flex;gap:6px">
               <button type="button" class="w-prop-btn primary" onclick="addXyPairRow()">+ Add Line</button>
-              <button type="button" class="w-prop-btn" style="background:#0284c7;color:#fff" onclick="generateSlopesFromXyTable()" title="Calculate Piecewise Slopes a and b from XY calibration pairs">⚡ Generate</button>
+              <button type="button" class="w-prop-btn" style="background:#0284c7;color:#fff" onclick="generateSlopesFromXyTable()" title="Calculate Piecewise Slopes a and b from XY calibration pairs">&#9889; Generate</button>
               <button type="button" class="w-prop-btn" onclick="toggleCsvImportBox()">📋 Paste / Import CSV (X;Y)</button>
               <button type="button" class="w-prop-btn" onclick="exportCalibrationCsv()">💾 Export to CSV</button>
             </div>
@@ -1589,13 +1589,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Icons mapping for unit types
   const typeIcons = {
-    field_staff: '👨‍🌾',
+    field_staff: '👨‍&#127806;',
     supervisor: '👷‍♂️',
     manager: '👔',
     security: '🛡️',
-    staff: '👨‍🌾',
-    tractor: '🚜',
-    harvester: '🌾',
+    staff: '👨‍&#127806;',
+    tractor: '&#128668;',
+    harvester: '&#127806;',
     infielder: '🚛',
     vehicle: '🚙',
     bolero: '🚙',
@@ -1605,7 +1605,7 @@ document.addEventListener('DOMContentLoaded', () => {
     motorcycle: '🏍️',
     bike: '🏍️',
     bicycle: '🚲',
-    phone: '📱',
+    phone: '&#128241;',
     other: '⚙️',
     server: '🖥️',
     server_temp: '🌡️'
@@ -1707,7 +1707,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let props = {};
       try { props = JSON.parse(u.properties_json || '{}'); } catch(e) {}
       const hasTemp = (props.temperature !== undefined);
-      const icon = (u.icon_key === 'server_temp' || hasTemp) ? '🌡️' : (typeIcons[u.unit_type] || '🚜');
+      const icon = (u.icon_key === 'server_temp' || hasTemp) ? '🌡️' : (typeIcons[u.unit_type] || '&#128668;');
       const isOnline = !!u.is_online;
       const isMoving = isOnline && (u.motion_state === 'moving' || parseFloat(u.speed || 0) > 0);
       const isChecked = selectedUnitIds.has(parseInt(u.id));
@@ -1734,7 +1734,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let batColor = (!isOnline || batVal === null) ? '#94a3b8' : (batVal < 20 ? '#dc2626' : (batVal < 50 ? '#f59e0b' : '#16a34a'));
       let batHtml = `<span style="font-weight:700;color:${batColor}">${batVal !== null ? (hasTemp ? batVal + '°C' : batVal + '%') : '—'}</span>`;
       if (hasTemp && props.pwr_ext) {
-        batHtml = `<span style="font-weight:700;color:#0369a1;font-size:10px" title="Main UPS Power: ${props.pwr_ext}V">⚡ ${props.pwr_ext}V</span>`;
+        batHtml = `<span style="font-weight:700;color:#0369a1;font-size:10px" title="Main UPS Power: ${props.pwr_ext}V">&#9889; ${props.pwr_ext}V</span>`;
       } else if (props.fuel_liters !== undefined) {
         batHtml = `<span style="font-weight:700;color:#0369a1;font-size:10.5px" title="Diesel Fuel: ${props.fuel_liters} L">⛽ ${props.fuel_liters}L</span>`;
       }
@@ -1772,8 +1772,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Group by Category
       const groups = {
-        '🌾 Sugarcane Harvesters': filtered.filter(u => u.unit_type === 'harvester' || (u.name && u.name.includes('Harvester'))),
-        '🚜 Infielders & Tractors': filtered.filter(u => u.unit_type === 'infielder' || u.unit_type === 'tractor' || (u.name && u.name.includes('Infielder'))),
+        '&#127806; Sugarcane Harvesters': filtered.filter(u => u.unit_type === 'harvester' || (u.name && u.name.includes('Harvester'))),
+        '&#128668; Infielders & Tractors': filtered.filter(u => u.unit_type === 'infielder' || u.unit_type === 'tractor' || (u.name && u.name.includes('Infielder'))),
         '🚚 Commercial & Bowsers': filtered.filter(u => u.unit_type === 'truck' || (u.name && u.name.includes('Bowser')) || (u.code && u.code.startsWith('49-'))),
         '🖥️ Facilities & Server Room': filtered.filter(u => u.unit_type === 'other' || u.unit_type === 'server' || (u.name && u.name.toLowerCase().includes('server'))),
         '🚙 Utility, Boleros & Staff': filtered.filter(u => u.unit_type === 'vehicle' || u.unit_type === 'staff' || (u.name && (u.name.includes('Bolero') || u.name.includes('Cab') || u.name.includes('Bicycle'))))
@@ -2107,14 +2107,14 @@ document.addEventListener('DOMContentLoaded', () => {
           <div style="background:${tVal > 28 ? '#fef2f2;border:1px solid #fecaca' : '#f0fdf4;border:1px solid #bbf7d0'};border-radius:6px;padding:6px 10px;margin:8px 0;text-align:center">
             <div style="font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px">SERVER ROOM TEMPERATURE</div>
             <div style="font-size:18px;font-weight:800;color:${tVal > 28 ? '#dc2626' : '#16a34a'}">🌡️ ${tVal.toFixed(1)} °C</div>
-            ${props.pwr_ext ? `<div style="font-size:10.5px;color:#0284c7;margin-top:2px">⚡ UPS: <strong>${props.pwr_ext}V DC</strong> · Internal: <strong>${props.pwr_int || 4.1}V</strong></div>` : ''}
+            ${props.pwr_ext ? `<div style="font-size:10.5px;color:#0284c7;margin-top:2px">&#9889; UPS: <strong>${props.pwr_ext}V DC</strong> · Internal: <strong>${props.pwr_int || 4.1}V</strong></div>` : ''}
           </div>
         `;
       }
 
       const popupContent = `
         <div style="min-width:180px;font-size:12px;line-height:1.4">
-          <strong style="font-size:13px;color:${isSos ? '#dc2626' : '#1565c0'}">${isSos ? '🚨 SOS EMERGENCY: ' : ''}${typeIcons[u.unit_type] || '🚜'} ${u.name}</strong>
+          <strong style="font-size:13px;color:${isSos ? '#dc2626' : '#1565c0'}">${isSos ? '🚨 SOS EMERGENCY: ' : ''}${typeIcons[u.unit_type] || '&#128668;'} ${u.name}</strong>
           ${u.code ? `<span style="color:#64748b;font-size:11px">(${u.code})</span>` : ''}
           ${tempBanner}
           <hr style="margin:6px 0;border:0;border-top:1px solid #e2e8f0">
@@ -2250,7 +2250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hc-name').textContent = u.name + (u.code ? ` (${u.code})` : '');
     const isOnline = !!u.is_online;
     const agoFormatted = formatTimeAgoCategorized(u.secs_ago, u.mins_ago, u.last_seen, isOnline);
-    const timeText = isOnline ? `🟢 Online (${agoFormatted})` : `⚪ Offline (${agoFormatted})`;
+    const timeText = isOnline ? `&#128994; Online (${agoFormatted})` : `⚪ Offline (${agoFormatted})`;
     document.getElementById('hc-time-ago').innerHTML = timeText;
     document.getElementById('hc-datetime').textContent = u.last_seen || 'No connection yet';
 
@@ -2284,7 +2284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (flsEl) {
       if (isStaffCategory) {
         const battColor = batt <= 20 ? '#ef4444' : (batt <= 40 ? '#f59e0b' : '#16a34a');
-        const battIcon = batt <= 20 ? '🪫 ' : '🔋 ';
+        const battIcon = batt <= 20 ? '🪫 ' : '&#128267; ';
         flsEl.innerHTML = `<span style="color:${battColor};font-weight:700">${battIcon}${batt}%</span>`;
       } else {
         flsEl.textContent = (u.fls_level !== undefined ? u.fls_level + ' L' : '---');
@@ -2349,7 +2349,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.addressCache[key]) {
           addrEl.textContent = window.addressCache[key];
         } else {
-          addrEl.textContent = `📍 ${uLat.toFixed(5)}, ${uLng.toFixed(5)}`;
+          addrEl.textContent = `&#128205; ${uLat.toFixed(5)}, ${uLng.toFixed(5)}`;
           window.resolveAddress(uLat, uLng, function(realAddr) {
             if (currentHoverUnit && parseInt(currentHoverUnit.id) === parseInt(u.id)) {
               addrEl.textContent = realAddr;
@@ -2840,12 +2840,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ==================== WIALON UNIT PROPERTIES SCRIPT LOGIC ====================
   const ICON_LIBRARY = [
-    { key: 'tractor_blue', emoji: '🚜', name: 'Tractor (Blue Agriculture)' },
-    { key: 'tractor_green', emoji: '🚜', name: 'Tractor (Green Estate)' },
-    { key: 'tractor_red', emoji: '🚜', name: 'Tractor (Red Hauler)' },
-    { key: 'harvester_green', emoji: '🌾', name: 'Cane Harvester (Combine)' },
-    { key: 'harvester_yellow', emoji: '🌾', name: 'Sugar Harvester (Heavy)' },
-    { key: 'infielder_orange', emoji: '🚜', name: 'Infielder / Cane Loader' },
+    { key: 'tractor_blue', emoji: '&#128668;', name: 'Tractor (Blue Agriculture)' },
+    { key: 'tractor_green', emoji: '&#128668;', name: 'Tractor (Green Estate)' },
+    { key: 'tractor_red', emoji: '&#128668;', name: 'Tractor (Red Hauler)' },
+    { key: 'harvester_green', emoji: '&#127806;', name: 'Cane Harvester (Combine)' },
+    { key: 'harvester_yellow', emoji: '&#127806;', name: 'Sugar Harvester (Heavy)' },
+    { key: 'infielder_orange', emoji: '&#128668;', name: 'Infielder / Cane Loader' },
     { key: 'truck_tipper', emoji: '🚚', name: 'Tipper Truck (Cane Hauler)' },
     { key: 'truck_heavy', emoji: '🚛', name: '10-Wheeler Sugar Hauler' },
     { key: 'truck_tanker', emoji: '🛢️', name: 'Fuel Bowser / Tanker' },
@@ -2853,7 +2853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { key: 'vehicle_pickup', emoji: '🛻', name: 'Field Pickup Double Cab' },
     { key: 'vehicle_van', emoji: '🚐', name: 'Staff Crew Van' },
     { key: 'excavator_yellow', emoji: '🏗️', name: 'Excavator (XE135B / Tracked)' },
-    { key: 'backhoe_loader', emoji: '🚜', name: 'JCB Backhoe Loader' },
+    { key: 'backhoe_loader', emoji: '&#128668;', name: 'JCB Backhoe Loader' },
     { key: 'motorbike_field', emoji: '🏍️', name: 'Field Scout Motorbike' },
     { key: 'staff_person', emoji: '👤', name: 'Field Officer / Scout' }
   ];

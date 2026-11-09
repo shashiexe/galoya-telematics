@@ -1301,6 +1301,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                               'Irrigation Check',
                               'Weed Control',
                               'General Inspection',
+                              '🌾 Paddy Plot Visit',
+                              '🌾 Paddy Land Observation',
                               'Other'
                             ].map((item) {
                               final isSel = act == item;

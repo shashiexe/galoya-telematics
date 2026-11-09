@@ -625,10 +625,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.4.2');
-    set_setting('latest_app_build', '28');
-    set_setting('app_update_changelog', "• Smart 5km Distance & Plot Gatekeeper (No repeated selfies in same plot)\n• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Gemini Vision AI Face Mismatch & Proxy Audit in Monitoring Room\n• Reset Master Face ID & Rectify Status in Admin Panel");
-    $results[] = ["📱 App Update Broadcast: Configured v1.4.2 (Build 28)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.3');
+    set_setting('latest_app_build', '29');
+    set_setting('app_update_changelog', "• Front Camera locked for Face ID Selfie (Camera flipping disabled)\n• Rear Camera locked for Field Photos\n• Added 'Paddy Plot Visit' & 'Paddy Land Observation' activities\n• Real-time Live Alignment Badge");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.3 (Build 29)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -894,10 +894,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.4.2');
-    set_setting('latest_app_build', '28');
-    set_setting('app_update_changelog', "• Smart 5km Distance & Plot Gatekeeper (No repeated selfies in same plot)\n• Real-time In-App Front Viewfinder for Face ID & Selfies (Eye-Blink & Smile Detection)\n• Gemini Vision AI Face Mismatch & Proxy Audit in Monitoring Room\n• Reset Master Face ID & Rectify Status in Admin Panel");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.2 build 28", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.3');
+    set_setting('latest_app_build', '29');
+    set_setting('app_update_changelog', "• Front Camera locked for Face ID Selfie (Camera flipping disabled)\n• Rear Camera locked for Field Photos\n• Added 'Paddy Plot Visit' & 'Paddy Land Observation' activities\n• Real-time Live Alignment Badge");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.3 build 29", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

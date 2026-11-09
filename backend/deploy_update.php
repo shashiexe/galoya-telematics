@@ -625,10 +625,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.4.4');
-    set_setting('latest_app_build', '30');
-    set_setting('app_update_changelog', "• Real-Time AI Face Liveness Detection (Automatic Eye Blink, Smile & Straight Face check)\n• Automatic photo capture upon liveness confirmation\n• Compact Task/Activity dialog layout (Fits screen without scrolling)\n• Hard-locked Front Camera (Selfie) & Rear Camera (Field)");
-    $results[] = ["📱 App Update Broadcast: Configured v1.4.4 (Build 30)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.5');
+    set_setting('latest_app_build', '31');
+    set_setting('app_update_changelog', "• Smart Field Visit Selfie Verification (Day's first photo, every 4 field visits & 3-hour check)\n• Anti-evasion rear camera lockout until selfie verified\n• Removed Skip button in Face ID / Selfie\n• Long-press camera icon for manual selfie option");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.5 (Build 31)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -894,10 +894,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.4.4');
-    set_setting('latest_app_build', '30');
-    set_setting('app_update_changelog', "• Real-Time AI Face Liveness Detection (Automatic Eye Blink, Smile & Straight Face check)\n• Automatic photo capture upon liveness confirmation\n• Compact Task/Activity dialog layout (Fits screen without scrolling)\n• Hard-locked Front Camera (Selfie) & Rear Camera (Field)");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.4 build 30", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.5');
+    set_setting('latest_app_build', '31');
+    set_setting('app_update_changelog', "• Smart Field Visit Selfie Verification (Day's first photo, every 4 field visits & 3-hour check)\n• Anti-evasion rear camera lockout until selfie verified\n• Removed Skip button in Face ID / Selfie\n• Long-press camera icon for manual selfie option");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.5 build 31", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

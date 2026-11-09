@@ -1515,7 +1515,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           await sp.setDouble('last_selfie_lat', lat);
           await sp.setDouble('last_selfie_lng', lng);
           await sp.setString('last_selfie_plot', selectedGeofence.isNotEmpty ? selectedGeofence : autoGeofence);
-          await sp.setInt('last_selfie_time', DateTime.now().millisecondsSinceEpoch);
+          final now = DateTime.now();
+          await sp.setInt('last_selfie_time', now.millisecondsSinceEpoch);
+          await sp.setString('last_selfie_day', now.toIso8601String().substring(0, 10));
         } else {
           int v = (sp.getInt('visits_since_selfie') ?? 0) + 1;
           await sp.setInt('visits_since_selfie', v);
@@ -1613,28 +1615,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   Future<void> _handleCameraAction() async {
     final sp = await SharedPreferences.getInstance();
-    final bool mustVerify = sp.getBool('pending_selfie_verification') ?? false;
+    final bool pendingSelfie = sp.getBool('pending_selfie_verification') ?? false;
     final int visits = sp.getInt('visits_since_selfie') ?? 0;
 
     final double? lastLat = sp.getDouble('last_selfie_lat');
     final double? lastLng = sp.getDouble('last_selfie_lng');
+    final int? lastTime = sp.getInt('last_selfie_time');
+    final String? lastDay = sp.getString('last_selfie_day');
 
     if (!mounted) return;
 
-    // 1. Mandatory Front Selfie if previously cancelled or evaded
-    if (mustVerify) {
+    // 1. Mandatory Front Selfie if previously cancelled or evaded (Anti-Evasion Lockout)
+    if (pendingSelfie) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('⚠️ සත්‍යාපන Selfie ඡායාරූපය ලබා දීම අනිවාර්ය වේ (Front Camera Active).'),
           backgroundColor: Color(0xff8b5cf6),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 4),
         ));
       }
       _snapPhoto(isSelfie: true, isMandatory: true);
       return;
     }
 
-    // Current position
+    final now = DateTime.now();
+    final currentDay = now.toIso8601String().substring(0, 10);
     final curLat = _currentPosition?.latitude ?? 7.2050;
     final curLng = _currentPosition?.longitude ?? 81.6580;
 
@@ -1644,37 +1649,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       distanceMeters = Geolocator.distanceBetween(lastLat, lastLng, curLat, curLng);
     }
 
-    // 3. Distance & Plot Gatekeeper:
-    // If the officer has already verified at this location and is within 3,000 meters (3km),
-    // they get 100% rear camera field photos with ZERO selfie interruptions!
-    if (lastLat != null && distanceMeters < 3000.0) {
-      // Under 3km from last verified selfie location: 100% normal crop photo!
-      _snapPhoto(isSelfie: false, isMandatory: false);
-      return;
-    }
-
-    // 4. If traveled >= 3km - 5km OR never verified before on this device:
-    // Surprise verification triggers!
+    // 3. Smart Verification Rules Trigger
     bool shouldTriggerSelfie = false;
-    if (lastLat == null) {
-      // First photo: selfie verification to register presence
+    String triggerReason = '';
+
+    // Check A: Day's First Photo (or never verified on this device / new calendar day)
+    if (lastTime == null || lastDay == null || lastDay != currentDay) {
       shouldTriggerSelfie = true;
-    } else if (distanceMeters >= 5000.0) {
-      // Traveled >= 5 km: mandatory surprise check
+      triggerReason = '🛡️ දවසේ ආරම්භක සත්‍යාපනය: කරුණාකර Front Selfie ඡායාරූපයක් ලබාගන්න.';
+    }
+    // Check B: Time Interval - 3 hours elapsed since last selfie
+    else if ((now.millisecondsSinceEpoch - lastTime) >= (3 * 3600 * 1000)) {
       shouldTriggerSelfie = true;
-    } else if (distanceMeters >= 3000.0 && visits >= 2) {
-      // Traveled >= 3 km and taken 2+ photos: surprise check
+      triggerReason = '🛡️ කාලීන සත්‍යාපනය (පැය 3 කට පසු): Front Selfie එකක් ලබාගන්න.';
+    }
+    // Check C: Field Photos limit - 4 field photos taken since last selfie
+    else if (visits >= 4) {
       shouldTriggerSelfie = true;
+      triggerReason = '🛡️ ක්ෂේත්‍ර චාරිකා සත්‍යාපනය (චාරිකා 4 කට පසු): Front Selfie එකක් ලබාගන්න.';
+    }
+    // Check D: Moved to distant zone (> 3km away) and took at least 2 visits
+    else if (distanceMeters >= 3000.0 && visits >= 2) {
+      final distKm = (distanceMeters / 1000).toStringAsFixed(1);
+      shouldTriggerSelfie = true;
+      triggerReason = '🛡️ නව කලාප සත්‍යාපනය (${distKm}km දුරින්): Front Selfie එකක් ලබාගන්න.';
     }
 
     if (shouldTriggerSelfie) {
       if (mounted) {
-        final distKm = (distanceMeters / 1000).toStringAsFixed(1);
-        final msg = lastLat == null 
-            ? '🛡️ ආරම්භක සත්‍යාපනය: කරුණාකර Front Selfie ඡායාරූපයක් ලබාගන්න.'
-            : '🛡️ අහඹු නිලධාරී සත්‍යාපනය (${distKm}km දුරින් නව කලාපය): Front Selfie එකක් ලබාගන්න.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg),
+          content: Text(triggerReason),
           backgroundColor: const Color(0xff8b5cf6),
           duration: const Duration(seconds: 4),
         ));
@@ -1685,6 +1689,156 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
     // Default: Normal Field / Crop Photo (Rear Camera)
     _snapPhoto(isSelfie: false, isMandatory: false);
+  }
+
+  Future<void> _showManualCameraModeSheet() async {
+    final sp = await SharedPreferences.getInstance();
+    final bool pendingSelfie = sp.getBool('pending_selfie_verification') ?? false;
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xff0f172a),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff0284c7).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.camera, color: Color(0xff38bdf8), size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Camera & Verification Mode',
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // 1. Field Photo Option
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    if (pendingSelfie) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('⚠️ සත්‍යාපන Selfie එක අනිවාර්යයි! කරුණාකර පළමුව Selfie එක සම්පූර්ණ කරන්න.'),
+                        backgroundColor: Colors.redAccent,
+                        duration: Duration(seconds: 4),
+                      ));
+                      _snapPhoto(isSelfie: true, isMandatory: true);
+                    } else {
+                      _snapPhoto(isSelfie: false, isMandatory: false);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: pendingSelfie ? const Color(0xff1e293b).withOpacity(0.5) : const Color(0xff1e293b),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: pendingSelfie ? Colors.red.withOpacity(0.4) : const Color(0xff334155)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          pendingSelfie ? Icons.lock : Icons.camera_alt,
+                          color: pendingSelfie ? Colors.redAccent : const Color(0xff38bdf8),
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '🌾 ක්ෂේත්‍ර ඡායාරූපය (Field / Crop Photo)',
+                                style: TextStyle(
+                                  color: pendingSelfie ? const Color(0xff94a3b8) : Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                pendingSelfie
+                                    ? '🔒 අක්‍රියයි - පළමුව Selfie සත්‍යාපනය සම්පූර්ණ කරන්න'
+                                    : 'පසුපස කැමරාව (Rear Camera) මඟින් වගා හෝ කාර්ය ඡායාරූප',
+                                style: TextStyle(
+                                  color: pendingSelfie ? Colors.redAccent : const Color(0xff94a3b8),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // 2. Officer Verification Selfie Option
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _snapPhoto(isSelfie: true, isMandatory: true);
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff1e293b),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xffa855f7)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.face_retouching_natural, color: Color(0xffc084fc), size: 24),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '🤳 නිලධාරී සත්‍යාපන Selfie (Officer Verification)',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'ඉදිරිපස කැමරාව (Front Camera) සහ AI Liveness Detection',
+                                style: TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   double? _safeDouble(dynamic val) {
@@ -2861,6 +3015,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     color: const Color(0xff0284c7), // Cyan Camera
                     icon: Icons.camera_alt,
                     onTap: _handleCameraAction,
+                    onLongPress: _showManualCameraModeSheet,
                   ),
                   _buildWiaActionBtn(
                     color: const Color(0xff10b981), // Emerald Battery
@@ -3199,9 +3354,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
   }
 
-  Widget _buildWiaActionBtn({required Color color, required IconData icon, required VoidCallback onTap}) {
+  Widget _buildWiaActionBtn({
+    required Color color,
+    required IconData icon,
+    required VoidCallback onTap,
+    VoidCallback? onLongPress,
+  }) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         width: 46,
         height: 46,

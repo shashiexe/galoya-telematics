@@ -183,17 +183,6 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen>
           'Official Face ID Enrollment',
           style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          if (!widget.isMandatory)
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const HomeScreen()),
-                );
-              },
-              child: const Text('Skip', style: TextStyle(color: Color(0xff94a3b8), fontSize: 13)),
-            ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

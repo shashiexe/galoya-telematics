@@ -136,7 +136,7 @@ $sql = "SELECT u.*, dept.name as dept_name, sec.name as sec_name
         FROM users u
         LEFT JOIN departments dept ON dept.id = u.department_id
         LEFT JOIN sections sec ON sec.id = u.section_id
-        WHERE (u.role != 'staff' OR u.web_access = 1)";
+        WHERE u.role NOT IN ('unit', 'device', 'facility') AND (u.role IN ('admin', 'super_user', 'supervisor', 'manager', 'custom') OR u.web_access = 1)";
 $params = [];
 
 if ($search !== '') {

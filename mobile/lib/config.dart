@@ -12,10 +12,10 @@ const int kDefaultIntervalSec = 15;
 /// App Branding & OTA Updates
 const String kAppName = 'GalOya Track360';
 const String kAppTagline = 'People • Field • Fleet';
-const String kAppVersion = '1.4.2';
-const int kAppBuildNumber = 28;
+const String kAppVersion = '1.4.3';
+const int kAppBuildNumber = 29;
 const String kCreatedBy = 'Created by GOPL IT';
 const String kOrganization = 'Gal-Oya Plantations (Pvt) Limited';
-const String kApkDownloadUrl = 'https://github.com/shashiexe/galoya-telematics/releases/download/v1.3.8-b24/Galoya-Track360-v1.3.8-b24.apk';
+const String kApkDownloadUrl = 'https://track.galoya.lk/Galoya-Telematics.apk';
 
 

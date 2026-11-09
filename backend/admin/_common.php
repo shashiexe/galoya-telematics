@@ -385,28 +385,39 @@ function layout_start(string $title, string $active, bool $map = false): void {
 function layout_end(): void {
     global $CONFIG;
     $off_min = (int)($CONFIG['offline_after_min'] ?? 10);
-    $online_units = 0;
-    $total_units = 0;
+    $fleet_total = 0;
+    $fleet_online = 0;
+    $staff_total = 0;
+    $staff_online = 0;
     $unread_notifs = 0;
     $secScopeU = user_section_scope_sql('u');
     $secScopeUsers = user_section_scope_sql('users');
     try {
-        $total_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND $secScopeUsers")->fetchColumn();
-        $online_units = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE) AND $secScopeUsers", [$off_min])->fetchColumn();
+        $fleet_total = (int)q("SELECT COUNT(*) FROM users WHERE role='unit' AND active=1 AND $secScopeUsers")->fetchColumn();
+        $fleet_online = (int)q("SELECT COUNT(*) FROM users WHERE role='unit' AND active=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE) AND $secScopeUsers", [$off_min])->fetchColumn();
+        $staff_total = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND $secScopeUsers")->fetchColumn();
+        $staff_online = (int)q("SELECT COUNT(*) FROM users WHERE role='staff' AND active=1 AND on_duty=1 AND last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE) AND $secScopeUsers", [$off_min])->fetchColumn();
         $unread_notifs = (int)q("SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.unit_id WHERE n.is_read=0 AND $secScopeU")->fetchColumn();
     } catch (Throwable $e) {}
+    $total_online = $fleet_online + $staff_online;
     ?>
   </main>
 
   <!-- Wialon Bottom Status Bar -->
   <footer class="w-statusbar" style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:32px;background:#1e293b;color:#94a3b8;font-size:11.5px;border-top:1px solid #334155;z-index:900">
     <div class="w-statusbar-left" style="display:flex;align-items:center;gap:14px">
-      <span style="display:inline-flex;align-items:center;gap:5px;color:<?= $online_units > 0 ? '#22c55e' : '#94a3b8' ?>;font-weight:600">
-        <span id="w-online-dot" style="width:7px;height:7px;border-radius:50%;background:<?= $online_units > 0 ? '#22c55e' : '#94a3b8' ?>;box-shadow:<?= $online_units > 0 ? '0 0 6px #22c55e' : 'none' ?>;display:inline-block"></span>
-        <span id="w-online-units-count"><?= $online_units ?> <?= $online_units === 1 ? 'Unit' : 'Units' ?> Online</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;color:<?= $total_online > 0 ? '#22c55e' : '#94a3b8' ?>;font-weight:600">
+        <span id="w-online-dot" style="width:7px;height:7px;border-radius:50%;background:<?= $total_online > 0 ? '#22c55e' : '#94a3b8' ?>;box-shadow:<?= $total_online > 0 ? '0 0 6px #22c55e' : 'none' ?>;display:inline-block"></span>
+        <span id="w-online-units-count"><?= $total_online ?> <?= $total_online === 1 ? 'Unit' : 'Units' ?> Online</span>
       </span>
       <span>•</span>
-      <span style="color:#64748b"><?= $total_units ?> Fleet Total</span>
+      <a href="units.php" style="color:#cbd5e1;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+        <span>🚜</span> <span><?= $fleet_total ?> Fleet</span>
+      </a>
+      <span>•</span>
+      <a href="staff.php" style="color:#cbd5e1;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+        <span>📱</span> <span><?= $staff_total ?> App Users</span>
+      </a>
       <span>•</span>
       <a href="notifications.php" style="color:<?= $unread_notifs > 0 ? '#f87171' : '#94a3b8' ?>;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
         <span>🔔</span> <span><?= $unread_notifs ?> Alarms</span>

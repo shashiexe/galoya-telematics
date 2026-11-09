@@ -31,6 +31,11 @@
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
 
+        <!-- Auto-download ML Kit Face Detection model on device install -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="face" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

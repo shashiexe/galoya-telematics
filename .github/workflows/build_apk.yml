@@ -29,6 +29,43 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Configure Fast Maven Mirror
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat << 'EOF' > ~/.gradle/init.d/mirror.init.gradle
+          allprojects {
+              buildscript {
+                  repositories {
+                      maven { url 'https://repo1.maven.org/maven2/' }
+                      google()
+                      mavenCentral()
+                  }
+              }
+              repositories {
+                  maven { url 'https://repo1.maven.org/maven2/' }
+                  google()
+                  mavenCentral()
+              }
+          }
+          settingsEvaluated { settings ->
+              settings.pluginManagement {
+                  repositories {
+                      maven { url 'https://repo1.maven.org/maven2/' }
+                      google()
+                      mavenCentral()
+                      gradlePluginPortal()
+                  }
+              }
+              settings.dependencyResolutionManagement {
+                  repositories {
+                      maven { url 'https://repo1.maven.org/maven2/' }
+                      google()
+                      mavenCentral()
+                  }
+              }
+          }
+          EOF
+
       - name: Generate Clean Android Scaffold & Dependencies
         working-directory: mobile
         run: |

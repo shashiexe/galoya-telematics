@@ -121,7 +121,7 @@ $sql = "SELECT u.*,
         LEFT JOIN departments dept ON dept.id = u.department_id
         LEFT JOIN sections sec ON sec.id = u.section_id
         LEFT JOIN drivers d ON d.assigned_unit_id = u.id
-        WHERE u.unit_type NOT IN ('staff', 'field_staff') AND u.unit_type IS NOT NULL AND u.unit_type != '' AND " . user_section_scope_sql('u');
+        WHERE (u.role = 'unit' OR (u.unit_type NOT IN ('staff', 'field_staff') AND u.unit_type IS NOT NULL AND u.unit_type != '')) AND u.role NOT IN ('staff', 'admin', 'super_user', 'supervisor', 'manager', 'custom') AND " . user_section_scope_sql('u');
 $params = [];
 
 if ($search !== '') {

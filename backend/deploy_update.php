@@ -625,10 +625,10 @@ try {
 }
 
 try {
-    set_setting('latest_app_version', '1.4.3');
-    set_setting('latest_app_build', '29');
-    set_setting('app_update_changelog', "• Front Camera locked for Face ID Selfie (Camera flipping disabled)\n• Rear Camera locked for Field Photos\n• Added 'Paddy Plot Visit' & 'Paddy Land Observation' activities\n• Real-time Live Alignment Badge");
-    $results[] = ["📱 App Update Broadcast: Configured v1.4.3 (Build 29)", "color:#38bdf8;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.4');
+    set_setting('latest_app_build', '30');
+    set_setting('app_update_changelog', "• Real-Time AI Face Liveness Detection (Automatic Eye Blink, Smile & Straight Face check)\n• Automatic photo capture upon liveness confirmation\n• Compact Task/Activity dialog layout (Fits screen without scrolling)\n• Hard-locked Front Camera (Selfie) & Rear Camera (Field)");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.4 (Build 30)", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -894,10 +894,10 @@ try {
         } catch (Throwable $je) {}
     }
 
-    set_setting('latest_app_version', '1.4.3');
-    set_setting('latest_app_build', '29');
-    set_setting('app_update_changelog', "• Front Camera locked for Face ID Selfie (Camera flipping disabled)\n• Rear Camera locked for Field Photos\n• Added 'Paddy Plot Visit' & 'Paddy Land Observation' activities\n• Real-time Live Alignment Badge");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.3 build 29", "color:#10b981;font-weight:bold"];
+    set_setting('latest_app_version', '1.4.4');
+    set_setting('latest_app_build', '30');
+    set_setting('app_update_changelog', "• Real-Time AI Face Liveness Detection (Automatic Eye Blink, Smile & Straight Face check)\n• Automatic photo capture upon liveness confirmation\n• Compact Task/Activity dialog layout (Fits screen without scrolling)\n• Hard-locked Front Camera (Selfie) & Rear Camera (Field)");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.4 build 30", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

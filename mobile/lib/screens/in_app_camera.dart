@@ -68,6 +68,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
     super.dispose();
   }
 
+  // Hard-lock lens direction: strictly front lens for selfie, strictly rear lens for field photo
   Future<void> _startCamera() async {
     try {
       final perm = await Permission.camera.request();
@@ -84,10 +85,14 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
         throw Exception('No cameras found on device');
       }
 
-      // Filter for requested lens direction (front or rear)
+      // Hard-lock: Selfie must use front lens; Field photos must use rear lens.
+      final targetLens = widget.isSelfie ? CameraLensDirection.front : CameraLensDirection.back;
       CameraDescription selectedCam = _availableCameras.firstWhere(
-        (c) => c.lensDirection == widget.preferredLens,
-        orElse: () => _availableCameras.first,
+        (c) => c.lensDirection == targetLens,
+        orElse: () => _availableCameras.firstWhere(
+          (c) => widget.isSelfie ? c.lensDirection == CameraLensDirection.front : c.lensDirection == CameraLensDirection.back,
+          orElse: () => _availableCameras.first,
+        ),
       );
 
       _controller = CameraController(
@@ -104,10 +109,6 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
         _isInit = true;
         _initError = false;
       });
-
-      if (widget.isEnrollment || widget.isSelfie) {
-        _startLivenessSequence();
-      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -118,23 +119,9 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
   }
 
   void _startLivenessSequence() {
+    // Live Front Camera alignment
     _challengeTimer?.cancel();
-    setState(() => _challengeStep = 0); // Align
-
-    _challengeTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (!mounted) return;
-      setState(() => _challengeStep = 1); // Blink
-
-      _challengeTimer = Timer(const Duration(milliseconds: 2200), () {
-        if (!mounted) return;
-        setState(() => _challengeStep = 2); // Smile
-
-        _challengeTimer = Timer(const Duration(milliseconds: 2200), () {
-          if (!mounted) return;
-          setState(() => _challengeStep = 3); // Ready
-        });
-      });
-    });
+    setState(() => _challengeStep = 3);
   }
 
   Future<void> _takePicture() async {
@@ -187,56 +174,27 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
   }
 
   Widget _buildLivenessBadge() {
-    String text;
-    IconData icon;
-    Color color;
-
-    switch (_challengeStep) {
-      case 0:
-        text = 'Center face inside oval';
-        icon = Icons.face;
-        color = const Color(0xff38bdf8);
-        break;
-      case 1:
-        text = '👁️ Blink your eyes (ඇස් පිල්ලම් ගසන්න)';
-        icon = Icons.remove_red_eye;
-        color = const Color(0xfff59e0b);
-        break;
-      case 2:
-        text = '😊 Smile naturally (ස්වභාවිකව සිනාසෙන්න)';
-        icon = Icons.sentiment_very_satisfied;
-        color = const Color(0xff10b981);
-        break;
-      case 3:
-      default:
-        text = '✓ Liveness Verified · Ready to Capture';
-        icon = Icons.verified;
-        color = const Color(0xff22c55e);
-        break;
-    }
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xff0f172a).withOpacity(0.85),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.8), width: 1.5),
+        border: Border.all(color: const Color(0xff22c55e).withOpacity(0.8), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.25),
+            color: const Color(0xff22c55e).withOpacity(0.25),
             blurRadius: 10,
             spreadRadius: 1,
           ),
         ],
       ),
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
+          Icon(Icons.face, color: Color(0xff22c55e), size: 18),
+          SizedBox(width: 8),
           Text(
-            text,
+            '👤 Live Front Camera · Center face inside oval',
             style: TextStyle(
               color: Colors.white,
               fontSize: 12.5,
@@ -439,17 +397,12 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(160),
                     border: Border.all(
-                      color: _challengeStep == 3
-                          ? const Color(0xff22c55e)
-                          : const Color(0xff38bdf8),
+                      color: const Color(0xff22c55e),
                       width: 3.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (_challengeStep == 3
-                                ? const Color(0xff22c55e)
-                                : const Color(0xff38bdf8))
-                            .withOpacity(0.3),
+                        color: const Color(0xff22c55e).withOpacity(0.3),
                         blurRadius: 25,
                         spreadRadius: 2,
                       ),
@@ -535,12 +488,8 @@ class _InAppCameraScreenState extends State<InAppCameraScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // System camera fallback button
-                    IconButton(
-                      icon: const Icon(Icons.photo_camera_back, color: Colors.white70, size: 28),
-                      tooltip: 'System Camera',
-                      onPressed: _fallbackPicker,
-                    ),
+                    // Left spacer to keep shutter centered (Bypassing camera is strictly disabled)
+                    const SizedBox(width: 48),
 
                     // Main Big Shutter Button
                     GestureDetector(

@@ -75,10 +75,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.4.3');
-        $latestBuild = (int)setting('latest_app_build', 29);
+        $latestVersion = setting('latest_app_version', '1.4.4');
+        $latestBuild = (int)setting('latest_app_build', 30);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
-        $changelog = setting('app_update_changelog', "• Front Camera locked for Face ID Selfie (Camera flipping disabled)\n• Rear Camera locked for Field Photos\n• Added 'Paddy Plot Visit' & 'Paddy Land Observation' activities\n• Real-time Live Alignment Badge");
+        $changelog = setting('app_update_changelog', "• Real-Time AI Face Liveness Detection (Automatic Eye Blink, Smile & Straight Face check)\n• Automatic photo capture upon liveness confirmation\n• Compact Task/Activity dialog layout (Fits screen without scrolling)\n• Hard-locked Front Camera (Selfie) & Rear Camera (Field)");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));

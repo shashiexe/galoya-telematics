@@ -145,7 +145,7 @@ $edit = isset($_GET['edit']) ? q('SELECT * FROM users WHERE id=?', [(int)$_GET['
 $filterDept = (int)($_GET['dept'] ?? 0);
 $filterSec = (int)($_GET['sec'] ?? 0);
 $where = [user_section_scope_sql('u')];
-$where[] = "(u.unit_type = 'staff' OR u.unit_type IS NULL OR u.unit_type = '') AND (u.role = 'staff' OR u.web_access = 0 OR u.web_access IS NULL) AND u.role NOT IN ('admin', 'super_user', 'facility', 'unit', 'device')";
+$where[] = "(u.role = 'staff' OR u.unit_type IN ('staff', 'field_staff') OR u.unit_type IS NULL OR u.unit_type = '') AND (u.web_access = 0 OR u.web_access IS NULL OR u.role = 'staff') AND u.role NOT IN ('admin', 'super_user', 'facility', 'unit', 'device')";
 $params = [];
 if ($filterDept) { $where[] = "u.department_id=?"; $params[] = $filterDept; }
 if ($filterSec) { $where[] = "u.section_id=?"; $params[] = $filterSec; }

@@ -75,10 +75,10 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.4.2');
-        $latestBuild = (int)setting('latest_app_build', 28);
+        $latestVersion = setting('latest_app_version', '1.4.3');
+        $latestBuild = (int)setting('latest_app_build', 29);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
-        $changelog = setting('app_update_changelog', "• Instant map and app launch speed (Tak-Gala)\n• 4x parallel Google satellite tile loading\n• Complete Varipathanchena Zone (1,180 plots) & all 5,034 plantation plots\n• Instant offline plot boundary recognition");
+        $changelog = setting('app_update_changelog', "• Front Camera locked for Face ID Selfie (Camera flipping disabled)\n• Rear Camera locked for Field Photos\n• Added 'Paddy Plot Visit' & 'Paddy Land Observation' activities\n• Real-time Live Alignment Badge");
         $forceUpdate = setting('app_force_update', '0') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));

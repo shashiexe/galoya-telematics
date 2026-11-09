@@ -147,15 +147,37 @@ if os.path.exists(kts_path):
         f.write(content)
     print("[Patch] Updated android/app/build.gradle.kts successfully")
 
-# 4. Patch Gradle wrapper (Pin to fast, stable 8.10.2 to prevent Gradle 9.3.1 504 timeouts)
+# 4. Patch Gradle wrapper (Prevent GitHub 504 timeout by routing via fast Tencent mirror)
 wrapper_path = "android/gradle/wrapper/gradle-wrapper.properties"
 if os.path.exists(wrapper_path):
     with open(wrapper_path, "r", encoding="utf-8") as f:
         wrapper_content = f.read()
     import re
-    wrapper_content = re.sub(r'distributionUrl=.*', 'distributionUrl=https\\\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip', wrapper_content)
+    m = re.search(r'(gradle-[\d\.]+(-all|-bin)\.zip)', wrapper_content)
+    dist_file = m.group(1) if m else "gradle-8.10.2-all.zip"
+    wrapper_content = re.sub(
+        r'distributionUrl=.*',
+        f'distributionUrl=https\\\\://mirrors.cloud.tencent.com/gradle/{dist_file}',
+        wrapper_content
+    )
     with open(wrapper_path, "w", encoding="utf-8") as f:
         f.write(wrapper_content)
-    print("[Patch] Pinned Gradle wrapper to gradle-8.10.2-bin.zip successfully")
+    print(f"[Patch] Pinned Gradle wrapper to Tencent mirror: {dist_file}")
+
+# 5. Route MavenCentral via Cloudflare repo1.maven.org to prevent Apache Maven -> GitHub 504 timeout
+for root, _, files in os.walk("android"):
+    for file in files:
+        if file.endswith((".gradle", ".kts")):
+            fpath = os.path.join(root, file)
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                c = f.read()
+            if "mavenCentral()" in c:
+                if file.endswith(".kts"):
+                    new_c = c.replace("mavenCentral()", 'maven { url = uri("https://repo1.maven.org/maven2/") }')
+                else:
+                    new_c = c.replace("mavenCentral()", "maven { url 'https://repo1.maven.org/maven2/' }")
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(new_c)
+                print(f"[Patch] Replaced mavenCentral() with repo1.maven.org in {fpath}")
 
 print("[Patch] Patching completed.")

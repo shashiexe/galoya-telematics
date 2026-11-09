@@ -1036,8 +1036,17 @@ try {
     $testP = $pdo->query("SELECT fp.id, fp.user_id, fp.taken_at FROM field_photos fp JOIN users u ON u.id = fp.user_id WHERE fp.taken_at BETWEEN '$from_dt' AND '$to_dt'")->fetchAll(PDO::FETCH_ASSOC);
     $results[] = ["📸 Photos in date range ('$from_dt' - '$to_dt'): " . count($testP), "color:#ec4899;font-weight:bold"];
 
+    // Clean and normalize roles and web_access across users table
+    $pdo->exec("UPDATE users SET role='staff', web_access=0 WHERE role NOT IN ('admin', 'super_user', 'supervisor', 'manager', 'custom', 'unit', 'facility', 'device') AND (unit_type IN ('staff', 'field_staff') OR id IN (22, 23, 24, 26, 27, 28, 29, 32))");
+    $pdo->exec("UPDATE users SET role='unit', web_access=0 WHERE id IN (34, 38, 39, 40) OR unit_type IN ('bolero', 'bowser', 'tractor', 'infielder', 'truck', 'harvester', 'lorry', 'cab')");
+    $pdo->exec("UPDATE users SET role='facility', web_access=0 WHERE id = 33 OR code = 'SRV-ROOM'");
+    $pdo->exec("UPDATE users SET web_access=1 WHERE role IN ('admin', 'super_user', 'supervisor', 'manager', 'custom')");
+    $results[] = ["✅ Cleaned & Normalized User Roles (Fleet, App Users, Web Users strictly separated!)", "color:#10b981;font-weight:bold"];
+
     $allUsersDiag = $pdo->query("SELECT id, name, code, phone, role, unit_type, web_access, active FROM users ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
     $results[] = ["🔍 ALL USERS IN DB DIAGNOSTIC: " . json_encode($allUsersDiag, JSON_UNESCAPED_UNICODE), "color:#facc15;font-weight:bold"];
+    
+    $secScopeU = '1=1';
     $sql1_test = "SELECT fp.id, fp.user_id, fp.file_path, fp.lat, fp.lng, fp.note, fp.geofence_name, 
                     COALESCE(fp.activity_type, 'Field Photo') as activity_type,
                     fp.auto_geofence, fp.selected_geofence,

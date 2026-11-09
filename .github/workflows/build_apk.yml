@@ -20,9 +20,6 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -36,35 +33,27 @@ jobs:
           allprojects {
               buildscript {
                   repositories {
-                      maven { url 'https://repo1.maven.org/maven2/' }
-                      google()
-                      mavenCentral()
+                      all { ArtifactRepository repo ->
+                          if (repo instanceof MavenArtifactRepository) {
+                              if (repo.url.toString().contains("repo.maven.apache.org")) {
+                                  repo.setUrl("https://repo1.maven.org/maven2/")
+                              }
+                          }
+                      }
                   }
               }
               repositories {
-                  maven { url 'https://repo1.maven.org/maven2/' }
-                  google()
-                  mavenCentral()
-              }
-          }
-          settingsEvaluated { settings ->
-              settings.pluginManagement {
-                  repositories {
-                      maven { url 'https://repo1.maven.org/maven2/' }
-                      google()
-                      mavenCentral()
-                      gradlePluginPortal()
-                  }
-              }
-              settings.dependencyResolutionManagement {
-                  repositories {
-                      maven { url 'https://repo1.maven.org/maven2/' }
-                      google()
-                      mavenCentral()
+                  all { ArtifactRepository repo ->
+                      if (repo instanceof MavenArtifactRepository) {
+                          if (repo.url.toString().contains("repo.maven.apache.org")) {
+                              repo.setUrl("https://repo1.maven.org/maven2/")
+                          }
+                      }
                   }
               }
           }
           EOF
+          find "$FLUTTER_ROOT" -name "*.gradle*" -exec sed -i 's|mavenCentral()|maven { url = uri("https://repo1.maven.org/maven2/") }|g' {} + || true
 
       - name: Generate Clean Android Scaffold & Dependencies
         working-directory: mobile

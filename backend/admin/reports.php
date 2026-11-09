@@ -11,9 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'verify_f
     if ($photoId > 0) {
         q('UPDATE field_photos SET face_match_status=? WHERE id=?', [$status, $photoId]);
         if ($status === 'verified') {
-            flash('Identity Rectified / Verified successfully 🟢 (Monitoring alert resolved)');
+            flash('Identity Rectified / Verified successfully &#128994; (Monitoring alert resolved)');
         } else {
-            flash('Photo flagged as Person / Proxy Mismatch 🔴 (Alert recorded)', 'warning');
+            flash('Photo flagged as Person / Proxy Mismatch &#128308; (Alert recorded)', 'warning');
         }
     }
     header('Location: ' . $_SERVER['REQUEST_URI']);
@@ -463,6 +463,8 @@ function generate_wialon_fuel_report($unit, $dateFrom, $dateTo) {
 
         // Downsample chart points (every 90s or state change)
         if ($t - $lastSampleTime >= 90 || $idx === 0 || $idx === count($locs) - 1 || $isMoving) {
+            $rawP = !empty($pt['raw_params']) ? (is_array($pt['raw_params']) ? $pt['raw_params'] : json_decode($pt['raw_params'], true)) : [];
+            $rawAdc = $rawP['io_201'] ?? ($rawP['io_9'] ?? null);
             $chartPoints[] = [
                 'time_str' => date('H:i:s', $t),
                 'date_str' => date('m-d', $t),
@@ -470,7 +472,10 @@ function generate_wialon_fuel_report($unit, $dateFrom, $dateTo) {
                 'fuel' => ($fuel !== null) ? round($fuel, 2) : null,
                 'mileage' => round($mileageTotal, 2),
                 'speed' => round($speed, 1),
-                'is_trip' => $isMoving
+                'is_trip' => $isMoving,
+                'lat' => $lat,
+                'lng' => $lng,
+                'raw_adc' => $rawAdc
             ];
             $lastSampleTime = $t;
         }
@@ -529,7 +534,8 @@ function generate_wialon_fuel_report($unit, $dateFrom, $dateTo) {
         'parkings' => $parkings,
         'chart_points' => $chartPoints,
         'route_coords' => $routeCoords,
-        'total_points' => count($locs)
+        'total_points' => count($locs),
+        'tank_capacity' => ($upperB > 0 && $upperB < 5000) ? $upperB : 40
     ];
 }
 
@@ -575,7 +581,7 @@ $activeUnits = q("SELECT id, name, code, unit_type FROM users WHERE role='staff'
 
 if ($report_type === 'staff_audit') {
     // -------------------------------------------------------------------------
-    // 📱 Staff Daily Activity & Tracking Audit Report (With Inactive Gap Detection)
+    // &#128241; Staff Daily Activity & Tracking Audit Report (With Inactive Gap Detection)
     // -------------------------------------------------------------------------
     if (!$unit_id && !empty($units)) {
         $unit_id = (int)$units[0]['id'];
@@ -630,26 +636,26 @@ if ($report_type === 'staff_audit') {
     // Add Duty & App Lifecycle Events
     foreach ($dutyRows as $dl) {
         $et = $dl['event_type'] ?: ($dl['status'] === 'on' ? 'tracking_on' : 'tracking_off');
-        $evtTitle = '🟢 Tracking Active (Duty ON)';
+        $evtTitle = '&#128994; Tracking Active (Duty ON)';
         $details = 'Tracking session in progress';
 
         if ($et === 'app_open') {
-            $evtTitle = '📱 App Launched (Foreground)';
+            $evtTitle = '&#128241; App Launched (Foreground)';
             $details = 'Field officer opened mobile app';
         } elseif ($et === 'app_close') {
             $evtTitle = '🚪 App Closed / Minimized';
             $details = 'App closed or running in background daemon';
         } elseif ($et === 'tracking_on') {
-            $evtTitle = '🟢 Tracking Started (Duty ON)';
+            $evtTitle = '&#128994; Tracking Started (Duty ON)';
             $details = 'Shift / Duty tracking started';
         } elseif ($et === 'tracking_off') {
-            $evtTitle = '🔴 Tracking Stopped (Duty OFF)';
+            $evtTitle = '&#128308; Tracking Stopped (Duty OFF)';
             $details = 'Shift / Duty stopped by staff';
         } elseif ($et === 'boot_resume') {
-            $evtTitle = '⚡ Device Boot / Auto-Resumed';
+            $evtTitle = '&#9889; Device Boot / Auto-Resumed';
             $details = 'Background tracking auto-resumed on phone restart';
         } elseif ($et === 'parking_start') {
-            $evtTitle = '🅿️ Parking / Stop Commenced';
+            $evtTitle = '&#127359;&#65039; Parking / Stop Commenced';
             $details = 'Vehicle stopped for >= 3 mins';
         } elseif ($et === 'parking_end') {
             $evtTitle = '🚙 Parking Ended / Departed';
@@ -728,9 +734,9 @@ if ($report_type === 'staff_audit') {
                 $reason = "Device Inactive / Signal Disconnected";
                 if ($b1 !== null && $b2 !== null) {
                     if ($b1 <= 5) {
-                        $reason = "⚠️ Sudden Power Off (Battery died at {$b1}% -> Restored at {$b2}%)";
+                        $reason = "&#9888;&#65039; Sudden Power Off (Battery died at {$b1}% -> Restored at {$b2}%)";
                     } elseif ($b2 > $b1 + 20) {
-                        $reason = "⚠️ Device Rebooted / Charged after power off ({$b1}% -> {$b2}%)";
+                        $reason = "&#9888;&#65039; Device Rebooted / Charged after power off ({$b1}% -> {$b2}%)";
                     } elseif ($b1 > 50 && $b2 > 50) {
                         $reason = "📡 Cellular Data Lost / Airplane Mode (Batt maintained: {$b1}% -> {$b2}%)";
                     }
@@ -738,7 +744,7 @@ if ($report_type === 'staff_audit') {
 
                 $timeline[] = [
                     'time' => date('Y-m-d H:i:s', $tCur),
-                    'event' => '⚠️ Inactive / Phone Off Gap (' . $durStr . ')',
+                    'event' => '&#9888;&#65039; Inactive / Phone Off Gap (' . $durStr . ')',
                     'type' => 'gap',
                     'location' => round((float)$p['lat'], 4) . ', ' . round((float)$p['lng'], 4),
                     'details' => 'Gap: ' . date('H:i', $tCur) . ' to ' . date('H:i', $tNext) . " ({$durStr})",
@@ -778,7 +784,7 @@ if ($report_type === 'staff_audit') {
 
                     $timeline[] = [
                         'time' => $pStart['recorded_at'],
-                        'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
+                        'event' => '&#127359;&#65039; Parking / Stationary Stop (' . $sMins . ' mins)',
                         'type' => 'parking',
                         'location' => $stopLoc,
                         'details' => 'Parked from ' . date('H:i', $tS1) . ' to ' . date('H:i', $tS2) . " ({$sMins} mins)",
@@ -805,7 +811,7 @@ if ($report_type === 'staff_audit') {
 
                     $timeline[] = [
                         'time' => $movingPts[0]['recorded_at'],
-                        'event' => '🚗 Trip / Travel (' . round($tripDist, 1) . ' km)',
+                        'event' => '&#128663; Trip / Travel (' . round($tripDist, 1) . ' km)',
                         'type' => 'trip',
                         'location' => 'In-Transit (' . date('H:i', $t1) . ' – ' . date('H:i', $t2) . ')',
                         'details' => round($tripDist, 2) . ' km in ' . round($tDur / 60) . ' mins (Avg: ' . round($tripDist / ($tDur / 3600), 1) . ' km/h)',
@@ -846,7 +852,7 @@ if ($report_type === 'staff_audit') {
 
             $timeline[] = [
                 'time' => $pStart['recorded_at'],
-                'event' => '🅿️ Parking / Stationary Stop (' . $sMins . ' mins)',
+                'event' => '&#127359;&#65039; Parking / Stationary Stop (' . $sMins . ' mins)',
                 'type' => 'parking',
                 'location' => $stopLoc,
                 'details' => 'Parked from ' . date('H:i', $tS1) . ' to ' . date('H:i', $tS2) . " ({$sMins} mins)",
@@ -1016,7 +1022,7 @@ if ($report_type === 'staff_audit') {
         $rndLabel = $hasMultipleRounds ? " (Round {$ph['round_num']})" : "";
         $timeline[] = [
             'time' => $ph['taken_at'],
-            'event' => '📷 ' . ($ph['activity_type'] ?: 'Field Photo Upload') . $rndLabel,
+            'event' => '&#128248; ' . ($ph['activity_type'] ?: 'Field Photo Upload') . $rndLabel,
             'type' => 'photo',
             'location' => $ph['selected_geofence'] ?: ($ph['auto_geofence'] ?: ($ph['geofence_name'] ?: 'Field Plot')),
             'details' => ($ph['note'] ? $ph['note'] . ' · ' : '') . ($hasMultipleRounds ? "Visit Round {$ph['round_num']}" : "Field inspection"),
@@ -1033,7 +1039,7 @@ if ($report_type === 'staff_audit') {
                 $prevRnd = $processedRounds[$rIdx - 1];
                 $timeline[] = [
                     'time' => date('Y-m-d H:i:s', strtotime($prevRnd['end']) + 30),
-                    'event' => '🏢 Office / Base Break (' . $rnd['office_gap_before'] . ')',
+                    'event' => '&#127970; Office / Base Break (' . $rnd['office_gap_before'] . ')',
                     'type' => 'parking',
                     'location' => 'Base / Divisional Office',
                     'details' => 'Returned to office / base between Round ' . $prevRnd['round_num'] . ' and Round ' . $rnd['round_num'],
@@ -1318,7 +1324,7 @@ if ($report_type === 'staff_audit') {
 
 } elseif ($report_type === 'dept_section') {
     // -------------------------------------------------------------------------
-    // 📊 Department & Section Telematics Summary Report
+    // &#128202; Department & Section Telematics Summary Report
     // -------------------------------------------------------------------------
     try {
         $dFilter = $filterDept ? "AND s.department_id = " . (int)$filterDept : "";
@@ -1475,7 +1481,7 @@ if ($report_type === 'staff_audit') {
     }
 } elseif ($report_type === 'field_visits') {
     // -------------------------------------------------------------------------
-    // 🌾 Field Officer Plot Visits & Crop Inspection Summary Report
+    // &#127806; Field Officer Plot Visits & Crop Inspection Summary Report
     // -------------------------------------------------------------------------
     $params = [$date_from, $date_to];
     $extraWhere = "";
@@ -1638,7 +1644,7 @@ if ($report_type === 'staff_audit') {
     $summary['total_notes'] = $totalNotes;
 } elseif ($report_type === 'face_audit') {
     // -------------------------------------------------------------------------
-    // 🛡️ Field Officer Face ID & Proxy Audit Report (AI Verification)
+    // &#128737;&#65039; Field Officer Face ID & Proxy Audit Report (AI Verification)
     // -------------------------------------------------------------------------
     $params = [$date_from, $date_to];
     $extraWhere = "";
@@ -1758,15 +1764,15 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div>
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Select Report Template</label>
       <select name="type" onchange="this.form.submit()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;font-weight:700;background:#fff;color:#0f172a">
-        <option value="fuel_graph" <?= $report_type === 'fuel_graph' ? 'selected' : '' ?>>⛽ Fuel Graph 1 / common (Wialon Standard)</option>
-        <option value="fuel_summary" <?= $report_type === 'fuel_summary' ? 'selected' : '' ?>>⛽ Fleet Fuel Consumption, Fillings &amp; Thefts Summary</option>
-        <option value="face_audit" <?= $report_type === 'face_audit' ? 'selected' : '' ?>>🛡️ Field Officer Face ID &amp; Proxy Audit Report (AI Verification)</option>
-        <option value="field_visits" <?= $report_type === 'field_visits' ? 'selected' : '' ?>>🌾 Field Officer Plot Visits &amp; Crop Inspection Summary</option>
-        <option value="staff_audit" <?= $report_type === 'staff_audit' ? 'selected' : '' ?>>📱 Staff Daily Activity &amp; Tracking Audit Report</option>
-        <option value="dept_section" <?= $report_type === 'dept_section' ? 'selected' : '' ?>>📊 Section &amp; Department Telematics Summary</option>
-        <option value="engine_hours" <?= $report_type === 'engine_hours' ? 'selected' : '' ?>>🚜 Engine Hours - Galoya</option>
-        <option value="trips" <?= $report_type === 'trips' ? 'selected' : '' ?>>🚗 Trips &amp; Route Mileage Report</option>
-        <option value="battery_level" <?= $report_type === 'battery_level' ? 'selected' : '' ?>>🔋 Battery Level Report</option>
+        <option value="fuel_graph" <?= $report_type === 'fuel_graph' ? 'selected' : '' ?>>&#9981; Fuel Graph 1 / common (Wialon Standard)</option>
+        <option value="fuel_summary" <?= $report_type === 'fuel_summary' ? 'selected' : '' ?>>&#9981; Fleet Fuel Consumption, Fillings &amp; Thefts Summary</option>
+        <option value="face_audit" <?= $report_type === 'face_audit' ? 'selected' : '' ?>>&#128737;&#65039; Field Officer Face ID &amp; Proxy Audit Report (AI Verification)</option>
+        <option value="field_visits" <?= $report_type === 'field_visits' ? 'selected' : '' ?>>&#127806; Field Officer Plot Visits &amp; Crop Inspection Summary</option>
+        <option value="staff_audit" <?= $report_type === 'staff_audit' ? 'selected' : '' ?>>&#128241; Staff Daily Activity &amp; Tracking Audit Report</option>
+        <option value="dept_section" <?= $report_type === 'dept_section' ? 'selected' : '' ?>>&#128202; Section &amp; Department Telematics Summary</option>
+        <option value="engine_hours" <?= $report_type === 'engine_hours' ? 'selected' : '' ?>>&#128668; Engine Hours - Galoya</option>
+        <option value="trips" <?= $report_type === 'trips' ? 'selected' : '' ?>>&#128663; Trips &amp; Route Mileage Report</option>
+        <option value="battery_level" <?= $report_type === 'battery_level' ? 'selected' : '' ?>>&#128267; Battery Level Report</option>
       </select>
     </div>
 
@@ -1776,7 +1782,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       <select name="unit_id" onchange="this.form.submit()" style="padding:7px 12px;border:1px solid #0284c7;border-radius:4px;font-size:13px;background:#f0f9ff;font-weight:700;color:#0369a1;cursor:pointer">
         <?php foreach ($fleetUnits as $fu): ?>
           <option value="<?= $fu['id'] ?>" <?= $unit_id == $fu['id'] ? 'selected' : '' ?>>
-            🚜 <?= h($fu['name']) ?> <?= $fu['code'] ? '('.h($fu['code']).')' : '' ?>
+            &#128668; <?= h($fu['name']) ?> <?= $fu['code'] ? '('.h($fu['code']).')' : '' ?>
           </option>
         <?php endforeach; ?>
       </select>
@@ -1851,11 +1857,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </button>
       <?php if (can('reports', 'export')): ?>
         <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="btn ghost" style="padding:7px 14px;border:1px solid #cbd5e1;border-radius:4px;font-weight:600;display:inline-flex;align-items:center;gap:6px;background:#fff">
-          📥 Export CSV
+          &#128229; Export CSV
         </a>
       <?php endif; ?>
       <button type="button" onclick="window.print()" class="btn ghost" style="padding:7px 14px;border:1px solid #cbd5e1;border-radius:4px;font-weight:600;background:#fff">
-        🖨️ Print
+        &#128424;&#65039; Print
       </button>
     </div>
   </form>
@@ -1865,97 +1871,97 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="margin-bottom:12px;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03)">
   <?php if ($isFuelReport && $fuelReportData): ?>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">â›½ Initial Fuel:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#9981; Initial Fuel:</span>
       <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $fuelReportData['initial_fuel'] ?> L</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">â›½ Final Fuel:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#9981; Final Fuel:</span>
       <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $fuelReportData['final_fuel'] ?> L</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">ðŸ”¥ Consumed:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128293; Consumed:</span>
       <span style="font-size:13.5px;font-weight:800;color:#ea580c;background:#fff7ed;border:1px solid #fed7aa;padding:2px 10px;border-radius:12px"><?= $fuelReportData['total_consumed'] ?> L</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">ðŸ›£ï¸ Mileage:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128739;&#65039; Mileage:</span>
       <span style="font-size:13.5px;font-weight:800;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:2px 10px;border-radius:12px"><?= $fuelReportData['total_mileage'] ?> km</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">âš¡ Rate:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#9889; Rate:</span>
       <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= $fuelReportData['avg_consumption'] ?> L/100km</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">â›½ Fillings:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#9981; Fillings:</span>
       <span style="font-size:13.5px;font-weight:800;color:#059669;background:#ecfdf5;border:1px solid #a7f3d0;padding:2px 10px;border-radius:12px"><?= count($fuelReportData['fillings']) ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">ðŸš¨ Thefts / Drains:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128680; Thefts / Drains:</span>
       <span style="font-size:13.5px;font-weight:800;color:<?= count($fuelReportData['thefts']) > 0 ? '#dc2626' : '#64748b' ?>;background:<?= count($fuelReportData['thefts']) > 0 ? '#fef2f2' : '#f8fafc' ?>;border:1px solid <?= count($fuelReportData['thefts']) > 0 ? '#fecaca' : '#e2e8f0' ?>;padding:2px 10px;border-radius:12px"><?= count($fuelReportData['thefts']) ?></span>
     </div>
   <?php elseif ($report_type === 'face_audit'): ?>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🤳 Total Selfies:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#129331; Total Selfies:</span>
       <span style="font-size:13.5px;font-weight:800;color:#6366f1;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 10px;border-radius:12px"><?= $summary['total_selfies'] ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🟢 Verified Matches:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128994; Verified Matches:</span>
       <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= $summary['verified_faces'] ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🔴 Proxy / Mismatch:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128308; Proxy / Mismatch:</span>
       <span style="font-size:13.5px;font-weight:800;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:2px 10px;border-radius:12px"><?= $summary['mismatch_faces'] ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🟡 Audit Pending:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128993; Audit Pending:</span>
       <span style="font-size:13.5px;font-weight:800;color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 10px;border-radius:12px"><?= $summary['pending_faces'] ?></span>
     </div>
   <?php elseif ($report_type === 'field_visits'): ?>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🌾 Total Plot Visits:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#127806; Total Plot Visits:</span>
       <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= $summary['total_visits'] ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">📍 Distinct Plots:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128205; Distinct Plots:</span>
       <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= $summary['distinct_plots'] ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">👨‍🌾 Active Officers:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">👨‍&#127806; Active Officers:</span>
       <span style="font-size:13.5px;font-weight:800;color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 10px;border-radius:12px"><?= $summary['active_officers'] ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">📝 Observations:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128221; Observations:</span>
       <span style="font-size:13.5px;font-weight:800;color:#9333ea;background:#faf5ff;border:1px solid #e9d5ff;padding:2px 10px;border-radius:12px"><?= $summary['total_notes'] ?></span>
     </div>
   <?php else: ?>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🛣️ <?= $report_type === 'staff_audit' ? 'Total Distance' : 'Distance Tracked' ?>:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128739;&#65039; <?= $report_type === 'staff_audit' ? 'Total Distance' : 'Distance Tracked' ?>:</span>
       <span style="font-size:13.5px;font-weight:800;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;padding:2px 10px;border-radius:12px"><?= round($summary['total_mileage'], 1) ?> km</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">⚡ Activities & Events:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#9889; Activities & Events:</span>
       <span style="font-size:13.5px;font-weight:800;color:#16a34a;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 10px;border-radius:12px"><?= count($report_rows) ?></span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">⏱️ Operating Time:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#9201;&#65039; Operating Time:</span>
       <span style="font-size:13.5px;font-weight:800;color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 10px;border-radius:12px"><?= round($summary['total_hours'], 1) ?> hrs</span>
     </div>
     <span style="color:#cbd5e1;font-weight:300">|</span>
     <div style="display:inline-flex;align-items:center;gap:8px">
-      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">🚀 <?= $report_type === 'staff_audit' ? 'Max Speed' : 'Fleet Utilization' ?>:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px">&#128640; <?= $report_type === 'staff_audit' ? 'Max Speed' : 'Fleet Utilization' ?>:</span>
       <span style="font-size:13.5px;font-weight:800;color:#9333ea;background:#faf5ff;border:1px solid #e9d5ff;padding:2px 10px;border-radius:12px"><?= $report_type === 'staff_audit' ? round($summary['max_speed'], 1) . ' km/h' : count($report_rows) . ' Secs' ?></span>
     </div>
   <?php endif; ?>
@@ -1968,7 +1974,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:16px 20px;margin-bottom:16px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f1f5f9">
     <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:22px">â›½</span>
+      <span style="font-size:22px">&#9981;</span>
       <div>
         <h3 style="margin:0;font-size:16px;color:#0f172a;font-weight:800">
           Fuel Graph 1/common &mdash; <?= h($fuelReportData['unit']['name']) ?>
@@ -1985,16 +1991,16 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 
     <div style="display:flex;align-items:center;gap:8px">
       <button type="button" onclick="exportFuelChartImage()" class="btn ghost" style="padding:6px 12px;font-size:12px;font-weight:700;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer">
-        ðŸ“· Export PNG
+        &#128248; Export PNG
       </button>
       <button type="button" onclick="exportFuelDataCSV()" class="btn ghost" style="padding:6px 12px;font-size:12px;font-weight:700;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:4px;cursor:pointer">
-        ðŸ“¥ Export CSV
+        &#128229; Export CSV
       </button>
     </div>
   </div>
 
   <!-- Wialon Graph Toggles Control Bar (Matches User Screenshot 2) -->
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:10px">
     <!-- Backgrounds Control -->
     <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#334155;cursor:pointer">
       <input type="checkbox" id="toggleAllBg" checked onchange="toggleFuelBackgrounds(this.checked)" style="cursor:pointer">
@@ -2034,9 +2040,168 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
   </div>
 
-  <!-- Chart Canvas Container -->
-  <div style="position:relative;width:100%;height:380px">
+  <!-- Wialon Exact Interactive Toolbar (Matches User Screenshots 4 & 5) -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;padding:6px 12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <!-- Zoom In Button -->
+      <button type="button" id="btnZoomIn" onclick="fuelChartZoomIn()" title="Zoom In (or use Mousewheel Up on chart)" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155;transition:all 0.15s">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+          <line x1="11" y1="8" x2="11" y2="14"></line>
+          <line x1="8" y1="11" x2="14" y2="11"></line>
+        </svg>
+      </button>
+
+      <!-- Zoom Out Button -->
+      <button type="button" id="btnZoomOut" onclick="fuelChartZoomOut()" title="Zoom Out (or use Mousewheel Down on chart)" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155;transition:all 0.15s">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+          <line x1="8" y1="11" x2="14" y2="11"></line>
+        </svg>
+      </button>
+
+      <!-- Reset View / Zoom Button -->
+      <button type="button" id="btnResetZoom" onclick="fuelChartResetZoom()" title="Reset View (Full Interval)" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155;transition:all 0.15s">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+          <path d="M3 3v5h5"></path>
+        </svg>
+      </button>
+
+      <div style="width:1px;height:22px;background:#cbd5e1;margin:0 4px"></div>
+
+      <!-- Box / Rectangular Drag Zoom Mode Toggle -->
+      <button type="button" id="btnBoxZoom" onclick="toggleBoxZoomMode()" title="Box Zoom: Drag a rectangle across the graph to zoom into that time span" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155;transition:all 0.15s">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 8V4h4"></path>
+          <path d="M20 8V4h-4"></path>
+          <path d="M4 16v4h4"></path>
+          <path d="M20 16v4h-4"></path>
+          <line x1="12" y1="9" x2="12" y2="15"></line>
+          <line x1="9" y1="12" x2="15" y2="12"></line>
+        </svg>
+      </button>
+
+      <!-- Show Detail in Point Toggle -->
+      <button type="button" id="btnDetailPoint" onclick="togglePointDetailMode()" title="Show Detail in Point: Click any telemetry point to view detailed readout" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155;transition:all 0.15s">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          <line x1="8" y1="9" x2="16" y2="9"></line>
+          <line x1="8" y1="13" x2="13" y2="13"></line>
+        </svg>
+      </button>
+
+      <!-- Ruler / Compare Points Toggle -->
+      <button type="button" id="btnRuler" onclick="toggleRulerMode()" title="Ruler / Measure: Click two points to measure duration, distance & fuel consumed" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155;transition:all 0.15s">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 4h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path>
+          <line x1="8" y1="4" x2="8" y2="8"></line>
+          <line x1="12" y1="4" x2="12" y2="7"></line>
+          <line x1="16" y1="4" x2="16" y2="8"></line>
+          <line x1="4" y1="18" x2="20" y2="18"></line>
+          <polyline points="7 15 4 18 7 21"></polyline>
+          <polyline points="17 15 20 18 17 21"></polyline>
+        </svg>
+      </button>
+
+      <div style="width:1px;height:22px;background:#cbd5e1;margin:0 4px"></div>
+
+      <!-- Y-Axis Scale Mode Toggle: 0-Base Tank (Wialon) vs Auto-Fit -->
+      <button type="button" id="btnScaleToggle" onclick="toggleYScaleMode()" title="Toggle Y-Axis Scale Mode" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:11.5px;font-weight:700;background:#0284c7;color:#fff;border:1px solid #0284c7;border-radius:4px;cursor:pointer;transition:all 0.15s">
+        <span id="scaleModeIcon">&#9879;</span>
+        <span id="scaleModeText">0-Base (Full Tank)</span>
+      </button>
+    </div>
+
+    <!-- Right Side: Print & Export Options -->
+    <div style="display:flex;align-items:center;gap:8px">
+      <button type="button" onclick="window.print()" title="Print Fuel Chart" style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:12px;font-weight:600;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+        <span>Print</span>
+      </button>
+
+      <div style="position:relative;display:inline-block" id="exportDropdownWrap">
+        <button type="button" onclick="toggleExportMenu(event)" style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:700;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#334155">
+          <span>Export</span>
+          <span style="font-size:10px">&#9662;</span>
+        </button>
+        <div id="exportMenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:100;min-width:140px;overflow:hidden">
+          <a href="javascript:void(0)" onclick="exportFuelChartImage();toggleExportMenu(event)" style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;color:#334155;text-decoration:none;border-bottom:1px solid #f1f5f9;hover:background:#f8fafc">
+            &#128248; Export PNG
+          </a>
+          <a href="javascript:void(0)" onclick="exportFuelDataCSV();toggleExportMenu(event)" style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;color:#166534;text-decoration:none;hover:background:#f0fdf4">
+            &#128229; Export CSV
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Point Inspector Readout Box (When user clicks/inspects a point) -->
+  <div id="fuelPointInspector" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-left:4px solid #0284c7;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span style="font-weight:800;color:#0369a1">&#128172; Point Telemetry:</span>
+      <span>&#9201;&#65039; <strong id="piTime" style="font-family:monospace;color:#0f172a">--:--:--</strong></span>
+      <span>&#9981; Fuel: <strong id="piFuel" style="color:#0284c7;font-size:13px">-- L</strong></span>
+      <span id="piAdcWrap" style="display:none">&#9889; Raw ADC: <strong id="piAdc" style="font-family:monospace;color:#475569">--</strong></span>
+      <span>&#128739;&#65039; Mileage: <strong id="piMileage" style="color:#dc2626">-- km</strong></span>
+      <span>&#128663; Speed: <strong id="piSpeed" style="color:#0f172a">-- km/h</strong> (<span id="piState" style="font-weight:700">--</span>)</span>
+      <span>&#128205; <span id="piCoords" style="font-family:monospace;color:#64748b">--</span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button type="button" id="piMapBtn" onclick="locateInspectorPointOnMap()" style="padding:3px 10px;font-size:11px;font-weight:700;color:#0284c7;background:#fff;border:1px solid #bae6fd;border-radius:4px;cursor:pointer">
+        &#128506;&#65039; Show on Map
+      </button>
+      <button type="button" onclick="closePointInspector()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1">&times;</button>
+    </div>
+  </div>
+
+  <!-- Interactive Ruler / Compare Distance & Fuel Banner -->
+  <div id="fuelRulerBanner" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-weight:800;color:#166534">&#128207; Wialon Ruler:</span>
+      <span id="rulerPointA" style="color:#334155">Point A: <em>Click 1st point on graph</em></span>
+      <span style="color:#94a3b8;font-weight:bold">&rarr;</span>
+      <span id="rulerPointB" style="color:#334155">Point B: <em>Click 2nd point on graph</em></span>
+      <span style="color:#cbd5e1">|</span>
+      <span>&#9201;&#65039; Duration: <strong id="rulerDuration" style="color:#0f172a">--</strong></span>
+      <span>&#128739;&#65039; Distance: <strong id="rulerDistance" style="color:#dc2626">-- km</strong></span>
+      <span>&#128293; Consumed: <strong id="rulerConsumed" style="color:#ea580c">-- L</strong></span>
+      <span>&#9889; Rate: <strong id="rulerRate" style="color:#16a34a">-- L/100km</strong></span>
+      <span>&#128663; Avg Speed: <strong id="rulerAvgSpeed" style="color:#0284c7">-- km/h</strong></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button type="button" onclick="resetRulerPoints()" style="padding:3px 10px;font-size:11px;font-weight:700;color:#166534;background:#fff;border:1px solid #bbf7d0;border-radius:4px;cursor:pointer">
+        Clear Points
+      </button>
+    </div>
+  </div>
+
+  <!-- Chart Canvas Container with Box Zoom Selection Box -->
+  <div id="fuelChartWrapper" style="position:relative;width:100%;height:380px;user-select:none">
     <canvas id="fuelChartCanvas"></canvas>
+    <div id="fuelSelectionOverlay" style="display:none;position:absolute;top:0;height:100%;background:rgba(2, 132, 199, 0.18);border:1px dashed #0284c7;pointer-events:none;z-index:10"></div>
+  </div>
+
+  <!-- Chart Bottom Legend / Timestamp Footer (Matches Wialon Screenshot 4) -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11px;color:#94a3b8;padding:0 4px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span>&copy; Wialon Standard Fuel Analytics</span>
+      <span>&middot;</span>
+      <span id="fuelZoomIndicator">Full View (100%)</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="display:inline-block;width:10px;height:10px;background:#fef08a;border:1px solid #fde047;border-radius:2px"></span> Parkings
+      <span style="display:inline-block;width:10px;height:10px;background:#fecdd3;border:1px solid #fca5a5;border-radius:2px;margin-left:6px"></span> Trips
+      <span style="display:inline-block;width:12px;height:2px;background:#0284c7;margin-left:6px"></span> Fuel (L)
+      <span style="display:inline-block;width:12px;height:2px;background:#dc2626;margin-left:6px"></span> Mileage (km)
+    </div>
   </div>
 </div>
 
@@ -2044,17 +2209,17 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:16px 20px;margin-bottom:16px;background:#fff;border:1px solid #cbd5e1;border-radius:8px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
     <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:18px">ðŸ—ºï¸</span>
+      <span style="font-size:18px">&#128506;&#65039;</span>
       <h4 style="margin:0;font-size:14px;color:#0f172a;font-weight:800">
         Vehicle Route, Numbered Stops &amp; Fueling Locations
       </h4>
     </div>
     <div style="display:flex;align-items:center;gap:10px;font-size:11.5px;color:#64748b">
-      <span>ðŸ›£ï¸ Track Distance: <strong><?= $fuelReportData['total_mileage'] ?> km</strong></span>
+      <span>&#128739;&#65039; Track Distance: <strong><?= $fuelReportData['total_mileage'] ?> km</strong></span>
       <span>&middot;</span>
-      <span>ðŸ…¿ï¸ Stops: <strong><?= count($fuelReportData['parkings']) ?></strong></span>
+      <span>&#127359;&#65039; Stops: <strong><?= count($fuelReportData['parkings']) ?></strong></span>
       <span>&middot;</span>
-      <span>â›½ Fillings: <strong style="color:#16a34a"><?= count($fuelReportData['fillings']) ?></strong></span>
+      <span>&#9981; Fillings: <strong style="color:#16a34a"><?= count($fuelReportData['fillings']) ?></strong></span>
     </div>
   </div>
   <div id="fuelRouteMap" style="width:100%;height:380px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc"></div>
@@ -2064,13 +2229,13 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
   <div style="display:flex;align-items:center;background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:0 12px;gap:4px">
     <button type="button" class="fuel-tab-btn active" onclick="switchFuelTab('trips', this)" style="padding:12px 18px;font-size:13px;font-weight:700;border:none;background:transparent;border-bottom:2px solid #0284c7;color:#0284c7;cursor:pointer">
-      ðŸš— Trips &amp; Parkings (<?= count($fuelReportData['trips']) + count($fuelReportData['parkings']) ?>)
+      &#128663; Trips &amp; Parkings (<?= count($fuelReportData['trips']) + count($fuelReportData['parkings']) ?>)
     </button>
     <button type="button" class="fuel-tab-btn" onclick="switchFuelTab('fillings', this)" style="padding:12px 18px;font-size:13px;font-weight:700;border:none;background:transparent;border-bottom:2px solid transparent;color:#64748b;cursor:pointer">
-      â›½ Fuel Fillings (<?= count($fuelReportData['fillings']) ?>)
+      &#9981; Fuel Fillings (<?= count($fuelReportData['fillings']) ?>)
     </button>
     <button type="button" class="fuel-tab-btn" onclick="switchFuelTab('thefts', this)" style="padding:12px 18px;font-size:13px;font-weight:700;border:none;background:transparent;border-bottom:2px solid transparent;color:#64748b;cursor:pointer">
-      ðŸš¨ Fuel Drains / Thefts (<?= count($fuelReportData['thefts']) ?>)
+      &#128680; Fuel Drains / Thefts (<?= count($fuelReportData['thefts']) ?>)
     </button>
   </div>
 
@@ -2129,9 +2294,9 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             <td style="padding:8px 12px;text-align:center;color:#94a3b8;font-weight:600"><?= $cIdx ?></td>
             <td style="padding:8px 12px">
               <?php if ($isTr): ?>
-                <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">ðŸŒ¸ Trip</span>
+                <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">&#128663; Trip</span>
               <?php else: ?>
-                <span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">ðŸŸ¨ Parking</span>
+                <span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">&#127359;&#65039; Parking</span>
               <?php endif; ?>
             </td>
             <td style="padding:8px 12px;font-family:monospace;font-size:11.5px"><?= $item['start_time'] ?></td>
@@ -2140,14 +2305,14 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             <td style="padding:8px 12px;text-align:right;font-weight:700;color:<?= $isTr ? '#dc2626' : '#94a3b8' ?>">
               <?= $isTr ? $item['distance_km'] : '0.00' ?>
             </td>
-            <td style="padding:8px 12px;text-align:right;color:#0284c7;font-weight:600"><?= $item['start_fuel'] !== null ? $item['start_fuel'] : 'â€”' ?></td>
-            <td style="padding:8px 12px;text-align:right;color:#0284c7;font-weight:600"><?= $item['end_fuel'] !== null ? $item['end_fuel'] : 'â€”' ?></td>
+            <td style="padding:8px 12px;text-align:right;color:#0284c7;font-weight:600"><?= $item['start_fuel'] !== null ? $item['start_fuel'] : '&mdash;' ?></td>
+            <td style="padding:8px 12px;text-align:right;color:#0284c7;font-weight:600"><?= $item['end_fuel'] !== null ? $item['end_fuel'] : '&mdash;' ?></td>
             <td style="padding:8px 12px;text-align:right;font-weight:700;color:<?= $item['fuel_consumed'] > 0 ? '#ea580c' : '#94a3b8' ?>">
               <?= $item['fuel_consumed'] > 0 ? $item['fuel_consumed'] : '0.00' ?>
             </td>
             <td style="padding:8px 12px;text-align:right"><?= $isTr ? $item['max_speed'] . ' km/h' : '0 km/h' ?></td>
             <td style="padding:8px 12px;font-size:11px;color:#64748b">
-              <span>ðŸ“ <?= h($item['start_loc'] ?? '') ?></span>
+              <span>&#128205;  <?= h($item['start_loc'] ?? '') ?></span>
             </td>
           </tr>
         <?php endforeach; endif; ?>
@@ -2189,12 +2354,12 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             <td style="padding:10px 14px;text-align:right;color:#0284c7;font-weight:600"><?= $fil['end_fuel'] ?> L</td>
             <td style="padding:10px 14px;font-size:11.5px;color:#475569">
               <a href="https://maps.google.com/?q=<?= $fil['lat'] ?>,<?= $fil['lng'] ?>" target="_blank" style="color:#0284c7;text-decoration:none">
-                ðŸ“ <?= $fil['location'] ?>
+                &#128205;  <?= $fil['location'] ?>
               </a>
             </td>
             <td style="padding:10px 14px;text-align:center">
               <button type="button" onclick="focusFuelMap(<?= $fil['lat'] ?>, <?= $fil['lng'] ?>)" class="btn ghost" style="padding:3px 8px;font-size:11px;border-radius:4px;background:#fff;border:1px solid #cbd5e1;cursor:pointer">
-                ðŸŽ¯ View on Map
+                &#127919; View on Map
               </button>
             </td>
           </tr>
@@ -2219,7 +2384,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
       </thead>
       <tbody>
         <?php if (empty($fuelReportData['thefts'])): ?>
-          <tr><td colspan="7" style="text-align:center;padding:24px;color:#16a34a;font-weight:600">ðŸ›¡ï¸ No fuel thefts or abnormal tank drainages detected!</td></tr>
+          <tr><td colspan="7" style="text-align:center;padding:24px;color:#16a34a;font-weight:600">&#128737;&#65039; No fuel thefts or abnormal tank drainages detected!</td></tr>
         <?php else: 
           $tIdx = 0;
           foreach ($fuelReportData['thefts'] as $thf): 
@@ -2237,12 +2402,12 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             <td style="padding:10px 14px;text-align:right;color:#0284c7;font-weight:600"><?= $thf['end_fuel'] ?> L</td>
             <td style="padding:10px 14px;font-size:11.5px;color:#475569">
               <a href="https://maps.google.com/?q=<?= $thf['lat'] ?>,<?= $thf['lng'] ?>" target="_blank" style="color:#dc2626;text-decoration:none">
-                ðŸ“ <?= $thf['location'] ?>
+                &#128205;  <?= $thf['location'] ?>
               </a>
             </td>
             <td style="padding:10px 14px;text-align:center">
               <span style="background:#991b1b;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">
-                ðŸš¨ THEFT SUSPECTED
+                &#128680; THEFT SUSPECTED
               </span>
             </td>
           </tr>
@@ -2258,7 +2423,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
   <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
     <strong style="font-size:14px;color:#1e293b">
-      â›½ Fleet Fuel Consumption, Calibration &amp; Machinery Summary
+      &#9981; Fleet Fuel Consumption, Calibration &amp; Machinery Summary
     </strong>
     <span style="font-size:11.5px;color:#64748b"><?= count($fleetUnits) ?> Fleet Vehicles Registered</span>
   </div>
@@ -2309,11 +2474,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             <td style="padding:10px 14px;text-align:center">
               <?php if ($calPoints > 0): ?>
                 <span style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">
-                  âœ… Calibrated (<?= $calPoints ?> pts)
+                  &#9989; Calibrated (<?= $calPoints ?> pts)
                 </span>
               <?php else: ?>
                 <span style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:2px 8px;border-radius:12px;font-weight:700;font-size:11px">
-                  âš ï¸ No Calibration
+                  &#9888;&#65039; No Calibration
                 </span>
               <?php endif; ?>
             </td>
@@ -2321,14 +2486,14 @@ layout_start('Reports & Tracking Audit', 'reports.php');
               <?php if ($fuelL !== null): ?>
                 <span style="font-size:14px;font-weight:800;color:#0284c7"><?= round($fuelL, 1) ?> L</span>
               <?php else: ?>
-                <span style="color:#94a3b8">â€”</span>
+                <span style="color:#94a3b8">&mdash;</span>
               <?php endif; ?>
             </td>
             <td style="padding:10px 14px;text-align:right">
               <?php if ($pwr !== null): ?>
                 <span style="font-size:12.5px;font-weight:700;color:#334155"><?= round($pwr, 2) ?> V</span>
               <?php else: ?>
-                <span style="color:#94a3b8">â€”</span>
+                <span style="color:#94a3b8">&mdash;</span>
               <?php endif; ?>
             </td>
             <td style="padding:10px 14px;text-align:center">
@@ -2339,7 +2504,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             </td>
             <td style="padding:10px 14px;text-align:center">
               <a href="?type=fuel_graph&unit_id=<?= $u['id'] ?>&period=today" class="btn ghost" style="padding:4px 10px;font-size:11.5px;border-radius:4px;font-weight:700;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;text-decoration:none">
-                ðŸ“Š Fuel Graph
+                &#128202; Fuel Graph
               </a>
             </td>
           </tr>
@@ -2355,7 +2520,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
   <div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
     <strong style="font-size:14px;color:#1e293b">
-      👨‍🌾 Individual Field Officer Plot Coverage & Visit Summary
+      👨‍&#127806; Individual Field Officer Plot Coverage & Visit Summary
     </strong>
     <span style="font-size:11.5px;color:#64748b"><?= count($officerStats) ?> Active Field Staff</span>
   </div>
@@ -2408,7 +2573,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 $pList = array_keys($os['plots']);
                 foreach ($pList as $pName): ?>
                   <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700">
-                    🌾 <?= h($pName) ?>
+                    &#127806; <?= h($pName) ?>
                   </span>
                 <?php endforeach; ?>
               </div>
@@ -2443,7 +2608,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 <div class="card" style="padding:14px 18px;margin-bottom:14px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px">
   <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:12px;flex-wrap:wrap;gap:8px">
     <div>
-      <span style="font-size:11px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:0.5px">👨‍🌾 Officer Duty & Field Inspection Audit Summary</span>
+      <span style="font-size:11px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:0.5px">👨‍&#127806; Officer Duty & Field Inspection Audit Summary</span>
       <h3 style="margin:2px 0 0 0;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:8px">
         <?= h($staffUser['name'] ?? 'Staff Member') ?>
         <?php if (!empty($staffUser['code'])): ?>
@@ -2463,7 +2628,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:12px">
     <!-- Box 1: On Time -->
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #16a34a">
-      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">🟢 Tracking ON (Duty Start)</div>
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">&#128994; Tracking ON (Duty Start)</div>
       <div style="font-size:16px;font-weight:800;color:#166534;margin-top:2px">
         <?= $staffAuditSummary['first_on'] ? date('h:i:s A', strtotime($staffAuditSummary['first_on'])) : '—' ?>
       </div>
@@ -2475,11 +2640,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <!-- Box 2: Off Time / Active Status -->
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid <?= $staffAuditSummary['is_active'] ? '#16a34a' : '#dc2626' ?>">
       <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">
-        <?= $staffAuditSummary['is_active'] ? '🟢 Current Duty Status' : '🔴 Tracking OFF (Duty End)' ?>
+        <?= $staffAuditSummary['is_active'] ? '&#128994; Current Duty Status' : '&#128308; Tracking OFF (Duty End)' ?>
       </div>
       <div style="font-size:16px;font-weight:800;color:<?= $staffAuditSummary['is_active'] ? '#166534' : '#991b1b' ?>;margin-top:2px">
         <?php if ($staffAuditSummary['is_active']): ?>
-          <span style="color:#16a34a">🟢 Active On Duty</span>
+          <span style="color:#16a34a">&#128994; Active On Duty</span>
         <?php elseif ($staffAuditSummary['last_off']): ?>
           <?= date('h:i:s A', strtotime($staffAuditSummary['last_off'])) ?>
         <?php else: ?>
@@ -2495,7 +2660,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #0284c7">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">
-          ⏱️ Shift / Work Duration
+          &#9201;&#65039; Shift / Work Duration
         </div>
         <?php if (!empty($staffAuditSummary['shifts']) && count($staffAuditSummary['shifts']) > 1): ?>
           <span style="font-size:10px;background:#e0f2fe;color:#0369a1;font-weight:800;padding:1px 6px;border-radius:10px">
@@ -2528,7 +2693,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
         <!-- Total Work & Total Off-Duty Breaks Summary Footer inside Box 3 -->
         <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f0f9ff;padding:5px 8px;border-radius:4px;font-size:10.5px">
           <span style="color:#0369a1;font-weight:700" title="Total active work hours across all shifts">
-            ⏱️ Work Total: <strong><?= $staffAuditSummary['duty_duration'] ?></strong>
+            &#9201;&#65039; Work Total: <strong><?= $staffAuditSummary['duty_duration'] ?></strong>
           </span>
           <span style="color:#b45309;font-weight:700" title="Total off-duty break duration">
             ☕ Off Breaks Total: <strong><?= $staffAuditSummary['off_duration'] ?></strong>
@@ -2541,7 +2706,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div style="background:#fff;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;border-left:3px solid #8b5cf6">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">
-          🌾 <?= (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1) ? 'Field Visits (' . count($staffAuditSummary['rounds']) . ' Rounds)' : 'Field Visit Window' ?>
+          &#127806; <?= (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1) ? 'Field Visits (' . count($staffAuditSummary['rounds']) . ' Rounds)' : 'Field Visit Window' ?>
         </div>
         <?php if (!empty($staffAuditSummary['rounds']) && count($staffAuditSummary['rounds']) > 1): ?>
           <span style="font-size:10px;background:#ede9fe;color:#6d28d9;font-weight:800;padding:1px 6px;border-radius:10px">
@@ -2562,7 +2727,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
           <?php foreach ($staffAuditSummary['rounds'] as $rnd): ?>
             <?php if (!empty($rnd['office_gap_before'])): ?>
               <div style="font-size:9.5px;color:#64748b;padding:1px 4px;background:#f8fafc;border-radius:3px">
-                🏢 Office Break: <?= $rnd['office_gap_before'] ?>
+                &#127970; Office Break: <?= $rnd['office_gap_before'] ?>
               </div>
             <?php endif; ?>
             <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:#475569">
@@ -2583,11 +2748,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
   <!-- Plots Visited and Device Info -->
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:8px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:11.5px;font-weight:700;color:#475569">📍 Plots Inspected:</span>
+      <span style="font-size:11.5px;font-weight:700;color:#475569">&#128205; Plots Inspected:</span>
       <?php if (!empty($staffAuditSummary['plots_visited'])): ?>
         <?php foreach ($staffAuditSummary['plots_visited'] as $plotName): ?>
           <span style="background:#f0fdf4;border:1px solid #86efac;color:#166534;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:4px">
-            🌾 <?= h($plotName) ?>
+            &#127806; <?= h($plotName) ?>
           </span>
         <?php endforeach; ?>
       <?php else: ?>
@@ -2596,7 +2761,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     </div>
     <div style="display:flex;align-items:center;gap:14px;font-size:11.5px;color:#64748b">
       <?php if ($staffAuditSummary['batt_start'] !== null && $staffAuditSummary['batt_end'] !== null): ?>
-        <span>🔋 Battery: <strong><?= $staffAuditSummary['batt_start'] ?>% ➔ <?= $staffAuditSummary['batt_end'] ?>%</strong> (<?= $staffAuditSummary['batt_end'] - $staffAuditSummary['batt_start'] ?>%)</span>
+        <span>&#128267; Battery: <strong><?= $staffAuditSummary['batt_start'] ?>% ➔ <?= $staffAuditSummary['batt_end'] ?>%</strong> (<?= $staffAuditSummary['batt_end'] - $staffAuditSummary['batt_start'] ?>%)</span>
       <?php endif; ?>
     </div>
   </div>
@@ -2606,7 +2771,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
     <div style="margin-top:10px;padding:10px 14px;background:#fdfcfb;border:1px solid #e2e8f0;border-radius:6px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px">
-          🚜 <span>Daily Field Visit Sessions Breakdown</span>
+          &#128668; <span>Daily Field Visit Sessions Breakdown</span>
         </div>
         <span style="font-size:10.5px;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 8px;border-radius:10px;font-weight:600">
           Clustered by Office Interval &ge; 40 mins
@@ -2617,7 +2782,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
         <?php foreach ($staffAuditSummary['rounds'] as $rnd): ?>
           <?php if (!empty($rnd['office_gap_before'])): ?>
             <div style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;font-size:11px;color:#475569">
-              <span style="font-size:13px">🏢</span>
+              <span style="font-size:13px">&#127970;</span>
               <strong>Returned to Office / Base Yard:</strong>
               <span>Interval duration <?= $rnd['office_gap_before'] ?></span>
             </div>
@@ -2627,7 +2792,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="background:#ede9fe;color:#6d28d9;font-weight:800;font-size:10.5px;padding:2px 8px;border-radius:10px">
-                  🌾 Round <?= $rnd['round_num'] ?>
+                  &#127806; Round <?= $rnd['round_num'] ?>
                 </span>
                 <?php 
                   $rS = date('h:i A', strtotime($rnd['start']));
@@ -2642,7 +2807,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 </span>
               </div>
               <span style="font-size:11px;color:#64748b">
-                📷 <strong><?= $rnd['photo_count'] ?></strong> Photos · 📍 <strong><?= count($rnd['plots']) ?></strong> Plots
+                &#128248; <strong><?= $rnd['photo_count'] ?></strong> Photos · &#128205; <strong><?= count($rnd['plots']) ?></strong> Plots
               </span>
             </div>
 
@@ -2651,7 +2816,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <span style="font-size:10.5px;color:#64748b;font-weight:600">Plots Inspected:</span>
                 <?php foreach ($rnd['plots'] as $pName): ?>
                   <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:4px">
-                    🌾 <?= h($pName) ?>
+                    &#127806; <?= h($pName) ?>
                   </span>
                 <?php endforeach; ?>
               </div>
@@ -2666,7 +2831,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
   <?php if (!empty($staffAuditSummary['photos'])): ?>
     <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1">
       <div style="font-size:11.5px;font-weight:700;color:#475569;margin-bottom:6px">
-        📷 Field Visit Photos Analyzed (<?= count($staffAuditSummary['photos']) ?>):
+        &#128248; Field Visit Photos Analyzed (<?= count($staffAuditSummary['photos']) ?>):
       </div>
       <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px">
         <?php foreach ($staffAuditSummary['photos'] as $ph): 
@@ -2701,16 +2866,16 @@ layout_start('Reports & Tracking Audit', 'reports.php');
   <div style="padding:10px 18px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <strong style="font-size:14px;color:#1e293b">
       <?php if ($report_type === 'face_audit'): ?>
-        🛡️ Field Officer Face ID & Proxy Audit Report (AI Verification)
+        &#128737;&#65039; Field Officer Face ID & Proxy Audit Report (AI Verification)
       <?php elseif ($report_type === 'field_visits'): ?>
-        🌾 Field Officer Plot Visits & Crop Inspection Summary Log
+        &#127806; Field Officer Plot Visits & Crop Inspection Summary Log
       <?php elseif ($report_type === 'staff_audit'): 
         $sName = is_array($staffUser) ? ($staffUser['name'] ?? 'Staff') : 'Staff';
         $sSec = (is_array($staffUser) && !empty($staffUser['sec_name'])) ? ' (' . $staffUser['sec_name'] . ')' : '';
       ?>
-        📱 Daily Activity & Tracking Audit Timeline: <?= h($sName . $sSec) ?>
+        &#128241; Daily Activity & Tracking Audit Timeline: <?= h($sName . $sSec) ?>
       <?php elseif ($report_type === 'dept_section'): ?>
-        📊 Section & Department Telematics Operations Summary
+        &#128202; Section & Department Telematics Operations Summary
       <?php else: ?>
         Generated Report: <?= h(str_replace('_', ' ', strtoupper($report_type))) ?>
       <?php endif; ?>
@@ -2817,9 +2982,9 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <td style="padding:10px 14px;color:#0f172a">
                   <div style="font-weight:700"><?= date('h:i:s A', strtotime($row['taken_at'])) ?></div>
                   <div style="font-size:11px;color:#64748b"><?= date('Y-m-d', strtotime($row['taken_at'])) ?></div>
-                  <div style="font-size:11.5px;color:#166534;font-weight:600;margin-top:2px">🌾 <?= h($plot) ?></div>
+                  <div style="font-size:11.5px;color:#166534;font-weight:600;margin-top:2px">&#127806; <?= h($plot) ?></div>
                   <?php if (!empty($row['lat']) && !empty($row['lng'])): ?>
-                    <a href="https://maps.google.com/?q=<?= $row['lat'] ?>,<?= $row['lng'] ?>" target="_blank" style="font-size:10.5px;color:#0284c7;text-decoration:none">📍 <?= round($row['lat'], 5) ?>, <?= round($row['lng'], 5) ?></a>
+                    <a href="https://maps.google.com/?q=<?= $row['lat'] ?>,<?= $row['lng'] ?>" target="_blank" style="font-size:10.5px;color:#0284c7;text-decoration:none">&#128205; <?= round($row['lat'], 5) ?>, <?= round($row['lng'], 5) ?></a>
                   <?php endif; ?>
                 </td>
                 <td style="padding:10px 14px">
@@ -2860,11 +3025,11 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <!-- Status Badge -->
                 <td style="padding:10px 14px;text-align:center;white-space:nowrap">
                   <?php if ($status === 'verified'): ?>
-                    <span style="background:#ecfdf5;color:#15803d;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #86efac">🟢 Verified</span>
+                    <span style="background:#ecfdf5;color:#15803d;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #86efac">&#128994; Verified</span>
                   <?php elseif ($status === 'mismatch'): ?>
-                    <span style="background:#fef2f2;color:#b91c1c;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #fca5a5">🔴 Proxy Mismatch</span>
+                    <span style="background:#fef2f2;color:#b91c1c;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #fca5a5">&#128308; Proxy Mismatch</span>
                   <?php else: ?>
-                    <span style="background:#fffbeb;color:#b45309;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #fde68a">🟡 Pending</span>
+                    <span style="background:#fffbeb;color:#b45309;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #fde68a">&#128993; Pending</span>
                   <?php endif; ?>
                 </td>
                 <!-- Actions -->
@@ -2874,13 +3039,13 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                     <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
                     <?php if ($status !== 'verified'): ?>
                       <button type="submit" name="act" value="verify_face" class="btn sm" style="background:#16a34a;color:#fff;padding:4px 10px;font-size:11px;border-radius:4px;font-weight:700;border:none;cursor:pointer" title="Rectify and verify officer identity">
-                        ✓ Rectify 🟢
+                        ✓ Rectify &#128994;
                       </button>
                     <?php endif; ?>
                     <?php if ($status !== 'mismatch'): ?>
                       <input type="hidden" name="status" id="st_<?= $row['id'] ?>" value="verified">
                       <button type="submit" name="act" value="verify_face" onclick="document.getElementById('st_<?= $row['id'] ?>').value='mismatch'" class="btn sm ghost" style="color:#dc2626;padding:4px 8px;font-size:11px;border:1px solid #fecaca" title="Flag as Proxy Mismatch">
-                        Flag 🔴
+                        Flag &#128308;
                       </button>
                     <?php endif; ?>
                     <button type="submit" name="act" value="run_ai_scan" class="btn sm ghost" style="color:#7c3aed;padding:4px 8px;font-size:11px;border:1px solid #ddd6fe" title="Re-run Gemini Vision AI match">
@@ -2906,13 +3071,13 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 </td>
                 <td style="padding:10px 14px">
                   <span style="display:inline-block;padding:3px 10px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:6px;font-size:12px;font-weight:700">
-                    🌾 <?= h($row['plot']) ?>
+                    &#127806; <?= h($row['plot']) ?>
                   </span>
                 </td>
                 <td style="padding:10px 14px">
                   <?php if (!empty($row['is_selfie']) || ($row['activity'] ?? '') === 'Officer Verification Selfie'): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#f3e8ff;color:#7e22ce;border:1px solid #d8b4fe;border-radius:12px;font-size:11px;font-weight:700">
-                      🤳 Selfie Verification
+                      &#129331; Selfie Verification
                     </span>
                   <?php else: ?>
                     <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700">
@@ -2923,7 +3088,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <td style="padding:10px 14px;font-size:11.5px">
                   <?php if (!empty($row['lat']) && !empty($row['lng'])): ?>
                     <a href="https://www.google.com/maps?q=<?= (float)$row['lat'] ?>,<?= (float)$row['lng'] ?>" target="_blank" style="color:#0284c7;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
-                      📍 <code><?= number_format((float)$row['lat'], 5) ?>, <?= number_format((float)$row['lng'], 5) ?></code>
+                      &#128205; <code><?= number_format((float)$row['lat'], 5) ?>, <?= number_format((float)$row['lng'], 5) ?></code>
                     </a>
                   <?php else: ?>
                     <span style="color:#94a3b8">—</span>
@@ -2957,16 +3122,16 @@ layout_start('Reports & Tracking Audit', 'reports.php');
                 <td style="padding:10px 14px;color:#475569;font-weight:600"><?= h($row['time']) ?></td>
                 <td style="padding:10px 14px">
                   <?php if (str_contains($evStr, 'Started')): ?>
-                    <span style="display:inline-block;padding:2px 8px;background:#dcfce7;color:#166534;border-radius:12px;font-size:11px;font-weight:700">🟢 TRACKING ON</span>
+                    <span style="display:inline-block;padding:2px 8px;background:#dcfce7;color:#166534;border-radius:12px;font-size:11px;font-weight:700">&#128994; TRACKING ON</span>
                   <?php elseif (str_contains($evStr, 'Stopped')): ?>
-                    <span style="display:inline-block;padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:12px;font-size:11px;font-weight:700">🔴 TRACKING OFF</span>
+                    <span style="display:inline-block;padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:12px;font-size:11px;font-weight:700">&#128308; TRACKING OFF</span>
                   <?php elseif (str_contains($evStr, 'Trip')): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
                   <?php elseif (str_contains($evStr, 'Gap')): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#fef3c7;color:#b45309;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
-                  <?php elseif (str_contains($evStr, '📷')): ?>
+                  <?php elseif (str_contains($evStr, '&#128248;')): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#f5f3ff;color:#6d28d9;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
-                  <?php elseif (str_contains($evStr, 'Parking') || str_contains($evStr, '🅿️')): ?>
+                  <?php elseif (str_contains($evStr, 'Parking') || str_contains($evStr, '&#127359;&#65039;')): ?>
                     <span style="display:inline-block;padding:2px 8px;background:#fef9c3;color:#854d0e;border-radius:12px;font-size:11px;font-weight:700"><?= h($evStr) ?></span>
                   <?php else: ?>
                     <strong><?= h($evStr) ?></strong>
@@ -2991,7 +3156,7 @@ layout_start('Reports & Tracking Audit', 'reports.php');
 
               <?php elseif ($report_type === 'dept_section'): ?>
                 <td style="padding:10px 14px"><strong><?= h($row['department']) ?></strong></td>
-                <td style="padding:10px 14px"><span style="color:#0284c7;font-weight:600">📍 <?= h($row['section']) ?></span></td>
+                <td style="padding:10px 14px"><span style="color:#0284c7;font-weight:600">&#128205; <?= h($row['section']) ?></span></td>
                 <td style="padding:10px 14px;text-align:center"><code><?= h($row['code']) ?></code></td>
                 <td style="padding:10px 14px;text-align:center;font-weight:700;color:#10b981"><?= $row['on_duty'] ?></td>
                 <td style="padding:10px 14px;text-align:right;font-weight:700;color:#0284c7"><?= $row['mileage'] ?></td>
@@ -3324,7 +3489,9 @@ window.fuelReportData = <?= json_encode($fuelReportData ? [
     'parkings' => $fuelReportData['parkings'],
     'fillings' => $fuelReportData['fillings'],
     'thefts' => $fuelReportData['thefts'],
-    'unit_name' => $fuelReportData['unit']['name']
+    'unit_name' => $fuelReportData['unit']['name'],
+    'unit_code' => $fuelReportData['unit']['code'] ?? '',
+    'tank_capacity' => $fuelReportData['tank_capacity'] ?? 40
 ] : null, JSON_UNESCAPED_UNICODE) ?>;
 
 window.showBackgrounds = true;
@@ -3333,15 +3500,35 @@ window.showTripsBg = true;
 window.showMileageLine = true;
 window.showFuelLine = true;
 
+// ============================================================================
+// Wialon Interactive Fuel Telematics Engine (Matches User Screenshots 4 & 5)
+// ============================================================================
+window.showBackgrounds = true;
+window.showParkingsBg = true;
+window.showTripsBg = true;
+window.showMileageLine = true;
+window.showFuelLine = true;
+
+// Wialon Toolbar State
+window.boxZoomActive = false;
+window.detailPointActive = false;
+window.rulerActive = false;
+window.fuelScaleMode = 'zero_base'; // default matches Screenshot 4 (0 to 40L)
+window.rulerPointA = null;
+window.rulerPointB = null;
+window.inspectedPoint = null;
+
 function initFuelChart() {
   var canvas = document.getElementById('fuelChartCanvas');
   if (!canvas || !window.fuelReportData || !window.fuelReportData.chart_points.length) return;
   var pts = window.fuelReportData.chart_points;
+  var tankCap = parseFloat(window.fuelReportData.tank_capacity) || 40;
+  var maxTank = Math.max(10, Math.ceil(tankCap / 5) * 5);
 
+  // Background and Marker Overlay Plugin
   var bgPlugin = {
     id: 'fuelBgPlugin',
     beforeDraw: function(chart) {
-      if (!window.showBackgrounds) return;
       var ctx = chart.ctx;
       var chartArea = chart.chartArea;
       var x = chart.scales.x;
@@ -3352,20 +3539,71 @@ function initFuelChart() {
       var n = pts.length;
       if (n < 2) return;
 
-      ctx.save();
-      for (var i = 0; i < n; i++) {
-        var p = pts[i];
-        var isTrip = p.is_trip;
-        if (isTrip && !window.showTripsBg) continue;
-        if (!isTrip && !window.showParkingsBg) continue;
+      // 1. Draw Wialon Parkings (Yellow) & Trips (Pink) Backgrounds
+      if (window.showBackgrounds) {
+        ctx.save();
+        for (var i = 0; i < n; i++) {
+          var p = pts[i];
+          var isTrip = p.is_trip;
+          if (isTrip && !window.showTripsBg) continue;
+          if (!isTrip && !window.showParkingsBg) continue;
 
-        var xStart = i === 0 ? x.getPixelForValue(0) : (x.getPixelForValue(i - 1) + x.getPixelForValue(i)) / 2;
-        var xEnd = i === n - 1 ? x.getPixelForValue(n - 1) : (x.getPixelForValue(i) + x.getPixelForValue(i + 1)) / 2;
+          var xStart = i === 0 ? x.getPixelForValue(0) : (x.getPixelForValue(i - 1) + x.getPixelForValue(i)) / 2;
+          var xEnd = i === n - 1 ? x.getPixelForValue(n - 1) : (x.getPixelForValue(i) + x.getPixelForValue(i + 1)) / 2;
 
-        ctx.fillStyle = isTrip ? 'rgba(254, 205, 211, 0.45)' : 'rgba(254, 240, 138, 0.45)';
-        ctx.fillRect(xStart, top, Math.max(1, xEnd - xStart), height);
+          ctx.fillStyle = isTrip ? 'rgba(254, 205, 211, 0.45)' : 'rgba(254, 240, 138, 0.45)';
+          ctx.fillRect(xStart, top, Math.max(1, xEnd - xStart), height);
+        }
+        ctx.restore();
       }
-      ctx.restore();
+
+      // 2. Draw Ruler Selection Markers (Points A & B)
+      if (window.rulerActive && (window.rulerPointA !== null || window.rulerPointB !== null)) {
+        ctx.save();
+        if (window.rulerPointA !== null) {
+          var xA = x.getPixelForValue(window.rulerPointA);
+          ctx.strokeStyle = '#16a34a';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(xA, top);
+          ctx.lineTo(xA, top + height);
+          ctx.stroke();
+
+          ctx.fillStyle = '#16a34a';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.fillText('POINT A', xA + 4, top + 15);
+        }
+        if (window.rulerPointB !== null) {
+          var xB = x.getPixelForValue(window.rulerPointB);
+          ctx.strokeStyle = '#dc2626';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(xB, top);
+          ctx.lineTo(xB, top + height);
+          ctx.stroke();
+
+          ctx.fillStyle = '#dc2626';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.fillText('POINT B', xB + 4, top + 30);
+        }
+        ctx.restore();
+      }
+
+      // 3. Draw Inspected Point Marker (if any)
+      if (window.inspectedPoint !== null) {
+        var xP = x.getPixelForValue(window.inspectedPoint.idx);
+        ctx.save();
+        ctx.strokeStyle = '#0284c7';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(xP, top);
+        ctx.lineTo(xP, top + height);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
   };
 
@@ -3380,9 +3618,9 @@ function initFuelChart() {
           borderColor: '#0284c7',
           backgroundColor: 'transparent',
           borderWidth: 2,
-          pointRadius: pts.length > 100 ? 0 : 2,
+          pointRadius: pts.length > 80 ? 0 : 2,
           pointHoverRadius: 5,
-          tension: 0.15,
+          tension: 0.1,
           yAxisID: 'y'
         },
         {
@@ -3391,7 +3629,7 @@ function initFuelChart() {
           borderColor: '#dc2626',
           backgroundColor: 'transparent',
           borderWidth: 2,
-          pointRadius: pts.length > 100 ? 0 : 2,
+          pointRadius: pts.length > 80 ? 0 : 2,
           pointHoverRadius: 5,
           tension: 0.1,
           yAxisID: 'y1'
@@ -3401,6 +3639,7 @@ function initFuelChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: {
         mode: 'index',
         intersect: false
@@ -3408,11 +3647,11 @@ function initFuelChart() {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.92)',
+          backgroundColor: 'rgba(15, 23, 42, 0.94)',
           titleColor: '#fff',
           titleFont: { weight: 'bold', size: 12 },
           bodyColor: '#e2e8f0',
-          bodyFont: { size: 12 },
+          bodyFont: { size: 11.5 },
           padding: 10,
           borderColor: '#334155',
           borderWidth: 1,
@@ -3420,20 +3659,24 @@ function initFuelChart() {
             title: function(items) {
               var idx = items[0].dataIndex;
               var p = pts[idx];
-              return p.time_str + ' ' + p.date_str;
+              return (p.date_str ? p.date_str + ' ' : '') + p.time_str;
             },
             label: function(item) {
               if (item.datasetIndex === 0) {
-                return 'Processed fuel level: ' + (item.parsed.y !== null ? item.parsed.y + ' liters' : 'No data');
+                return 'Processed fuel level: ' + (item.parsed.y !== null ? item.parsed.y.toFixed(2) + ' liters' : 'No data');
               } else if (item.datasetIndex === 1) {
-                return 'Mileage in trips: ' + item.parsed.y + ' km';
+                return 'Mileage in trips: ' + item.parsed.y.toFixed(2) + ' km';
               }
               return '';
             },
             afterBody: function(items) {
               var idx = items[0].dataIndex;
               var p = pts[idx];
-              return 'Speed: ' + p.speed + ' km/h';
+              var lines = ['Speed: ' + p.speed + ' km/h (' + (p.is_trip ? 'Trip' : 'Parking') + ')'];
+              if (p.raw_adc !== undefined && p.raw_adc !== null) {
+                lines.push('Raw ADC (io_201): ' + p.raw_adc);
+              }
+              return lines;
             }
           }
         }
@@ -3441,17 +3684,20 @@ function initFuelChart() {
       scales: {
         x: {
           grid: { color: 'rgba(226, 232, 240, 0.6)' },
-          ticks: { maxTicksLimit: 14, font: { size: 11 } }
+          ticks: { maxTicksLimit: 12, font: { size: 11 } }
         },
         y: {
           type: 'linear',
           position: 'left',
+          min: (window.fuelScaleMode === 'zero_base') ? 0 : undefined,
+          max: (window.fuelScaleMode === 'zero_base') ? maxTank : undefined,
           title: { display: true, text: 'Volume, litres', font: { weight: 'bold', size: 11 }, color: '#0284c7' },
           grid: { color: 'rgba(226, 232, 240, 0.6)' }
         },
         y1: {
           type: 'linear',
           position: 'right',
+          min: 0,
           title: { display: true, text: 'Mileage, km', font: { weight: 'bold', size: 11 }, color: '#dc2626' },
           grid: { drawOnChartArea: false }
         }
@@ -3461,12 +3707,475 @@ function initFuelChart() {
   });
 
   window.fuelChart = chart;
+  attachChartInteractions();
+  updateZoomStatus();
 }
 
+// ============================================================================
+// Interactive Mousewheel, Drag Selection & Click Handlers
+// ============================================================================
+function attachChartInteractions() {
+  var canvas = document.getElementById('fuelChartCanvas');
+  var wrapper = document.getElementById('fuelChartWrapper');
+  var overlay = document.getElementById('fuelSelectionOverlay');
+  if (!canvas || !wrapper) return;
+
+  // 1. Mousewheel Zoom (Up = In, Down = Out, centered around mouse X)
+  canvas.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    if (!window.fuelChart) return;
+    var pts = window.fuelReportData.chart_points;
+    var n = pts.length;
+    var curMin = window.fuelChart.options.scales.x.min !== undefined ? window.fuelChart.options.scales.x.min : 0;
+    var curMax = window.fuelChart.options.scales.x.max !== undefined ? window.fuelChart.options.scales.x.max : (n - 1);
+    var curRange = curMax - curMin;
+
+    var rect = canvas.getBoundingClientRect();
+    var mouseX = e.clientX - rect.left;
+    var mouseVal = window.fuelChart.scales.x.getValueForPixel(mouseX);
+    if (mouseVal === undefined || isNaN(mouseVal)) mouseVal = (curMin + curMax) / 2;
+
+    var zoomFactor = e.deltaY < 0 ? 0.75 : 1.35; // zoom in on scroll up
+    var newRange = Math.max(6, Math.round(curRange * zoomFactor));
+
+    if (newRange >= n - 1 && e.deltaY > 0) {
+      fuelChartResetZoom();
+      return;
+    }
+
+    var ratio = (mouseVal - curMin) / curRange;
+    var newMin = Math.max(0, Math.round(mouseVal - ratio * newRange));
+    var newMax = Math.min(n - 1, newMin + newRange);
+    if (newMax - newMin < newRange) {
+      newMin = Math.max(0, newMax - newRange);
+    }
+
+    window.fuelChart.options.scales.x.min = newMin;
+    window.fuelChart.options.scales.x.max = newMax;
+    window.fuelChart.update('none');
+    updateZoomStatus();
+  }, { passive: false });
+
+  // 2. Drag to Box Zoom (When Box Zoom toggle active OR Shift+Drag)
+  var isDragging = false;
+  var dragStartX = 0;
+
+  wrapper.addEventListener('mousedown', function(e) {
+    if (!window.fuelChart) return;
+    // Activate drag if in Box Zoom mode or Shift key is pressed
+    if (window.boxZoomActive || e.shiftKey) {
+      isDragging = true;
+      var rect = wrapper.getBoundingClientRect();
+      dragStartX = e.clientX - rect.left;
+      if (overlay) {
+        overlay.style.left = dragStartX + 'px';
+        overlay.style.width = '0px';
+        overlay.style.display = 'block';
+      }
+    }
+  });
+
+  window.addEventListener('mousemove', function(e) {
+    if (!isDragging || !overlay) return;
+    var rect = wrapper.getBoundingClientRect();
+    var currentX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    var left = Math.min(dragStartX, currentX);
+    var width = Math.abs(currentX - dragStartX);
+    overlay.style.left = left + 'px';
+    overlay.style.width = width + 'px';
+  });
+
+  window.addEventListener('mouseup', function(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    if (overlay) overlay.style.display = 'none';
+
+    var rect = wrapper.getBoundingClientRect();
+    var endX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    var dist = Math.abs(endX - dragStartX);
+
+    if (dist > 15 && window.fuelChart) {
+      var pts = window.fuelReportData.chart_points;
+      var val1 = window.fuelChart.scales.x.getValueForPixel(Math.min(dragStartX, endX));
+      var val2 = window.fuelChart.scales.x.getValueForPixel(Math.max(dragStartX, endX));
+
+      if (val1 !== undefined && val2 !== undefined) {
+        var newMin = Math.max(0, Math.min(val1, val2));
+        var newMax = Math.min(pts.length - 1, Math.max(val1, val2));
+        if (newMax - newMin >= 4) {
+          window.fuelChart.options.scales.x.min = Math.round(newMin);
+          window.fuelChart.options.scales.x.max = Math.round(newMax);
+          window.fuelChart.update('none');
+          updateZoomStatus();
+        }
+      }
+    }
+  });
+
+  // 3. Canvas Click Handler: Show Detail in Point & Ruler Compare
+  canvas.addEventListener('click', function(e) {
+    if (!window.fuelChart) return;
+    var elements = window.fuelChart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+    if (!elements || !elements.length) return;
+
+    var idx = elements[0].index;
+    var pts = window.fuelReportData.chart_points;
+    var pt = pts[idx];
+    if (!pt) return;
+
+    // Handle Ruler Mode (Select Point A & B)
+    if (window.rulerActive) {
+      if (window.rulerPointA === null || (window.rulerPointA !== null && window.rulerPointB !== null)) {
+        window.rulerPointA = idx;
+        window.rulerPointB = null;
+        updateRulerDisplay();
+      } else {
+        window.rulerPointB = idx;
+        // ensure A <= B
+        if (window.rulerPointA > window.rulerPointB) {
+          var tmp = window.rulerPointA;
+          window.rulerPointA = window.rulerPointB;
+          window.rulerPointB = tmp;
+        }
+        updateRulerDisplay();
+      }
+      window.fuelChart.update('none');
+      return;
+    }
+
+    // Handle Point Detail Inspector Mode
+    selectPointForInspection(pt, idx);
+  });
+}
+
+// ============================================================================
+// Wialon Toolbar Actions
+// ============================================================================
+function fuelChartZoomIn() {
+  if (!window.fuelChart) return;
+  var pts = window.fuelReportData.chart_points;
+  var n = pts.length;
+  var curMin = window.fuelChart.options.scales.x.min !== undefined ? window.fuelChart.options.scales.x.min : 0;
+  var curMax = window.fuelChart.options.scales.x.max !== undefined ? window.fuelChart.options.scales.x.max : (n - 1);
+  var curRange = curMax - curMin;
+  if (curRange <= 6) return;
+
+  var mid = (curMin + curMax) / 2;
+  var newRange = Math.max(6, Math.floor(curRange * 0.7));
+  var newMin = Math.max(0, Math.floor(mid - newRange / 2));
+  var newMax = Math.min(n - 1, newMin + newRange);
+
+  window.fuelChart.options.scales.x.min = newMin;
+  window.fuelChart.options.scales.x.max = newMax;
+  window.fuelChart.update('none');
+  updateZoomStatus();
+}
+
+function fuelChartZoomOut() {
+  if (!window.fuelChart) return;
+  var pts = window.fuelReportData.chart_points;
+  var n = pts.length;
+  var curMin = window.fuelChart.options.scales.x.min !== undefined ? window.fuelChart.options.scales.x.min : 0;
+  var curMax = window.fuelChart.options.scales.x.max !== undefined ? window.fuelChart.options.scales.x.max : (n - 1);
+  var curRange = curMax - curMin;
+  if (curMin === 0 && curMax === n - 1) return;
+
+  var mid = (curMin + curMax) / 2;
+  var newRange = Math.ceil(curRange * 1.4);
+  var newMin = Math.max(0, Math.floor(mid - newRange / 2));
+  var newMax = Math.min(n - 1, newMin + newRange);
+
+  if (newMin === 0 && newMax >= n - 1) {
+    fuelChartResetZoom();
+    return;
+  }
+
+  window.fuelChart.options.scales.x.min = newMin;
+  window.fuelChart.options.scales.x.max = newMax;
+  window.fuelChart.update('none');
+  updateZoomStatus();
+}
+
+function fuelChartResetZoom() {
+  if (!window.fuelChart) return;
+  delete window.fuelChart.options.scales.x.min;
+  delete window.fuelChart.options.scales.x.max;
+  window.fuelChart.update('none');
+  updateZoomStatus();
+}
+
+function updateZoomStatus() {
+  var el = document.getElementById('fuelZoomIndicator');
+  if (!el || !window.fuelChart) return;
+  var pts = window.fuelReportData.chart_points;
+  var n = pts.length;
+  var curMin = window.fuelChart.options.scales.x.min !== undefined ? window.fuelChart.options.scales.x.min : 0;
+  var curMax = window.fuelChart.options.scales.x.max !== undefined ? window.fuelChart.options.scales.x.max : (n - 1);
+  var range = curMax - curMin + 1;
+  var pct = Math.round((n / range) * 100);
+  if (pct <= 100) {
+    el.innerText = 'Full View (100%)';
+  } else {
+    el.innerText = 'Zoom: ' + pct + '% (' + pts[curMin].time_str + ' — ' + pts[curMax].time_str + ')';
+  }
+}
+
+// Toggle Box Zoom Mode Button
+function toggleBoxZoomMode() {
+  window.boxZoomActive = !window.boxZoomActive;
+  var btn = document.getElementById('btnBoxZoom');
+  var wrapper = document.getElementById('fuelChartWrapper');
+  if (window.boxZoomActive) {
+    btn.style.background = '#e0f2fe';
+    btn.style.borderColor = '#0284c7';
+    btn.style.color = '#0284c7';
+    if (wrapper) wrapper.style.cursor = 'crosshair';
+  } else {
+    btn.style.background = '#fff';
+    btn.style.borderColor = '#cbd5e1';
+    btn.style.color = '#334155';
+    if (wrapper) wrapper.style.cursor = 'default';
+  }
+}
+
+// Toggle Detail in Point Mode Button
+function togglePointDetailMode() {
+  window.detailPointActive = !window.detailPointActive;
+  var btn = document.getElementById('btnDetailPoint');
+  var inspector = document.getElementById('fuelPointInspector');
+  if (window.detailPointActive) {
+    btn.style.background = '#e0f2fe';
+    btn.style.borderColor = '#0284c7';
+    btn.style.color = '#0284c7';
+    if (inspector) inspector.style.display = 'flex';
+    // If no point selected, select midpoint
+    if (!window.inspectedPoint && window.fuelReportData.chart_points.length) {
+      var midIdx = Math.floor(window.fuelReportData.chart_points.length / 2);
+      selectPointForInspection(window.fuelReportData.chart_points[midIdx], midIdx);
+    }
+  } else {
+    btn.style.background = '#fff';
+    btn.style.borderColor = '#cbd5e1';
+    btn.style.color = '#334155';
+    if (inspector) inspector.style.display = 'none';
+    window.inspectedPoint = null;
+    if (window.fuelChart) window.fuelChart.update('none');
+  }
+}
+
+function selectPointForInspection(pt, idx) {
+  window.inspectedPoint = { pt: pt, idx: idx };
+  var inspector = document.getElementById('fuelPointInspector');
+  if (inspector) inspector.style.display = 'flex';
+
+  var piTime = document.getElementById('piTime');
+  var piFuel = document.getElementById('piFuel');
+  var piAdcWrap = document.getElementById('piAdcWrap');
+  var piAdc = document.getElementById('piAdc');
+  var piMileage = document.getElementById('piMileage');
+  var piSpeed = document.getElementById('piSpeed');
+  var piState = document.getElementById('piState');
+  var piCoords = document.getElementById('piCoords');
+
+  if (piTime) piTime.innerText = (pt.date_str ? pt.date_str + ' ' : '') + pt.time_str;
+  if (piFuel) piFuel.innerText = (pt.fuel !== null ? pt.fuel.toFixed(2) + ' L' : 'No Data');
+  if (piAdcWrap && piAdc) {
+    if (pt.raw_adc !== undefined && pt.raw_adc !== null) {
+      piAdc.innerText = pt.raw_adc;
+      piAdcWrap.style.display = 'inline';
+    } else {
+      piAdcWrap.style.display = 'none';
+    }
+  }
+  if (piMileage) piMileage.innerText = pt.mileage.toFixed(2) + ' km';
+  if (piSpeed) piSpeed.innerText = pt.speed + ' km/h';
+  if (piState) {
+    piState.innerText = pt.is_trip ? 'Trip' : 'Parking';
+    piState.style.color = pt.is_trip ? '#dc2626' : '#854d0e';
+  }
+  if (piCoords) {
+    if (pt.lat && pt.lng) {
+      piCoords.innerText = Number(pt.lat).toFixed(5) + ', ' + Number(pt.lng).toFixed(5);
+    } else {
+      piCoords.innerText = 'No GPS';
+    }
+  }
+
+  if (window.fuelChart) window.fuelChart.update('none');
+}
+
+function locateInspectorPointOnMap() {
+  if (!window.inspectedPoint || !window.inspectedPoint.pt) return;
+  var pt = window.inspectedPoint.pt;
+  if (!pt.lat || !pt.lng) return;
+  focusFuelMap(pt.lat, pt.lng);
+}
+
+function closePointInspector() {
+  var inspector = document.getElementById('fuelPointInspector');
+  if (inspector) inspector.style.display = 'none';
+  window.inspectedPoint = null;
+  if (window.fuelChart) window.fuelChart.update('none');
+}
+
+// Toggle Ruler (Compare Points) Mode Button
+function toggleRulerMode() {
+  window.rulerActive = !window.rulerActive;
+  var btn = document.getElementById('btnRuler');
+  var banner = document.getElementById('fuelRulerBanner');
+  if (window.rulerActive) {
+    btn.style.background = '#dcfce7';
+    btn.style.borderColor = '#16a34a';
+    btn.style.color = '#16a34a';
+    if (banner) banner.style.display = 'flex';
+    updateRulerDisplay();
+  } else {
+    btn.style.background = '#fff';
+    btn.style.borderColor = '#cbd5e1';
+    btn.style.color = '#334155';
+    if (banner) banner.style.display = 'none';
+    window.rulerPointA = null;
+    window.rulerPointB = null;
+    if (window.fuelChart) window.fuelChart.update('none');
+  }
+}
+
+function resetRulerPoints() {
+  window.rulerPointA = null;
+  window.rulerPointB = null;
+  updateRulerDisplay();
+  if (window.fuelChart) window.fuelChart.update('none');
+}
+
+function updateRulerDisplay() {
+  var banner = document.getElementById('fuelRulerBanner');
+  if (!banner) return;
+  var pts = window.fuelReportData.chart_points;
+
+  var elA = document.getElementById('rulerPointA');
+  var elB = document.getElementById('rulerPointB');
+  var elDur = document.getElementById('rulerDuration');
+  var elDist = document.getElementById('rulerDistance');
+  var elCons = document.getElementById('rulerConsumed');
+  var elRate = document.getElementById('rulerRate');
+  var elSpeed = document.getElementById('rulerAvgSpeed');
+
+  if (window.rulerPointA === null) {
+    if (elA) elA.innerHTML = 'Point A: <em>Click 1st point on graph</em>';
+    if (elB) elB.innerHTML = 'Point B: <em>Waiting...</em>';
+    if (elDur) elDur.innerText = '--';
+    if (elDist) elDist.innerText = '-- km';
+    if (elCons) elCons.innerText = '-- L';
+    if (elRate) elRate.innerText = '-- L/100km';
+    if (elSpeed) elSpeed.innerText = '-- km/h';
+    return;
+  }
+
+  var ptA = pts[window.rulerPointA];
+  if (elA) elA.innerHTML = 'Point A: <strong>' + ptA.time_str + ' (' + (ptA.fuel !== null ? ptA.fuel.toFixed(2) + 'L' : '—') + ')</strong>';
+
+  if (window.rulerPointB === null) {
+    if (elB) elB.innerHTML = 'Point B: <em>Click 2nd point on graph</em>';
+    if (elDur) elDur.innerText = '--';
+    if (elDist) elDist.innerText = '-- km';
+    if (elCons) elCons.innerText = '-- L';
+    if (elRate) elRate.innerText = '-- L/100km';
+    if (elSpeed) elSpeed.innerText = '-- km/h';
+    return;
+  }
+
+  var ptB = pts[window.rulerPointB];
+  if (elB) elB.innerHTML = 'Point B: <strong>' + ptB.time_str + ' (' + (ptB.fuel !== null ? ptB.fuel.toFixed(2) + 'L' : '—') + ')</strong>';
+
+  // Calculations between Point A & B
+  var dist = Math.max(0, ptB.mileage - ptA.mileage);
+  var fuelDiff = 0;
+  if (ptA.fuel !== null && ptB.fuel !== null) {
+    fuelDiff = Math.max(0, ptA.fuel - ptB.fuel);
+  }
+
+  // Parse duration
+  var durSec = (window.rulerPointB - window.rulerPointA) * 90; // approx downsample or parse date
+  if (ptA.full_time && ptB.full_time) {
+    var t1 = new Date(ptA.full_time.replace(' ', 'T')).getTime();
+    var t2 = new Date(ptB.full_time.replace(' ', 'T')).getTime();
+    if (!isNaN(t1) && !isNaN(t2) && t2 > t1) {
+      durSec = Math.round((t2 - t1) / 1000);
+    }
+  }
+
+  var durH = Math.floor(durSec / 3600);
+  var durM = Math.floor((durSec % 3600) / 60);
+  var durS = durSec % 60;
+  var durStr = (durH > 0 ? durH + 'h ' : '') + durM + 'm ' + durS + 's';
+
+  var avgSpeed = durSec > 0 ? ((dist / (durSec / 3600))).toFixed(1) : '0.0';
+  var rate = dist > 0.05 ? ((fuelDiff / dist) * 100).toFixed(2) : '0.00';
+
+  if (elDur) elDur.innerText = durStr;
+  if (elDist) elDist.innerText = dist.toFixed(2) + ' km';
+  if (elCons) elCons.innerText = fuelDiff.toFixed(2) + ' L';
+  if (elRate) elRate.innerText = rate + ' L/100km';
+  if (elSpeed) elSpeed.innerText = avgSpeed + ' km/h';
+}
+
+// Toggle Y-Axis Scale Mode (0-Base Tank vs Auto-Fit Zoom)
+function toggleYScaleMode() {
+  if (!window.fuelChart) return;
+  var btn = document.getElementById('btnScaleToggle');
+  var txt = document.getElementById('scaleModeText');
+  var tankCap = parseFloat(window.fuelReportData.tank_capacity) || 40;
+  var maxTank = Math.max(10, Math.ceil(tankCap / 5) * 5);
+
+  if (window.fuelScaleMode === 'zero_base') {
+    // Switch to auto-fit zoom
+    window.fuelScaleMode = 'auto_fit';
+    delete window.fuelChart.options.scales.y.min;
+    delete window.fuelChart.options.scales.y.max;
+    if (btn) {
+      btn.style.background = '#fff';
+      btn.style.color = '#0284c7';
+      btn.style.borderColor = '#0284c7';
+    }
+    if (txt) txt.innerText = 'Auto-Fit Zoom';
+  } else {
+    // Switch back to 0-base (matches Wialon Screenshot 4)
+    window.fuelScaleMode = 'zero_base';
+    window.fuelChart.options.scales.y.min = 0;
+    window.fuelChart.options.scales.y.max = maxTank;
+    if (btn) {
+      btn.style.background = '#0284c7';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#0284c7';
+    }
+    if (txt) txt.innerText = '0-Base (Full Tank)';
+  }
+
+  window.fuelChart.update();
+}
+
+function toggleExportMenu(e) {
+  if (e) e.stopPropagation();
+  var menu = document.getElementById('exportMenu');
+  if (!menu) return;
+  menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+}
+
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('exportDropdownWrap');
+  var menu = document.getElementById('exportMenu');
+  if (menu && wrap && !wrap.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
+
+// Background & Line Visibility Toggles
 function toggleFuelBackgrounds(checked) {
   window.showBackgrounds = checked;
-  document.getElementById('toggleBgParkings').checked = checked;
-  document.getElementById('toggleBgTrips').checked = checked;
+  var pBox = document.getElementById('toggleBgParkings');
+  var tBox = document.getElementById('toggleBgTrips');
+  if (pBox) pBox.checked = checked;
+  if (tBox) tBox.checked = checked;
   window.showParkingsBg = checked;
   window.showTripsBg = checked;
   if (window.fuelChart) window.fuelChart.update();
@@ -3476,15 +4185,18 @@ function toggleFuelBgSpecific(type, checked) {
   if (type === 'parkings') window.showParkingsBg = checked;
   if (type === 'trips') window.showTripsBg = checked;
   window.showBackgrounds = window.showParkingsBg || window.showTripsBg;
-  document.getElementById('toggleAllBg').checked = (window.showParkingsBg && window.showTripsBg);
+  var allBg = document.getElementById('toggleAllBg');
+  if (allBg) allBg.checked = (window.showParkingsBg && window.showTripsBg);
   if (window.fuelChart) window.fuelChart.update();
 }
 
 function toggleFuelLines(checked) {
   window.showMileageLine = checked;
   window.showFuelLine = checked;
-  document.getElementById('toggleLineMileage').checked = checked;
-  document.getElementById('toggleLineFuel').checked = checked;
+  var mBox = document.getElementById('toggleLineMileage');
+  var fBox = document.getElementById('toggleLineFuel');
+  if (mBox) mBox.checked = checked;
+  if (fBox) fBox.checked = checked;
   if (window.fuelChart) {
     window.fuelChart.setDatasetVisibility(0, checked);
     window.fuelChart.setDatasetVisibility(1, checked);
@@ -3497,11 +4209,15 @@ function toggleFuelLineSpecific(dsIdx, checked) {
     window.fuelChart.setDatasetVisibility(dsIdx, checked);
     window.fuelChart.update();
   }
-  var m = document.getElementById('toggleLineMileage').checked;
-  var f = document.getElementById('toggleLineFuel').checked;
-  document.getElementById('toggleAllLines').checked = (m && f);
+  var mBox = document.getElementById('toggleLineMileage');
+  var fBox = document.getElementById('toggleLineFuel');
+  var m = mBox ? mBox.checked : true;
+  var f = fBox ? fBox.checked : true;
+  var allLines = document.getElementById('toggleAllLines');
+  if (allLines) allLines.checked = (m && f);
 }
 
+// Leaflet Route Map Engine
 function initFuelMap() {
   var container = document.getElementById('fuelRouteMap');
   if (!container || !window.fuelReportData) return;
@@ -3545,18 +4261,18 @@ function initFuelMap() {
     });
   }
 
-  // Refueling markers (Green â›½)
+  // Refueling markers
   if (window.fuelReportData.fillings) {
     window.fuelReportData.fillings.forEach(function(fil, idx) {
       var num = idx + 1;
       var icon = L.divIcon({
         className: 'fuel-marker',
-        html: '<div style="background:#16a34a;color:#fff;border:2px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.4)">â›½</div>',
+        html: '<div style="background:#16a34a;color:#fff;border:2px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.4)">&#9981;</div>',
         iconSize: [28, 28],
         iconAnchor: [14, 14]
       });
       L.marker([fil.lat, fil.lng], { icon: icon })
-        .bindPopup('<div style="font-size:12px"><b>â›½ Refueling #' + num + '</b><br><span style="color:#16a34a;font-weight:bold">+' + fil.volume + ' Liters</span><br>Time: ' + fil.time + '<br>Fuel: ' + fil.start_fuel + 'L &rarr; ' + fil.end_fuel + 'L</div>')
+        .bindPopup('<div style="font-size:12px"><b>&#9981; Refueling #' + num + '</b><br><span style="color:#16a34a;font-weight:bold">+' + fil.volume + ' Liters</span><br>Time: ' + fil.time + '<br>Fuel: ' + fil.start_fuel + 'L &rarr; ' + fil.end_fuel + 'L</div>')
         .addTo(map);
     });
   }
@@ -3585,7 +4301,7 @@ function focusFuelMap(lat, lng) {
 function exportFuelChartImage() {
   if (!window.fuelChart) return;
   var link = document.createElement('a');
-  link.download = 'Fuel_Graph_' + (window.fuelReportData ? window.fuelReportData.unit_name.replace(/[^a-zA-Z0-9]/g, '_') : 'export') + '.png';
+  link.download = 'Fuel_Graph_' + (window.fuelReportData ? (window.fuelReportData.unit_code || window.fuelReportData.unit_name).replace(/[^a-zA-Z0-9]/g, '_') : 'export') + '.png';
   link.href = window.fuelChart.toBase64Image();
   link.click();
 }
@@ -3593,15 +4309,25 @@ function exportFuelChartImage() {
 function exportFuelDataCSV() {
   if (!window.fuelReportData || !window.fuelReportData.chart_points.length) return;
   var pts = window.fuelReportData.chart_points;
-  var csv = 'Time,Date,Fuel_Liters,Mileage_km,Speed_kmh,State\n';
+  var csv = 'Time,Date,Fuel_Liters,Raw_ADC,Mileage_km,Speed_kmh,State,Latitude,Longitude\n';
   pts.forEach(function(p) {
-    csv += [p.time_str, p.date_str, p.fuel !== null ? p.fuel : '', p.mileage, p.speed, p.is_trip ? 'Trip' : 'Parking'].join(',') + '\n';
+    csv += [
+      p.time_str,
+      p.date_str || '',
+      p.fuel !== null ? p.fuel : '',
+      p.raw_adc !== undefined && p.raw_adc !== null ? p.raw_adc : '',
+      p.mileage,
+      p.speed,
+      p.is_trip ? 'Trip' : 'Parking',
+      p.lat || '',
+      p.lng || ''
+    ].join(',') + '\n';
   });
   var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   var url = URL.createObjectURL(blob);
   var link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', 'Fuel_Report_' + (window.fuelReportData.unit_name.replace(/[^a-zA-Z0-9]/g, '_')) + '.csv');
+  link.setAttribute('download', 'Fuel_Report_' + (window.fuelReportData.unit_code || window.fuelReportData.unit_name).replace(/[^a-zA-Z0-9]/g, '_') + '.csv');
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();

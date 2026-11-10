@@ -1,4 +1,7 @@
 <?php
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
 /**
  * StaffTrack mobile API.  Usage: api.php?action=NAME
  * Auth: header "Authorization: Bearer <token>" (all actions except login).
@@ -1006,9 +1009,7 @@ try {
     case 'search_plots_master': {
         $u = get_auth_user();
         if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') {
-            if (empty($_SESSION['user_id']) && empty($_SESSION['admin_user'])) {
-                fail('Unauthorized', 401);
-            }
+            fail('Unauthorized', 401);
         }
         $q = trim($_GET['query'] ?? ($_POST['query'] ?? ''));
         $limit = min(50, max(1, (int)($_GET['limit'] ?? 30)));
@@ -1034,24 +1035,29 @@ try {
             $st = db()->prepare($sql);
             $st->execute([$like, $like, $like, $like, $like]);
             $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+            out(['ok' => true, 'plots' => $plots]);
         } catch (Throwable $e) {
-            // Fallback without geofences table join in case of schema discrepancy
-            $sqlFallback = "SELECT 
-                p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
-                f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
-                a.name AS field_asst_name, a.feild_asst_code,
-                0 AS geofence_id, 0 AS has_geofence
-                FROM erp_plots p
-                LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
-                LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
-                WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
-                ORDER BY p.plot_manual_code ASC
-                LIMIT $limit";
-            $st = db()->prepare($sqlFallback);
-            $st->execute([$like, $like, $like, $like, $like]);
-            $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+            // Fallback without geofences table join
+            try {
+                $sqlFallback = "SELECT 
+                    p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+                    f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                    a.name AS field_asst_name, a.feild_asst_code,
+                    0 AS geofence_id, 0 AS has_geofence
+                    FROM erp_plots p
+                    LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                    LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
+                    WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
+                    ORDER BY p.plot_manual_code ASC
+                    LIMIT $limit";
+                $st = db()->prepare($sqlFallback);
+                $st->execute([$like, $like, $like, $like, $like]);
+                $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+                out(['ok' => true, 'plots' => $plots, 'fallback' => true]);
+            } catch (Throwable $e2) {
+                out(['ok' => false, 'error' => $e2->getMessage()]);
+            }
         }
-        out(['ok' => true, 'plots' => $plots]);
     }
 
     case 'erp_master_sync': {

@@ -16,13 +16,40 @@ set_time_limit(300);
 
 if (isset($_GET['check_erp_counts'])) {
     header('Content-Type: application/json');
+    $err = null;
+    $searchTest = [];
+    try {
+        $q = "V/07";
+        $like = "%$q%";
+        $limit = 10;
+        $sql = "SELECT 
+            p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+            a.name AS field_asst_name, a.feild_asst_code,
+            g.id AS geofence_id,
+            CASE WHEN g.id IS NOT NULL THEN 1 ELSE 0 END AS has_geofence
+            FROM erp_plots p
+            LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+            LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
+            LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active = 1
+            WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
+            ORDER BY has_geofence DESC, p.plot_manual_code ASC
+            LIMIT $limit";
+        $st = db()->prepare($sql);
+        $st->execute([$like, $like, $like, $like, $like]);
+        $searchTest = $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $err = $e->getMessage();
+    }
+
     $res = [
         'plots_count' => (int)q("SELECT COUNT(*) FROM erp_plots")->fetchColumn(),
         'farmers_count' => (int)q("SELECT COUNT(*) FROM erp_farmers")->fetchColumn(),
         'fa_count' => (int)q("SELECT COUNT(*) FROM erp_field_assistants")->fetchColumn(),
         'cdn_count' => (int)q("SELECT COUNT(*) FROM cdn_details")->fetchColumn(),
         'gf_count' => (int)q("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn(),
-        'sample_plots' => q("SELECT p.plot_no, p.plot_manual_code, p.farmer_no, f.name as farmer_name FROM erp_plots p LEFT JOIN erp_farmers f ON p.farmer_no=f.farmer_no LIMIT 5")->fetchAll(PDO::FETCH_ASSOC),
+        'search_error' => $err,
+        'search_test' => $searchTest,
     ];
     echo json_encode($res, JSON_PRETTY_PRINT);
     exit;

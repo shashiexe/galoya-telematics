@@ -15,7 +15,7 @@ class LocalDb {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'stafftrack.db'),
-      version: 3,
+      version: 4,
       onCreate: (d, v) async {
         await d.execute('''CREATE TABLE points(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,6 +26,16 @@ class LocalDb {
         await d.execute('CREATE TABLE tasks_cache(id INTEGER PRIMARY KEY, json TEXT)');
         await d.execute('''CREATE TABLE IF NOT EXISTS geofences_cache(
           id INTEGER PRIMARY KEY, name TEXT, code TEXT, lat REAL, lng REAL, coordinates TEXT)''');
+        await d.execute('''CREATE TABLE IF NOT EXISTS erp_plots(
+          plot_no TEXT PRIMARY KEY, plot_manual_code TEXT, sector_no TEXT, farmer_no TEXT, farmer_name TEXT,
+          farmer_phone TEXT, farmer_nic TEXT, land_area REAL, payment_category TEXT, field_asst_no TEXT,
+          field_asst_name TEXT, feild_asst_code TEXT, has_geofence INTEGER DEFAULT 0)''');
+        await d.execute('''CREATE TABLE IF NOT EXISTS cdn_records(
+          cdn TEXT PRIMARY KEY, plot_no TEXT, plot_manual_code TEXT, farmer_no TEXT, farmer_name TEXT,
+          field_asst_no TEXT, field_asst_name TEXT, type TEXT, cane_category_code TEXT, vehicle_no TEXT,
+          trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, lat REAL, lng REAL, create_user TEXT,
+          create_time TEXT, weige_ticket_no TEXT, tonnage_received REAL, gross_weight REAL, tare_weight REAL,
+          weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 2) {
@@ -35,6 +45,20 @@ class LocalDb {
         if (oldV < 3) {
           try {
             await d.execute('ALTER TABLE geofences_cache ADD COLUMN coordinates TEXT');
+          } catch (_) {}
+        }
+        if (oldV < 4) {
+          try {
+            await d.execute('''CREATE TABLE IF NOT EXISTS erp_plots(
+              plot_no TEXT PRIMARY KEY, plot_manual_code TEXT, sector_no TEXT, farmer_no TEXT, farmer_name TEXT,
+              farmer_phone TEXT, farmer_nic TEXT, land_area REAL, payment_category TEXT, field_asst_no TEXT,
+              field_asst_name TEXT, feild_asst_code TEXT, has_geofence INTEGER DEFAULT 0)''');
+            await d.execute('''CREATE TABLE IF NOT EXISTS cdn_records(
+              cdn TEXT PRIMARY KEY, plot_no TEXT, plot_manual_code TEXT, farmer_no TEXT, farmer_name TEXT,
+              field_asst_no TEXT, field_asst_name TEXT, type TEXT, cane_category_code TEXT, vehicle_no TEXT,
+              trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, lat REAL, lng REAL, create_user TEXT,
+              create_time TEXT, weige_ticket_no TEXT, tonnage_received REAL, gross_weight REAL, tare_weight REAL,
+              weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
           } catch (_) {}
         }
       },
@@ -412,6 +436,151 @@ class LocalDb {
       list.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
     }
     return list.take(limit).toList();
+  }
+
+  // --- CDN Records (Offline Storage & Caching) ---
+
+  static Future<void> saveCdnRecord(Map<String, dynamic> cdn) async {
+    final d = await db;
+    await d.insert('cdn_records', cdn, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<void> saveCdnBatch(List<dynamic> list) async {
+    final d = await db;
+    final batch = d.batch();
+    for (final item in list) {
+      if (item is Map) {
+        batch.insert('cdn_records', {
+          'cdn': item['cdn']?.toString() ?? '',
+          'plot_no': item['plot_no']?.toString(),
+          'plot_manual_code': item['plot_manual_code']?.toString(),
+          'farmer_no': item['farmer_no']?.toString(),
+          'farmer_name': item['farmer_name']?.toString(),
+          'field_asst_no': item['field_asst_no']?.toString(),
+          'field_asst_name': item['field_asst_name']?.toString(),
+          'type': item['type']?.toString() ?? 'OUT',
+          'cane_category_code': item['cane_category_code']?.toString() ?? 'CAT1',
+          'vehicle_no': item['vehicle_no']?.toString() ?? '',
+          'trailer_no': item['trailer_no']?.toString() ?? '',
+          'crop_cycle': item['crop_cycle']?.toString() ?? '',
+          'cdn_photo': item['cdn_photo']?.toString(),
+          'lat': (item['lat'] is num) ? (item['lat'] as num).toDouble() : null,
+          'lng': (item['lng'] is num) ? (item['lng'] as num).toDouble() : null,
+          'create_user': item['create_user']?.toString(),
+          'create_time': item['create_time']?.toString() ?? DateTime.now().toIso8601String(),
+          'weige_ticket_no': item['weige_ticket_no']?.toString(),
+          'tonnage_received': (item['tonnage_received'] is num) ? (item['tonnage_received'] as num).toDouble() : 0.0,
+          'gross_weight': (item['gross_weight'] is num) ? (item['gross_weight'] as num).toDouble() : 0.0,
+          'tare_weight': (item['tare_weight'] is num) ? (item['tare_weight'] as num).toDouble() : 0.0,
+          'weighed_date': item['weighed_date']?.toString(),
+          'status': item['status']?.toString() ?? 'PENDING',
+          'synced': 1,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<Map<String, dynamic>>> getCdnRecords({
+    String? date,
+    String status = 'COMPLETED',
+    String? search,
+    int limit = 50,
+  }) async {
+    final d = await db;
+    final whereClauses = <String>[];
+    final whereArgs = <dynamic>[];
+
+    if (date != null && date.isNotEmpty) {
+      whereClauses.add("substr(create_time, 1, 10) = ?");
+      whereArgs.add(date);
+    }
+    if (status.isNotEmpty && status != 'ALL') {
+      whereClauses.add("status = ?");
+      whereArgs.add(status);
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      final s = '%${search.trim()}%';
+      whereClauses.add("(cdn LIKE ? OR vehicle_no LIKE ? OR plot_manual_code LIKE ? OR farmer_name LIKE ? OR weige_ticket_no LIKE ?)");
+      whereArgs.addAll([s, s, s, s, s]);
+    }
+
+    final whereSql = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
+    return d.query(
+      'cdn_records',
+      where: whereSql,
+      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+      orderBy: 'create_time DESC',
+      limit: limit,
+    );
+  }
+
+  static Future<Map<String, dynamic>> getCdnSummary({String? date}) async {
+    final d = await db;
+    String sql = "SELECT COUNT(*) as total_count, "
+        "COALESCE(SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END), 0) as completed_count, "
+        "COALESCE(SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END), 0) as pending_count, "
+        "COALESCE(SUM(CASE WHEN status='COMPLETED' THEN tonnage_received ELSE 0.0 END), 0.0) as total_tonnage "
+        "FROM cdn_records";
+    List<dynamic> args = [];
+    if (date != null && date.isNotEmpty) {
+      sql += " WHERE substr(create_time, 1, 10) = ?";
+      args.add(date);
+    }
+    final rows = await d.rawQuery(sql, args);
+    if (rows.isNotEmpty) {
+      final r = rows.first;
+      return {
+        'total_count': (r['total_count'] as num?)?.toInt() ?? 0,
+        'completed_count': (r['completed_count'] as num?)?.toInt() ?? 0,
+        'pending_count': (r['pending_count'] as num?)?.toInt() ?? 0,
+        'total_tonnage': (r['total_tonnage'] as num?)?.toDouble() ?? 0.0,
+      };
+    }
+    return {'total_count': 0, 'completed_count': 0, 'pending_count': 0, 'total_tonnage': 0.0};
+  }
+
+  // --- ERP Master Plots (Offline Hybrid Explorer) ---
+
+  static Future<void> saveMasterPlots(List<dynamic> plots) async {
+    final d = await db;
+    final batch = d.batch();
+    for (final p in plots) {
+      if (p is Map) {
+        batch.insert('erp_plots', {
+          'plot_no': p['plot_no']?.toString() ?? '',
+          'plot_manual_code': p['plot_manual_code']?.toString() ?? '',
+          'sector_no': p['sector_no']?.toString(),
+          'farmer_no': p['farmer_no']?.toString(),
+          'farmer_name': p['farmer_name']?.toString(),
+          'farmer_phone': p['farmer_phone']?.toString(),
+          'farmer_nic': p['farmer_nic']?.toString(),
+          'land_area': (p['land_area'] is num) ? (p['land_area'] as num).toDouble() : 0.0,
+          'payment_category': p['payment_category']?.toString(),
+          'field_asst_no': p['field_asst_no']?.toString(),
+          'field_asst_name': p['field_asst_name']?.toString(),
+          'feild_asst_code': p['feild_asst_code']?.toString(),
+          'has_geofence': (p['has_geofence'] == 1 || p['geofence_id'] != null) ? 1 : 0,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<Map<String, dynamic>>> searchMasterPlots(String query, {int limit = 30}) async {
+    final d = await db;
+    final q = '%${query.trim()}%';
+    return d.rawQuery('''
+      SELECT * FROM erp_plots 
+      WHERE plot_manual_code LIKE ? OR plot_no LIKE ? OR farmer_name LIKE ? OR farmer_nic LIKE ? OR sector_no LIKE ?
+      ORDER BY has_geofence DESC, plot_manual_code ASC
+      LIMIT ?
+    ''', [q, q, q, q, q, limit]);
+  }
+
+  static Future<int> countMasterPlots() async {
+    final d = await db;
+    return Sqflite.firstIntValue(await d.rawQuery('SELECT COUNT(*) FROM erp_plots')) ?? 0;
   }
 }
 

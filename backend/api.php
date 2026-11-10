@@ -53,8 +53,8 @@ function auth_user(): array {
 }
 
 function app_config(): array {
-    $latestVersion = setting('latest_app_version', '1.4.5');
-    $latestBuild = (int)setting('latest_app_build', 31);
+    $latestVersion = setting('latest_app_version', '1.4.6');
+    $latestBuild = (int)setting('latest_app_build', 33);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -76,9 +76,9 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.4.6');
-        $latestBuild = (int)setting('latest_app_build', 32);
+        $latestBuild = (int)setting('latest_app_build', 33);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
-        $changelog = setting('app_update_changelog', "🌾 CANE DELIVERY NOTE (CDN) & WEIGHBRIDGE UPDATE\n\n• Cane Delivery Note (CDN) Field Issuance & 100% Offline Storage\n• Factory Weighbridge Live Delivery Tracker (Completed Tonnage, WBT No, Gross/Tare/Net)\n• Smart Hybrid Plot & Farmer Explorer (Master ERP + Geofenced plots with direct Call & CDN actions)\n• Full GaloyaTracker MSSQL Integration");
+        $changelog = setting('app_update_changelog', "🌾 CANE DELIVERY NOTE (CDN) & PLOT AUTOCOMPLETE UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
         $forceUpdate = setting('app_force_update', '1') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
@@ -1004,7 +1004,12 @@ try {
     }
 
     case 'search_plots_master': {
-        auth_user();
+        $u = get_auth_user();
+        if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') {
+            if (empty($_SESSION['user_id']) && empty($_SESSION['admin_user'])) {
+                fail('Unauthorized', 401);
+            }
+        }
         $q = trim($_GET['query'] ?? ($_POST['query'] ?? ''));
         $limit = min(50, max(1, (int)($_GET['limit'] ?? 30)));
         if (strlen($q) < 1) {

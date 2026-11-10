@@ -120,6 +120,18 @@ class Sync {
             'note': payload['status'] ?? payload['message'] ?? '',
             't': payload['t'] ?? DateTime.now().millisecondsSinceEpoch,
           });
+        } else if (q['kind'] == 'cdn_issue') {
+          if (q['file'] != null && q['file'].toString().isNotEmpty) {
+            final f = File(q['file'] as String);
+            if (await f.exists()) {
+              await Api.upload('cdn_issue', payload.map((k, v) => MapEntry(k, v?.toString() ?? '')), f);
+              await f.delete().catchError((_) => f);
+            } else {
+              await Api.post('cdn_issue', payload);
+            }
+          } else {
+            await Api.post('cdn_issue', payload);
+          }
         } else if (q['kind'] == 'photo' || q['kind'] == 'field_photo') {
           final f = File(q['file'] as String);
           if (!await f.exists()) { await LocalDb.dequeue(id); continue; }

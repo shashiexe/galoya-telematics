@@ -880,6 +880,106 @@ try {
     $results[] = ["✅ Database: Ensured photo_delete_logs audit trail table exists", "color:#10b981"];
 } catch (Throwable $e) {}
 
+// ERP Master Tables & Cane Delivery Note (CDN) Architecture
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `cdn_details` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `cdn` VARCHAR(30) NOT NULL UNIQUE,
+      `cdn_issued` TINYINT(1) DEFAULT 1,
+      `plot_no` VARCHAR(30) NULL,
+      `plot_manual_code` VARCHAR(50) NULL,
+      `farmer_no` VARCHAR(30) NULL,
+      `farmer_name` VARCHAR(150) NULL,
+      `field_asst_no` VARCHAR(20) NULL,
+      `field_asst_name` VARCHAR(150) NULL,
+      `type` VARCHAR(10) DEFAULT 'OUT',
+      `cane_category_code` VARCHAR(20) NULL,
+      `vehicle_no` VARCHAR(30) NULL,
+      `trailer_no` VARCHAR(20) NULL,
+      `crop_cycle` VARCHAR(30) NULL,
+      `cdn_photo` VARCHAR(255) NULL,
+      `lat` DECIMAL(10,7) NULL,
+      `lng` DECIMAL(10,7) NULL,
+      `create_user` VARCHAR(50) NULL,
+      `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+      `weige_ticket_no` VARCHAR(30) NULL,
+      `tonnage_received` DECIMAL(10,2) DEFAULT 0.00,
+      `gross_weight` DECIMAL(10,2) DEFAULT 0.00,
+      `tare_weight` DECIMAL(10,2) DEFAULT 0.00,
+      `weighed_date` DATETIME NULL,
+      `status` VARCHAR(20) DEFAULT 'PENDING',
+      `synced_to_mssql` TINYINT(1) DEFAULT 0,
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_cdn` (`cdn`),
+      INDEX `idx_plot` (`plot_no`),
+      INDEX `idx_fa` (`field_asst_no`),
+      INDEX `idx_date` (`create_time`),
+      INDEX `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_plots` (
+      `plot_no` VARCHAR(30) NOT NULL PRIMARY KEY,
+      `plot_manual_code` VARCHAR(50) NOT NULL,
+      `sector_no` VARCHAR(20) NULL,
+      `farmer_no` VARCHAR(30) NULL,
+      `land_area` DECIMAL(10,2) NULL,
+      `payment_category` VARCHAR(20) NULL,
+      `field_asst_no` VARCHAR(20) NULL,
+      `registration_no` VARCHAR(30) NULL,
+      `method` VARCHAR(30) NULL,
+      `ownership` VARCHAR(10) NULL,
+      `is_active` TINYINT(1) DEFAULT 1,
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_pmc` (`plot_manual_code`),
+      INDEX `idx_sec` (`sector_no`),
+      INDEX `idx_fno` (`farmer_no`),
+      INDEX `idx_fano` (`field_asst_no`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_farmers` (
+      `farmer_no` VARCHAR(30) NOT NULL PRIMARY KEY,
+      `name` VARCHAR(150) NULL,
+      `contact_no` VARCHAR(30) NULL,
+      `nic_no` VARCHAR(50) NULL,
+      `address` TEXT NULL,
+      `land_area` VARCHAR(30) NULL,
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_fn` (`name`),
+      INDEX `idx_nic` (`nic_no`),
+      INDEX `idx_ph` (`contact_no`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_field_assistants` (
+      `field_asst_no` VARCHAR(20) NOT NULL PRIMARY KEY,
+      `feild_asst_code` VARCHAR(20) NULL,
+      `name` VARCHAR(150) NULL,
+      `contact_no` VARCHAR(30) NULL,
+      `nic_no` VARCHAR(30) NULL,
+      `division_no` VARCHAR(20) NULL,
+      `is_active` VARCHAR(10) DEFAULT '1',
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_code` (`feild_asst_code`),
+      INDEX `idx_name` (`name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_cane_categories` (
+      `category_code` VARCHAR(20) NOT NULL PRIMARY KEY,
+      `category_name` VARCHAR(50) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("INSERT IGNORE INTO `erp_cane_categories` (`category_code`, `category_name`) VALUES 
+      ('CAT1', 'Green'),
+      ('CAT2', 'Burnt'),
+      ('CAT3', 'Seed Cane'),
+      ('CAT4', 'Seed Cane Top Cutting'),
+      ('CAT5', 'Compost'),
+      ('CAT6', 'Machine Harvested');");
+
+    $results[] = ["✅ Database: Ensured ERP Core Tables (cdn_details, erp_plots, erp_farmers, erp_field_assistants, erp_cane_categories) exist", "color:#10b981;font-weight:bold"];
+} catch (Throwable $e) {
+    $results[] = ["⚠️ Database ERP tables error: " . $e->getMessage(), "color:#ef4444"];
+}
+
 // Update latest app version & build in settings table using bootstrap set_setting
 try {
     // Ensure all 15,104 geofences have center_lat and center_lng populated

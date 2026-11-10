@@ -1017,23 +1017,40 @@ try {
         }
 
         $like = "%$q%";
-        $sql = "SELECT 
-            p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
-            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
-            a.name AS field_asst_name, a.feild_asst_code,
-            g.id AS geofence_id, g.lat AS gf_lat, g.lng AS gf_lng,
-            CASE WHEN g.id IS NOT NULL THEN 1 ELSE 0 END AS has_geofence
-            FROM erp_plots p
-            LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
-            LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
-            LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active = 1
-            WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
-            ORDER BY has_geofence DESC, p.plot_manual_code ASC
-            LIMIT $limit";
-        
-        $st = db()->prepare($sql);
-        $st->execute([$like, $like, $like, $like, $like]);
-        $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $sql = "SELECT 
+                p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+                f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                a.name AS field_asst_name, a.feild_asst_code,
+                g.id AS geofence_id, g.center_lat AS gf_lat, g.center_lng AS gf_lng,
+                CASE WHEN g.id IS NOT NULL THEN 1 ELSE 0 END AS has_geofence
+                FROM erp_plots p
+                LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
+                LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active = 1
+                WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
+                ORDER BY has_geofence DESC, p.plot_manual_code ASC
+                LIMIT $limit";
+            $st = db()->prepare($sql);
+            $st->execute([$like, $like, $like, $like, $like]);
+            $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            // Fallback without geofences table join in case of schema discrepancy
+            $sqlFallback = "SELECT 
+                p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+                f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                a.name AS field_asst_name, a.feild_asst_code,
+                0 AS geofence_id, 0 AS has_geofence
+                FROM erp_plots p
+                LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
+                WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
+                ORDER BY p.plot_manual_code ASC
+                LIMIT $limit";
+            $st = db()->prepare($sqlFallback);
+            $st->execute([$like, $like, $like, $like, $like]);
+            $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
         out(['ok' => true, 'plots' => $plots]);
     }
 

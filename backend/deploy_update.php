@@ -14,6 +14,20 @@ if ($key !== 'galoya2026' && !$isAdmin) {
 
 set_time_limit(300);
 
+if (isset($_GET['check_erp_counts'])) {
+    header('Content-Type: application/json');
+    $res = [
+        'plots_count' => (int)q("SELECT COUNT(*) FROM erp_plots")->fetchColumn(),
+        'farmers_count' => (int)q("SELECT COUNT(*) FROM erp_farmers")->fetchColumn(),
+        'fa_count' => (int)q("SELECT COUNT(*) FROM erp_field_assistants")->fetchColumn(),
+        'cdn_count' => (int)q("SELECT COUNT(*) FROM cdn_details")->fetchColumn(),
+        'gf_count' => (int)q("SELECT COUNT(*) FROM geofences WHERE active=1")->fetchColumn(),
+        'sample_plots' => q("SELECT p.plot_no, p.plot_manual_code, p.farmer_no, f.name as farmer_name FROM erp_plots p LEFT JOIN erp_farmers f ON p.farmer_no=f.farmer_no LIMIT 5")->fetchAll(PDO::FETCH_ASSOC),
+    ];
+    echo json_encode($res, JSON_PRETTY_PRINT);
+    exit;
+}
+
 if (isset($_GET['show_web_users'])) {
     header('Content-Type: application/json');
     $u = q('SELECT id, name, phone, role, active, web_access, section_id, section_ids, department_id, staff_ids FROM users WHERE web_access=1 OR role != "staff"')->fetchAll();

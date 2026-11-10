@@ -867,6 +867,308 @@ try {
         out(['ok' => true, 'message' => 'Face enrollment reset to 0']);
     }
 
+    // ==========================================
+    // CANE DELIVERY NOTE (CDN) & ERP INTEGRATION
+    // ==========================================
+    case 'cdn_categories': {
+        $cats = q("SELECT category_code, category_name FROM erp_cane_categories ORDER BY category_code ASC")->fetchAll();
+        if (empty($cats)) {
+            $cats = [
+                ['category_code' => 'CAT1', 'category_name' => 'Green'],
+                ['category_code' => 'CAT2', 'category_name' => 'Burnt'],
+                ['category_code' => 'CAT3', 'category_name' => 'Seed Cane'],
+                ['category_code' => 'CAT4', 'category_name' => 'Seed Cane Top Cutting'],
+                ['category_code' => 'CAT5', 'category_name' => 'Compost'],
+                ['category_code' => 'CAT6', 'category_name' => 'Machine Harvested'],
+            ];
+        }
+        out(['ok' => true, 'categories' => $cats]);
+    }
+
+    case 'cdn_issue': {
+        $u = auth_user();
+        $cdn = trim($_POST['cdn'] ?? '');
+        if (!$cdn) fail('CDN Number is required', 400);
+
+        $plotNo = trim($_POST['plot_no'] ?? '');
+        $plotManualCode = trim($_POST['plot_manual_code'] ?? '');
+        $farmerNo = trim($_POST['farmer_no'] ?? '');
+        $farmerName = trim($_POST['farmer_name'] ?? '');
+        $fieldAsstNo = trim($_POST['field_asst_no'] ?? ($u['code'] ?? ''));
+        $fieldAsstName = trim($_POST['field_asst_name'] ?? ($u['name'] ?? ''));
+        $type = trim($_POST['type'] ?? 'OUT');
+        $caneCat = trim($_POST['cane_category_code'] ?? 'CAT1');
+        $vehicleNo = trim($_POST['vehicle_no'] ?? '');
+        $trailerNo = trim($_POST['trailer_no'] ?? '');
+        $cropCycle = trim($_POST['crop_cycle'] ?? '');
+        $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
+        $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
+        $createUser = $u['name'] ?? ($u['phone'] ?? 'FieldOfficer');
+
+        // Optional CDN photo upload
+        $photoPath = null;
+        if (!empty($_FILES['cdn_photo']['tmp_name'])) {
+            $ext = strtolower(pathinfo($_FILES['cdn_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
+            $dir = __DIR__ . '/uploads/cdn';
+            if (!is_dir($dir)) @mkdir($dir, 0775, true);
+            $fname = 'cdn_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $cdn) . '_' . time() . '.' . $ext;
+            if (move_uploaded_file($_FILES['cdn_photo']['tmp_name'], $dir . '/' . $fname)) {
+                $photoPath = 'uploads/cdn/' . $fname;
+            }
+        }
+
+        // Upsert into cdn_details
+        $stmt = db()->prepare("INSERT INTO cdn_details 
+            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, lat, lng, create_user, status, synced_to_mssql)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
+            ON DUPLICATE KEY UPDATE 
+            plot_no=VALUES(plot_no), plot_manual_code=VALUES(plot_manual_code), farmer_no=VALUES(farmer_no), farmer_name=VALUES(farmer_name),
+            field_asst_no=VALUES(field_asst_no), field_asst_name=VALUES(field_asst_name), type=VALUES(type), cane_category_code=VALUES(cane_category_code),
+            vehicle_no=VALUES(vehicle_no), trailer_no=VALUES(trailer_no), crop_cycle=VALUES(crop_cycle),
+            cdn_photo=COALESCE(VALUES(cdn_photo), cdn_photo), lat=COALESCE(VALUES(lat), lat), lng=COALESCE(VALUES(lng), lng)");
+        $stmt->execute([
+            $cdn, $plotNo, $plotManualCode, $farmerNo, $farmerName, $fieldAsstNo, $fieldAsstName, $type, $caneCat,
+            $vehicleNo, $trailerNo, $cropCycle, $photoPath, $lat, $lng, $createUser
+        ]);
+
+        out(['ok' => true, 'cdn' => $cdn, 'status' => 'PENDING', 'message' => 'CDN registered successfully']);
+    }
+
+    case 'cdn_list': {
+        $u = auth_user();
+        $date = trim($_GET['date'] ?? ($_POST['date'] ?? ''));
+        $status = strtoupper(trim($_GET['status'] ?? ($_POST['status'] ?? 'COMPLETED'))); // Default COMPLETED as requested!
+        $search = trim($_GET['search'] ?? ($_POST['search'] ?? ''));
+        $limit = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+
+        $where = ["1=1"];
+        $params = [];
+
+        if ($date) {
+            $where[] = "DATE(create_time) = ?";
+            $params[] = $date;
+        }
+
+        if ($status && $status !== 'ALL') {
+            $where[] = "status = ?";
+            $params[] = $status;
+        }
+
+        if ($search) {
+            $where[] = "(cdn LIKE ? OR vehicle_no LIKE ? OR plot_manual_code LIKE ? OR farmer_name LIKE ? OR weige_ticket_no LIKE ?)";
+            $qLike = "%$search%";
+            $params[] = $qLike;
+            $params[] = $qLike;
+            $params[] = $qLike;
+            $params[] = $qLike;
+            $params[] = $qLike;
+        }
+
+        $whereSql = implode(" AND ", $where);
+
+        // Calculate summary metrics
+        $sumStmt = db()->prepare("SELECT 
+            COUNT(*) as total_count,
+            COALESCE(SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END), 0) as completed_count,
+            COALESCE(SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END), 0) as pending_count,
+            COALESCE(SUM(CASE WHEN status='COMPLETED' THEN tonnage_received ELSE 0.00 END), 0.00) as total_tonnage
+            FROM cdn_details WHERE $whereSql");
+        $sumStmt->execute($params);
+        $summary = $sumStmt->fetch(PDO::FETCH_ASSOC);
+
+        // Fetch records
+        $dataStmt = db()->prepare("SELECT 
+            id, cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name,
+            type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, lat, lng,
+            create_user, create_time, weige_ticket_no, tonnage_received, gross_weight, tare_weight, weighed_date, status, synced_to_mssql
+            FROM cdn_details WHERE $whereSql ORDER BY id DESC LIMIT $limit");
+        $dataStmt->execute($params);
+        $items = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        out([
+            'ok' => true,
+            'summary' => [
+                'total_count' => (int)($summary['total_count'] ?? 0),
+                'completed_count' => (int)($summary['completed_count'] ?? 0),
+                'pending_count' => (int)($summary['pending_count'] ?? 0),
+                'total_tonnage' => round((float)($summary['total_tonnage'] ?? 0), 2),
+            ],
+            'items' => $items,
+        ]);
+    }
+
+    case 'search_plots_master': {
+        auth_user();
+        $q = trim($_GET['query'] ?? ($_POST['query'] ?? ''));
+        $limit = min(50, max(1, (int)($_GET['limit'] ?? 30)));
+        if (strlen($q) < 1) {
+            out(['ok' => true, 'plots' => []]);
+        }
+
+        $like = "%$q%";
+        $sql = "SELECT 
+            p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+            a.name AS field_asst_name, a.feild_asst_code,
+            g.id AS geofence_id, g.lat AS gf_lat, g.lng AS gf_lng,
+            CASE WHEN g.id IS NOT NULL THEN 1 ELSE 0 END AS has_geofence
+            FROM erp_plots p
+            LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+            LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
+            LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active = 1
+            WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
+            ORDER BY has_geofence DESC, p.plot_manual_code ASC
+            LIMIT $limit";
+        
+        $st = db()->prepare($sql);
+        $st->execute([$like, $like, $like, $like, $like]);
+        $plots = $st->fetchAll(PDO::FETCH_ASSOC);
+        out(['ok' => true, 'plots' => $plots]);
+    }
+
+    case 'erp_master_sync': {
+        auth_user();
+        $since = trim($_GET['since'] ?? '');
+        $type = trim($_GET['type'] ?? 'all'); // 'plots', 'farmers', 'fa', 'all'
+
+        $res = ['ok' => true];
+        if ($type === 'all' || $type === 'plots') {
+            $plotSql = "SELECT p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.field_asst_no,
+                               f.name as farmer_name, f.contact_no as farmer_phone, f.nic_no as farmer_nic,
+                               a.name as field_asst_name, a.feild_asst_code
+                        FROM erp_plots p
+                        LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                        LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no";
+            if ($since) {
+                $plotSql .= " WHERE p.updated_at > ?";
+                $st = db()->prepare($plotSql);
+                $st->execute([$since]);
+            } else {
+                $st = db()->query($plotSql);
+            }
+            $res['plots'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
+        out($res);
+    }
+
+    case 'erp_sync_bridge': {
+        // Authenticate bridge via secret key
+        $key = $_GET['key'] ?? ($_POST['key'] ?? '');
+        if ($key !== 'galoya2026') {
+            fail('Unauthorized bridge access', 403);
+        }
+
+        $sub = $_GET['sub'] ?? ($_POST['sub'] ?? '');
+
+        if ($sub === 'pull_pending_cdns') {
+            // CDNs issued on mobile app waiting to be pushed to MSSQL [dbo].[CDN_Details]
+            $limit = min(200, (int)($_GET['limit'] ?? 100));
+            $rows = q("SELECT cdn, cdn_issued, plot_no, plot_manual_code, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, create_user, create_time, field_asst_no
+                       FROM cdn_details WHERE synced_to_mssql = 0 ORDER BY id ASC LIMIT $limit")->fetchAll(PDO::FETCH_ASSOC);
+            out(['ok' => true, 'count' => count($rows), 'cdns' => $rows]);
+        }
+
+        if ($sub === 'mark_cdn_synced') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $cdns = $input['cdns'] ?? ($_POST['cdns'] ?? []);
+            if (is_string($cdns)) $cdns = explode(',', $cdns);
+            if (!empty($cdns)) {
+                $in = implode(',', array_fill(0, count($cdns), '?'));
+                $st = db()->prepare("UPDATE cdn_details SET synced_to_mssql = 1 WHERE cdn IN ($in)");
+                $st->execute($cdns);
+            }
+            out(['ok' => true, 'updated' => count($cdns)]);
+        }
+
+        if ($sub === 'push_wbt_batch') {
+            // Weighbridge ticket updates from MSSQL [dbo].[CDN_Details]
+            $input = json_decode(file_get_contents('php://input'), true);
+            $items = $input['items'] ?? [];
+            if (!is_array($items) || empty($items)) fail('No items provided', 400);
+
+            $stmt = db()->prepare("UPDATE cdn_details SET 
+                weige_ticket_no = ?, 
+                tonnage_received = ?, 
+                gross_weight = ?, 
+                tare_weight = ?, 
+                weighed_date = ?, 
+                status = 'COMPLETED',
+                synced_to_mssql = 1
+                WHERE cdn = ?");
+
+            $updated = 0;
+            foreach ($items as $item) {
+                $cdn = trim($item['cdn'] ?? '');
+                $wbt = trim($item['WeigeTicket_No'] ?? ($item['weige_ticket_no'] ?? ''));
+                $tonnage = (float)($item['TonnageRecived'] ?? ($item['tonnage_received'] ?? 0));
+                $gross = (float)($item['gross_weight'] ?? 0);
+                $tare = (float)($item['tare_weight'] ?? 0);
+                $weighedDate = !empty($item['weighed_date']) ? $item['weighed_date'] : date('Y-m-d H:i:s');
+                if ($cdn && $wbt) {
+                    $stmt->execute([$wbt, $tonnage, $gross, $tare, $weighedDate, $cdn]);
+                    $updated += $stmt->rowCount();
+                }
+            }
+            out(['ok' => true, 'updated' => $updated]);
+        }
+
+        if ($sub === 'push_master_batch') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $entity = $input['entity'] ?? ''; // 'plots', 'farmers', 'fa'
+            $data = $input['data'] ?? [];
+
+            if ($entity === 'plots') {
+                $stmt = db()->prepare("INSERT INTO erp_plots 
+                    (plot_no, plot_manual_code, sector_no, farmer_no, land_area, payment_category, field_asst_no, registration_no, method, ownership, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                    plot_manual_code=VALUES(plot_manual_code), sector_no=VALUES(sector_no), farmer_no=VALUES(farmer_no),
+                    land_area=VALUES(land_area), payment_category=VALUES(payment_category), field_asst_no=VALUES(field_asst_no),
+                    registration_no=VALUES(registration_no), method=VALUES(method), ownership=VALUES(ownership), is_active=VALUES(is_active)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $stmt->execute([
+                        $r['Plot_No'], $r['PlotManual_Code'], $r['Sector_No'], $r['Farmer_No'],
+                        (float)($r['Land_Area'] ?? 0), $r['Payment_Catagory'] ?? null, $r['FieldAsst_No'] ?? null,
+                        $r['Registration_No'] ?? null, $r['method'] ?? null, $r['Ownership'] ?? null,
+                        isset($r['Is_Active']) ? ((int)$r['Is_Active']) : 1
+                    ]);
+                    $cnt++;
+                }
+                out(['ok' => true, 'entity' => 'plots', 'count' => $cnt]);
+            }
+
+            if ($entity === 'farmers') {
+                $stmt = db()->prepare("INSERT INTO erp_farmers (farmer_no, name, contact_no, nic_no, address)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE name=VALUES(name), contact_no=VALUES(contact_no), nic_no=VALUES(nic_no), address=VALUES(address)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $stmt->execute([$r['Farmer_No'], $r['Name'], $r['Contact_No'] ?? null, $r['Nic_No'] ?? null, $r['Address'] ?? null]);
+                    $cnt++;
+                }
+                out(['ok' => true, 'entity' => 'farmers', 'count' => $cnt]);
+            }
+
+            if ($entity === 'fa') {
+                $stmt = db()->prepare("INSERT INTO erp_field_assistants (field_asst_no, feild_asst_code, name, contact_no, nic_no, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE feild_asst_code=VALUES(feild_asst_code), name=VALUES(name), contact_no=VALUES(contact_no), nic_no=VALUES(nic_no), is_active=VALUES(is_active)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $stmt->execute([$r['FieldAssistant_No'], $r['FeildAsst_Code'] ?? null, $r['Name'], $r['Contact_No'] ?? null, $r['Nic_No'] ?? null, $r['Is_Active'] ?? '1']);
+                    $cnt++;
+                }
+                out(['ok' => true, 'entity' => 'fa', 'count' => $cnt]);
+            }
+
+            fail('Unknown entity or data', 400);
+        }
+
+        fail('Unknown sub-action', 400);
+    }
+
     case 'logout': {
         $hdr = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
         if (preg_match('/Bearer\s+(\S+)/', $hdr, $m)) q('DELETE FROM api_tokens WHERE token_hash=?', [hash('sha256', $m[1])]);

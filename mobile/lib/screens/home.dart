@@ -3928,6 +3928,11 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   };
   bool _loadingTracker = false;
 
+  // Plot Autocomplete & Suggestions State
+  List<Map<String, dynamic>> _plotSuggestions = [];
+  bool _searchingPlots = false;
+  Timer? _debouncePlotSearch;
+
   @override
   void initState() {
     super.initState();
@@ -3954,6 +3959,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
 
   @override
   void dispose() {
+    _debouncePlotSearch?.cancel();
     _cdnCtrl.dispose();
     _plotCtrl.dispose();
     _farmerNameCtrl.dispose();
@@ -3978,13 +3984,238 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     }
   }
 
+  void _onPlotInputChanged(String val) {
+    _debouncePlotSearch?.cancel();
+    final q = val.trim();
+    if (q.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _plotSuggestions = [];
+          _searchingPlots = false;
+        });
+      }
+      return;
+    }
+    _debouncePlotSearch = Timer(const Duration(milliseconds: 250), () => _searchPlotsLocalAndOnline(q));
+  }
+
+  Future<void> _searchPlotsLocalAndOnline(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+
+    if (mounted) setState(() => _searchingPlots = true);
+
+    final resultsMap = <String, Map<String, dynamic>>{};
+
+    try {
+      // 1. Instant local SQLite geofences search (5,000+ pre-seeded plantation plots)
+      final gfList = await LocalDb.searchGeofences(
+        q,
+        userLat: widget.currentPosition?.latitude,
+        userLng: widget.currentPosition?.longitude,
+        limit: 15,
+      );
+      for (final g in gfList) {
+        final code = (g['name'] ?? g['code'] ?? '').toString().trim();
+        if (code.isEmpty) continue;
+        resultsMap[code.toUpperCase()] = {
+          'plot_manual_code': code,
+          'plot_no': g['code']?.toString() ?? code,
+          'farmer_name': g['farmer_name']?.toString() ?? '',
+          'farmer_no': g['farmer_no']?.toString() ?? '',
+          'sector_no': g['sector_no']?.toString() ?? '',
+          'land_area': g['land_area'],
+          'has_geofence': 1,
+          'distance': g['distance'],
+        };
+      }
+
+      // 2. Local SQLite master plots search
+      final localMaster = await LocalDb.searchMasterPlots(q, limit: 15);
+      for (final m in localMaster) {
+        final code = (m['plot_manual_code'] ?? m['plot_no'] ?? '').toString().trim();
+        if (code.isEmpty) continue;
+        final upper = code.toUpperCase();
+        if (resultsMap.containsKey(upper)) {
+          final existing = resultsMap[upper]!;
+          if ((existing['farmer_name'] ?? '').toString().isEmpty) {
+            existing['farmer_name'] = m['farmer_name'];
+          }
+          if ((existing['farmer_no'] ?? '').toString().isEmpty) {
+            existing['farmer_no'] = m['farmer_no'];
+          }
+          if ((existing['sector_no'] ?? '').toString().isEmpty) {
+            existing['sector_no'] = m['sector_no'];
+          }
+          if (existing['land_area'] == null) {
+            existing['land_area'] = m['land_area'];
+          }
+        } else {
+          resultsMap[upper] = {
+            'plot_manual_code': code,
+            'plot_no': m['plot_no']?.toString() ?? code,
+            'farmer_name': m['farmer_name']?.toString() ?? '',
+            'farmer_no': m['farmer_no']?.toString() ?? '',
+            'sector_no': m['sector_no']?.toString() ?? '',
+            'land_area': m['land_area'],
+            'has_geofence': m['has_geofence'] ?? 0,
+            'distance': null,
+          };
+        }
+      }
+
+      // Display immediate local results (< 30ms offline)
+      if (mounted) {
+        setState(() {
+          _plotSuggestions = resultsMap.values.toList();
+        });
+      }
+
+      // 3. Online cloud lookup from 14,610 master plots on track.galoya.lk
+      try {
+        final onlineRes = await Api.get('search_plots_master', params: {
+          'query': q,
+          'limit': '25',
+          'key': 'galoya2026',
+        }).timeout(const Duration(milliseconds: 3000));
+
+        if (onlineRes['ok'] == true && onlineRes['plots'] is List && mounted) {
+          final serverPlots = (onlineRes['plots'] as List).cast<Map<String, dynamic>>();
+          if (serverPlots.isNotEmpty) {
+            // Cache them to local SQLite for instant offline use!
+            await LocalDb.saveMasterPlots(serverPlots);
+
+            for (final sp in serverPlots) {
+              final code = (sp['plot_manual_code'] ?? sp['plot_no'] ?? '').toString().trim();
+              if (code.isEmpty) continue;
+              final upper = code.toUpperCase();
+              if (resultsMap.containsKey(upper)) {
+                final ex = resultsMap[upper]!;
+                if ((ex['farmer_name'] ?? '').toString().isEmpty) {
+                  ex['farmer_name'] = sp['farmer_name'];
+                }
+                if ((ex['farmer_no'] ?? '').toString().isEmpty) {
+                  ex['farmer_no'] = sp['farmer_no'];
+                }
+                if ((ex['sector_no'] ?? '').toString().isEmpty) {
+                  ex['sector_no'] = sp['sector_no'];
+                }
+                if (ex['land_area'] == null) {
+                  ex['land_area'] = sp['land_area'];
+                }
+                if (sp['has_geofence'] == 1) ex['has_geofence'] = 1;
+              } else {
+                resultsMap[upper] = {
+                  'plot_manual_code': code,
+                  'plot_no': sp['plot_no']?.toString() ?? code,
+                  'farmer_name': sp['farmer_name']?.toString() ?? '',
+                  'farmer_no': sp['farmer_no']?.toString() ?? '',
+                  'farmer_phone': sp['farmer_phone']?.toString() ?? '',
+                  'sector_no': sp['sector_no']?.toString() ?? '',
+                  'land_area': sp['land_area'],
+                  'has_geofence': sp['has_geofence'] ?? 0,
+                  'distance': null,
+                };
+              }
+            }
+
+            if (mounted) {
+              setState(() {
+                _plotSuggestions = resultsMap.values.toList();
+              });
+            }
+          }
+        }
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _searchingPlots = false);
+    }
+  }
+
+  void _selectPlotSuggestion(Map<String, dynamic> plot) {
+    final code = (plot['plot_manual_code'] ?? plot['plot_no'] ?? '').toString();
+    final farmerName = (plot['farmer_name'] ?? '').toString();
+    final farmerNo = (plot['farmer_no'] ?? '').toString();
+    final sectorNo = (plot['sector_no'] ?? '').toString();
+
+    setState(() {
+      _plotCtrl.text = code;
+      _farmerNameCtrl.text = farmerName;
+      _farmerNoCtrl.text = farmerNo;
+      _sectorCtrl.text = sectorNo;
+      _plotSuggestions = [];
+      _searchingPlots = false;
+    });
+    FocusScope.of(context).unfocus();
+  }
+
+  Future<void> _pickNearestGpsPlot() async {
+    if (widget.currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xffd97706),
+          content: Text('GPS position not ready yet. Please ensure GPS is enabled.'),
+        ),
+      );
+      return;
+    }
+    final lat = widget.currentPosition!.latitude;
+    final lng = widget.currentPosition!.longitude;
+    try {
+      final nearby = await LocalDb.getNearbyGeofences(lat, lng, limit: 1);
+      if (nearby.isNotEmpty) {
+        final p = nearby.first;
+        final name = (p['name'] ?? p['code'] ?? '').toString();
+        final dist = (p['distance'] as num?)?.round() ?? 0;
+        _plotCtrl.text = name;
+        _lookupPlot(name);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xff059669),
+              content: Text('📍 Nearest plot selected: $name ($dist m away)'),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Color(0xffd97706),
+              content: Text('No geofenced plots found near current GPS position.'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking nearest plot: $e');
+    }
+  }
+
   Future<void> _lookupPlot(String query) async {
     final q = query.trim();
     if (q.isEmpty) return;
     try {
+      // 1. Check local master
       final matches = await LocalDb.searchMasterPlots(q, limit: 1);
       if (matches.isNotEmpty && mounted) {
         final m = matches.first;
+        setState(() {
+          _farmerNameCtrl.text = m['farmer_name']?.toString() ?? '';
+          _farmerNoCtrl.text = m['farmer_no']?.toString() ?? '';
+          _sectorCtrl.text = m['sector_no']?.toString() ?? '';
+        });
+        return;
+      }
+
+      // 2. Check online cloud
+      final onlineRes = await Api.get('search_plots_master', params: {
+        'query': q,
+        'limit': '1',
+        'key': 'galoya2026',
+      }).timeout(const Duration(milliseconds: 2500));
+      if (onlineRes['ok'] == true && onlineRes['plots'] is List && (onlineRes['plots'] as List).isNotEmpty && mounted) {
+        final m = (onlineRes['plots'] as List).first as Map<String, dynamic>;
         setState(() {
           _farmerNameCtrl.text = m['farmer_name']?.toString() ?? '';
           _farmerNoCtrl.text = m['farmer_no']?.toString() ?? '';
@@ -4365,23 +4596,160 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
           ),
           const SizedBox(height: 12),
           // Plot Manual Code & Auto-complete lookup
-          TextFormField(
-            controller: _plotCtrl,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              labelText: 'Plot No / Manual Code (e.g. V/07/16)',
-              labelStyle: const TextStyle(color: Color(0xff94a3b8)),
-              prefixIcon: const Icon(Icons.terrain, color: Color(0xff34d399), size: 18),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.search, color: Color(0xff38bdf8)),
-                onPressed: () => _lookupPlot(_plotCtrl.text),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _plotCtrl,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Plot No / Manual Code (e.g. V/07/16)',
+                  labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+                  prefixIcon: const Icon(Icons.terrain, color: Color(0xff34d399), size: 20),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_searchingPlots)
+                        const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff38bdf8)),
+                          ),
+                        )
+                      else if (_plotCtrl.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                          onPressed: () {
+                            _plotCtrl.clear();
+                            setState(() => _plotSuggestions = []);
+                          },
+                        ),
+                      IconButton(
+                        tooltip: 'Detect Nearest Plot via GPS',
+                        icon: const Icon(Icons.my_location, color: Color(0xff34d399), size: 20),
+                        onPressed: _pickNearestGpsPlot,
+                      ),
+                      IconButton(
+                        tooltip: 'Search Master Plots',
+                        icon: const Icon(Icons.search, color: Color(0xff38bdf8), size: 20),
+                        onPressed: () => _searchPlotsLocalAndOnline(_plotCtrl.text),
+                      ),
+                    ],
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xff1e293b),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                ),
+                onChanged: _onPlotInputChanged,
+                validator: (val) => val == null || val.trim().isEmpty ? 'Plot code required' : null,
               ),
-              filled: true,
-              fillColor: const Color(0xff1e293b),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
-            ),
-            onChanged: (val) => _lookupPlot(val),
-            validator: (val) => val == null || val.trim().isEmpty ? 'Plot code required' : null,
+              if (_plotSuggestions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f172a),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xff38bdf8).withOpacity(0.5), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.touch_app, size: 14, color: Color(0xff38bdf8)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Select Plot (${_plotSuggestions.length} found)',
+                              style: const TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => setState(() => _plotSuggestions = []),
+                              child: const Icon(Icons.close, size: 16, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, color: Color(0xff334155)),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          itemCount: _plotSuggestions.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xff1e293b)),
+                          itemBuilder: (ctx, idx) {
+                            final p = _plotSuggestions[idx];
+                            final code = (p['plot_manual_code'] ?? p['plot_no'] ?? '').toString();
+                            final farmer = (p['farmer_name'] ?? '').toString();
+                            final sector = (p['sector_no'] ?? '').toString();
+                            final area = p['land_area'] != null ? '${p['land_area']} Ac' : '';
+                            final hasGf = p['has_geofence'] == 1;
+
+                            return ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              leading: Icon(
+                                hasGf ? Icons.terrain : Icons.grid_on,
+                                color: hasGf ? const Color(0xff34d399) : const Color(0xff38bdf8),
+                                size: 20,
+                              ),
+                              title: Row(
+                                children: [
+                                  Text(
+                                    code,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  if (sector.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xff334155),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Sec $sector',
+                                        style: const TextStyle(color: Color(0xff94a3b8), fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                  if (area.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Text(area, style: const TextStyle(color: Color(0xffa7f3d0), fontSize: 10)),
+                                  ],
+                                ],
+                              ),
+                              subtitle: farmer.isNotEmpty
+                                  ? Text(
+                                      'Farmer: $farmer',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11),
+                                    )
+                                  : null,
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xff38bdf8)),
+                              onTap: () => _selectPlotSuggestion(p),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 12),
           // Farmer Name (Auto-populated or editable)

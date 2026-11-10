@@ -627,8 +627,9 @@ try {
 try {
     set_setting('latest_app_version', '1.4.6');
     set_setting('latest_app_build', '32');
-    set_setting('app_update_changelog', "• Cane Delivery Note (CDN) Field Issuance & Offline Queue\n• Factory Weighbridge Live Delivery Tracker (Completed Tonnage & WBT)\n• Smart Hybrid Plot & Farmer Explorer (Geofenced & Master ERP plots with direct call & CDN actions)\n• Full MSSQL GaloyaTracker Bi-Directional Cloud Sync");
-    $results[] = ["📱 App Update Broadcast: Configured v1.4.6 (Build 32)", "color:#38bdf8;font-weight:bold"];
+    set_setting('app_force_update', '1');
+    set_setting('app_update_changelog', "🌾 CANE DELIVERY NOTE (CDN) & WEIGHBRIDGE UPDATE\n\n• Cane Delivery Note (CDN) Field Issuance & 100% Offline Storage\n• Factory Weighbridge Live Delivery Tracker (Completed Tonnage, WBT No, Gross/Tare/Net)\n• Smart Hybrid Plot & Farmer Explorer (Master ERP + Geofenced plots with direct Call & CDN actions)\n• Full GaloyaTracker MSSQL Integration");
+    $results[] = ["📱 App Update Broadcast: Configured v1.4.6 (Build 32) [FORCE UPDATE]", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
 try {
@@ -996,8 +997,9 @@ try {
 
     set_setting('latest_app_version', '1.4.6');
     set_setting('latest_app_build', '32');
-    set_setting('app_update_changelog', "• Cane Delivery Note (CDN) Field Issuance & Offline Queue\n• Factory Weighbridge Live Delivery Tracker (Completed Tonnage & WBT)\n• Smart Hybrid Plot & Farmer Explorer (Geofenced & Master ERP plots with direct call & CDN actions)\n• Full MSSQL GaloyaTracker Bi-Directional Cloud Sync");
-    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.6 build 32", "color:#10b981;font-weight:bold"];
+    set_setting('app_force_update', '1');
+    set_setting('app_update_changelog', "🌾 CANE DELIVERY NOTE (CDN) & WEIGHBRIDGE UPDATE\n\n• Cane Delivery Note (CDN) Field Issuance & 100% Offline Storage\n• Factory Weighbridge Live Delivery Tracker (Completed Tonnage, WBT No, Gross/Tare/Net)\n• Smart Hybrid Plot & Farmer Explorer (Master ERP + Geofenced plots with direct Call & CDN actions)\n• Full GaloyaTracker MSSQL Integration");
+    $results[] = ["✅ Settings: Updated latest_app_version to 1.4.6 build 32 (Force Update Enabled)", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];
 }

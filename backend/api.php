@@ -75,11 +75,11 @@ try {
         $clientVersion = trim($_GET['version'] ?? ($_POST['version'] ?? '1.0.0'));
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
-        $latestVersion = setting('latest_app_version', '1.4.5');
-        $latestBuild = (int)setting('latest_app_build', 31);
+        $latestVersion = setting('latest_app_version', '1.4.6');
+        $latestBuild = (int)setting('latest_app_build', 32);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
-        $changelog = setting('app_update_changelog', "• Smart Field Visit Selfie Verification (Day's first photo, every 4 field visits & 3-hour check)\n• Anti-evasion rear camera lockout until selfie verified\n• Removed Skip button in Face ID / Selfie\n• Long-press camera icon for manual selfie option");
-        $forceUpdate = setting('app_force_update', '0') === '1';
+        $changelog = setting('app_update_changelog', "🌾 CANE DELIVERY NOTE (CDN) & WEIGHBRIDGE UPDATE\n\n• Cane Delivery Note (CDN) Field Issuance & 100% Offline Storage\n• Factory Weighbridge Live Delivery Tracker (Completed Tonnage, WBT No, Gross/Tare/Net)\n• Smart Hybrid Plot & Farmer Explorer (Master ERP + Geofenced plots with direct Call & CDN actions)\n• Full GaloyaTracker MSSQL Integration");
+        $forceUpdate = setting('app_force_update', '1') === '1';
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
 

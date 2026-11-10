@@ -4057,7 +4057,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
       );
 
       // 3. Trigger immediate sync if network is available
-      SyncService.syncNow();
+      Sync.run();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

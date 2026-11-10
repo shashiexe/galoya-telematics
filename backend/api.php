@@ -83,6 +83,11 @@ try {
 
         $hasUpdate = ($latestBuild > $clientBuild) || (version_compare($latestVersion, $clientVersion, '>'));
 
+        // Skip update prompt for 1.4.5 (build 31) because field officers are currently running a test trial on it:
+        if ($clientVersion === '1.4.5' || $clientBuild === 31) {
+            $hasUpdate = false;
+        }
+
         out([
             'ok' => true,
             'has_update' => $hasUpdate,
@@ -90,7 +95,7 @@ try {
             'latest_build' => $latestBuild,
             'apk_url' => $apkUrl,
             'changelog' => $changelog,
-            'force_update' => $forceUpdate,
+            'force_update' => $forceUpdate && $hasUpdate,
             'created_by' => 'GOPL IT',
         ]);
     }

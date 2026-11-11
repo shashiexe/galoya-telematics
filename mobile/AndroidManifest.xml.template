@@ -31,10 +31,10 @@
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
 
-        <!-- Auto-download ML Kit Face Detection model on device install -->
+        <!-- Auto-download ML Kit Face Detection & OCR Text Recognition models on device install -->
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="face" />
+            android:value="face,ocr" />
 
         <activity
             android:name=".MainActivity"
@@ -97,6 +97,10 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
         </intent>
     </queries>
 </manifest>

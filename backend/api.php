@@ -1220,12 +1220,17 @@ try {
             $where = "synced_to_mssql = 0";
             $params = [];
             if ($cdnFilter) {
-                $where = "cdn = ?";
-                $params = [$cdnFilter];
+                $where = "cdn LIKE ?";
+                $params = ["%$cdnFilter%"];
             }
             $rows = q("SELECT cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, create_time, status, synced_to_mssql
                        FROM cdn_details WHERE $where ORDER BY id DESC LIMIT $limit", $params)->fetchAll(PDO::FETCH_ASSOC);
             out(['ok' => true, 'count' => count($rows), 'cdns' => $rows]);
+        }
+
+        if ($sub === 'recent_cdns') {
+            $rows = q("SELECT id, cdn, plot_no, vehicle_no, create_user, create_time, status, synced_to_mssql FROM cdn_details ORDER BY id DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            out(['ok' => true, 'cdns' => $rows]);
         }
 
         if ($sub === 'mark_cdn_synced') {

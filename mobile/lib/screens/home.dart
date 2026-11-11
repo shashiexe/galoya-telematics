@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../api.dart';
 import '../config.dart';
@@ -3430,37 +3431,75 @@ class _PlotDetailsSheet extends StatefulWidget {
 }
 
 class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
+  late Map<String, dynamic> _p;
   List<Map<String, dynamic>> _crops = [];
   bool _loadingCrops = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchCrops();
+    _p = Map<String, dynamic>.from(widget.plot);
+    _fetchPlotDetailsAndCrops();
   }
 
-  Future<void> _fetchCrops() async {
-    final plotNo = (widget.plot['plot_no'] ?? widget.plot['code'] ?? widget.plot['name'] ?? '').toString();
+  String _cleanPhone(String? raw) {
+    if (raw == null) return '';
+    var p = raw.trim().replaceAll(RegExp(r'\s+'), '');
+    if (p.isNotEmpty && !p.startsWith('0') && p.length == 9) {
+      return '0$p';
+    }
+    return p;
+  }
+
+  Future<void> _fetchPlotDetailsAndCrops() async {
+    final code = (_p['plot_manual_code'] ?? _p['name'] ?? _p['code'] ?? _p['plot_no'] ?? '').toString().trim();
+    if (code.isEmpty) {
+      if (mounted) setState(() => _loadingCrops = false);
+      return;
+    }
+
+    // 1. Instant local SQLite lookup
     try {
-      final local = await LocalDb.getActiveCrops(plotNo);
-      if (local.isNotEmpty && mounted) {
+      final localMaster = await LocalDb.getMasterPlotByCode(code);
+      if (localMaster != null && mounted) {
         setState(() {
-          _crops = local;
-          _loadingCrops = false;
+          _p.addAll(localMaster);
         });
-        return;
       }
-      final res = await Api.get('get_plot_crops', params: {
-        'plot_no': plotNo,
-        'key': 'galoya2026',
-      }).timeout(const Duration(milliseconds: 2500));
-      if (res['ok'] == true && res['crops'] is List && mounted) {
-        final list = (res['crops'] as List).cast<Map<String, dynamic>>();
+      final localCrops = await LocalDb.getActiveCrops(code);
+      if (localCrops.isNotEmpty && mounted) {
         setState(() {
-          _crops = list;
+          _crops = localCrops;
           _loadingCrops = false;
         });
-        await LocalDb.saveCrops(list);
+      }
+    } catch (_) {}
+
+    // 2. Cloud lookup (returns both active crops AND complete plot/farmer/nominee profile)
+    try {
+      final res = await Api.get('get_plot_crops', params: {
+        'plot_no': code,
+        'key': 'galoya2026',
+      }).timeout(const Duration(milliseconds: 3000));
+
+      if (res['ok'] == true && mounted) {
+        if (res['plot'] is Map) {
+          final serverPlot = (res['plot'] as Map).cast<String, dynamic>();
+          setState(() {
+            _p.addAll(serverPlot);
+          });
+          await LocalDb.saveMasterPlots([serverPlot]);
+        }
+        if (res['crops'] is List) {
+          final serverCrops = (res['crops'] as List).cast<Map<String, dynamic>>();
+          setState(() {
+            _crops = serverCrops;
+            _loadingCrops = false;
+          });
+          await LocalDb.saveCrops(serverCrops);
+        } else {
+          setState(() => _loadingCrops = false);
+        }
       } else {
         if (mounted) setState(() => _loadingCrops = false);
       }
@@ -3471,17 +3510,17 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final p = widget.plot;
+    final p = _p;
     final code = (p['plot_manual_code'] ?? p['name'] ?? p['code'] ?? 'Unknown Plot').toString();
     final sector = (p['sector_no'] ?? '').toString();
     final landArea = p['land_area'] != null ? '${p['land_area']} Ac' : '';
     final farmerName = (p['farmer_name'] ?? '').toString();
-    final farmerPhone = (p['farmer_phone'] ?? '').toString();
+    final farmerPhone = _cleanPhone(p['farmer_phone']?.toString());
     final farmerNic = (p['farmer_nic'] ?? '').toString();
     final farmerNo = (p['farmer_no'] ?? '').toString();
 
     final nomineeName = (p['nominee_name'] ?? '').toString();
-    final nomineePhone = (p['nominee_phone'] ?? '').toString();
+    final nomineePhone = _cleanPhone(p['nominee_phone']?.toString());
     final nomineeNic = (p['nominee_nic'] ?? '').toString();
     final bankCode = (p['bank_code'] ?? '').toString();
     final bankAcc = (p['bank_accno'] ?? '').toString();
@@ -3769,7 +3808,7 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'මෙම ඉඩමේ සක්‍රීය බෝගයක් (Status = 1) නොමැත. CDN ලිවීම තහනම් කර ඇත.',
+                                  'මෙම ඉඩමේ දැනට අස්වනු නෙළීමට වලංගු බෝගයක් වාර්තා වී නොමැත. බෝගයක් නැති ඉඩම් සඳහා CDN ලිවීම තහනම් කර ඇත.',
                                   style: TextStyle(color: Color(0xfffca5a5), fontSize: 11),
                                 ),
                               ),
@@ -3932,13 +3971,37 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
         final lng = widget.currentPosition!.longitude;
         // 1. Immediately query fast local SQLite cache (< 5ms)
         List<Map<String, dynamic>> list = await LocalDb.getNearbyGeofences(lat, lng, limit: 15);
-        if (mounted && list.isNotEmpty) {
-          final firstDist = ((list.first['distance'] as num?)?.round() ?? 0);
+        final enriched = <Map<String, dynamic>>[];
+        for (final item in list) {
+          final m = Map<String, dynamic>.from(item);
+          final code = (m['name'] ?? m['code'] ?? '').toString().trim();
+          final master = await LocalDb.getMasterPlotByCode(code);
+          if (master != null) {
+            m['farmer_name'] = master['farmer_name'];
+            m['farmer_phone'] = master['farmer_phone'];
+            m['farmer_nic'] = master['farmer_nic'];
+            m['farmer_no'] = master['farmer_no'];
+            m['sector_no'] = master['sector_no'];
+            m['land_area'] = master['land_area'];
+            m['plot_no'] = master['plot_no'];
+            m['nominee_name'] = master['nominee_name'];
+            m['nominee_phone'] = master['nominee_phone'];
+            m['nominee_nic'] = master['nominee_nic'];
+            m['bank_code'] = master['bank_code'];
+            m['branch_code'] = master['branch_code'];
+            m['bank_accno'] = master['bank_accno'];
+            m['payment_permission'] = master['payment_permission'];
+            m['debit_permission'] = master['debit_permission'];
+          }
+          enriched.add(m);
+        }
+        if (mounted && enriched.isNotEmpty) {
+          final firstDist = ((enriched.first['distance'] as num?)?.round() ?? 0);
           setState(() {
-            _results = list;
+            _results = enriched;
             _modeLabel = firstDist > 2500
                 ? 'Plantation Plots (Nearest: ${(firstDist / 1000).toStringAsFixed(1)}km)'
-                : 'Nearest Plots Around You (${list.length})';
+                : 'Nearest Plots Around You (${enriched.length})';
             _loading = false;
           });
         }
@@ -4008,6 +4071,15 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
           item['farmer_name'] = masterMatch['farmer_name'];
           item['farmer_phone'] = masterMatch['farmer_phone'];
           item['farmer_nic'] = masterMatch['farmer_nic'];
+          item['farmer_no'] = masterMatch['farmer_no'];
+          item['nominee_name'] = masterMatch['nominee_name'];
+          item['nominee_phone'] = masterMatch['nominee_phone'];
+          item['nominee_nic'] = masterMatch['nominee_nic'];
+          item['bank_code'] = masterMatch['bank_code'];
+          item['branch_code'] = masterMatch['branch_code'];
+          item['bank_accno'] = masterMatch['bank_accno'];
+          item['payment_permission'] = masterMatch['payment_permission'];
+          item['debit_permission'] = masterMatch['debit_permission'];
           item['land_area'] = masterMatch['land_area'];
           item['sector_no'] = masterMatch['sector_no'];
           item['plot_no'] = masterMatch['plot_no'];
@@ -4035,46 +4107,65 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
             'farmer_name': m['farmer_name'],
             'farmer_phone': m['farmer_phone'],
             'farmer_nic': m['farmer_nic'],
+            'farmer_no': m['farmer_no'],
+            'nominee_name': m['nominee_name'],
+            'nominee_phone': m['nominee_phone'],
+            'nominee_nic': m['nominee_nic'],
+            'bank_code': m['bank_code'],
+            'branch_code': m['branch_code'],
+            'bank_accno': m['bank_accno'],
+            'payment_permission': m['payment_permission'],
+            'debit_permission': m['debit_permission'],
             'land_area': m['land_area'],
             'sector_no': m['sector_no'],
           });
         }
       }
 
-      if (combined.isEmpty) {
-        try {
-          final res = await Api.get('search_plots_master', params: {'query': q});
-          if (res['ok'] == true && res['plots'] is List) {
-            final serverPlots = res['plots'] as List;
-            for (final p in serverPlots) {
-              if (p is Map) {
-                final code = p['plot_manual_code']?.toString() ?? '';
-                final upper = code.toUpperCase();
-                if (!addedCodes.contains(upper)) {
-                  addedCodes.add(upper);
-                  final hasGf = p['has_geofence'] == 1;
-                  combined.add({
-                    'id': p['geofence_id'] ?? 0,
-                    'name': code,
-                    'code': code,
-                    'lat': (p['gf_lat'] is num) ? (p['gf_lat'] as num).toDouble() : 0.0,
-                    'lng': (p['gf_lng'] is num) ? (p['gf_lng'] as num).toDouble() : 0.0,
-                    'distance': 0.0,
-                    'has_geofence': hasGf,
-                    'is_master_only': !hasGf,
-                    'plot_no': p['plot_no'],
-                    'farmer_name': p['farmer_name'],
-                    'farmer_phone': p['farmer_phone'],
-                    'farmer_nic': p['farmer_nic'],
-                    'land_area': p['land_area'],
-                    'sector_no': p['sector_no'],
-                  });
-                }
+      try {
+        final res = await Api.get('search_plots_master', params: {'query': q, 'key': 'galoya2026'}).timeout(const Duration(milliseconds: 2500));
+        if (res['ok'] == true && res['plots'] is List) {
+          final serverPlots = res['plots'] as List;
+          if (serverPlots.isNotEmpty) {
+            await LocalDb.saveMasterPlots(serverPlots);
+          }
+          for (final p in serverPlots) {
+            if (p is Map) {
+              final code = (p['plot_manual_code'] ?? p['plot_no'] ?? '').toString().trim();
+              final upper = code.toUpperCase();
+              if (!addedCodes.contains(upper)) {
+                addedCodes.add(upper);
+                final hasGf = p['has_geofence'] == 1;
+                combined.add({
+                  'id': p['geofence_id'] ?? 0,
+                  'name': code,
+                  'code': code,
+                  'lat': (p['gf_lat'] is num) ? (p['gf_lat'] as num).toDouble() : 0.0,
+                  'lng': (p['gf_lng'] is num) ? (p['gf_lng'] as num).toDouble() : 0.0,
+                  'distance': 0.0,
+                  'has_geofence': hasGf,
+                  'is_master_only': !hasGf,
+                  'plot_no': p['plot_no'],
+                  'farmer_name': p['farmer_name'],
+                  'farmer_phone': p['farmer_phone'],
+                  'farmer_nic': p['farmer_nic'],
+                  'farmer_no': p['farmer_no'],
+                  'nominee_name': p['nominee_name'],
+                  'nominee_phone': p['nominee_phone'],
+                  'nominee_nic': p['nominee_nic'],
+                  'bank_code': p['bank_code'],
+                  'branch_code': p['branch_code'],
+                  'bank_accno': p['bank_accno'],
+                  'payment_permission': p['payment_permission'],
+                  'debit_permission': p['debit_permission'],
+                  'land_area': p['land_area'],
+                  'sector_no': p['sector_no'],
+                });
               }
             }
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {
@@ -4246,10 +4337,10 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                                 children: [
                                   Row(
                                     children: [
-                                      Flexible(
+                                      Expanded(
                                         child: Text(
                                           name,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -4271,7 +4362,7 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                                   const SizedBox(height: 3),
                                   if (farmerName.isNotEmpty || landArea > 0)
                                     Text(
-                                      '${farmerName.isNotEmpty ? "👨🌾 $farmerName" : ""}${landArea > 0 ? " • 📐 ${landArea.toStringAsFixed(2)} ha" : ""}',
+                                      '${farmerName.isNotEmpty ? "👨🌾 $farmerName" : ""}${landArea > 0 ? " • 📐 ${landArea.toStringAsFixed(2)} Ac" : ""}',
                                       style: const TextStyle(color: Color(0xffe2e8f0), fontSize: 11),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -4346,12 +4437,7 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                                 onPressed: () => launchUrl(Uri.parse('tel:$farmerPhone')),
                               ),
                             ],
-                            // Action: Issue CDN shortcut
-                            IconButton(
-                              icon: const Icon(Icons.receipt_long, color: Color(0xfff59e0b), size: 22),
-                              tooltip: 'Issue CDN',
-                              onPressed: () => widget.onIssueCdn?.call(p),
-                            ),
+
                           ],
                         ),
                       );
@@ -4398,6 +4484,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   String _selectedCategory = 'CAT1';
   File? _cdnPhoto;
   File? _tractorPhoto;
+  File? _trailerPhoto;
   File? _loadPhoto;
   bool _submitting = false;
 
@@ -4475,20 +4562,46 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   }
 
   Future<void> _loadPlotCrops(String plotCode) async {
-    if (plotCode.trim().isEmpty) return;
+    final clean = plotCode.trim();
+    if (clean.isEmpty) return;
     if (mounted) setState(() => _loadingCrops = true);
     try {
-      // 1. Local SQLite check
-      var crops = await LocalDb.getActiveCrops(plotCode);
+      // 1. Check local master plot
+      final master = await LocalDb.getMasterPlotByCode(clean);
+      if (master != null && mounted) {
+        setState(() {
+          if (_farmerNameCtrl.text.isEmpty && (master['farmer_name'] ?? '').toString().isNotEmpty) {
+            _farmerNameCtrl.text = master['farmer_name']!;
+          }
+          if (_farmerNoCtrl.text.isEmpty && (master['farmer_no'] ?? '').toString().isNotEmpty) {
+            _farmerNoCtrl.text = master['farmer_no']!;
+          }
+        });
+      }
+
+      // 2. Local SQLite crops check
+      var crops = await LocalDb.getActiveCrops(clean);
       if (crops.isEmpty) {
-        // 2. Cloud lookup
+        // 3. Cloud lookup (returns active crops AND full plot/farmer profile)
         final res = await Api.get('get_plot_crops', params: {
-          'plot_no': plotCode,
+          'plot_no': clean,
           'key': 'galoya2026',
         }).timeout(const Duration(milliseconds: 3000));
-        if (res['ok'] == true && res['crops'] is List) {
-          crops = (res['crops'] as List).cast<Map<String, dynamic>>();
-          await LocalDb.saveCrops(crops);
+        if (res['ok'] == true && mounted) {
+          if (res['plot'] is Map) {
+            final p = (res['plot'] as Map).cast<String, dynamic>();
+            if (_farmerNameCtrl.text.isEmpty && (p['farmer_name'] ?? '').toString().isNotEmpty) {
+              _farmerNameCtrl.text = p['farmer_name']!;
+            }
+            if (_farmerNoCtrl.text.isEmpty && (p['farmer_no'] ?? '').toString().isNotEmpty) {
+              _farmerNoCtrl.text = p['farmer_no']!;
+            }
+            await LocalDb.saveMasterPlots([p]);
+          }
+          if (res['crops'] is List) {
+            crops = (res['crops'] as List).cast<Map<String, dynamic>>();
+            await LocalDb.saveCrops(crops);
+          }
         }
       }
 
@@ -4513,16 +4626,11 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   }
 
   void _initPrefill() {
-    final now = DateTime.now();
-    final y = (now.year % 100).toString().padLeft(2, '0');
-    final m = now.month.toString().padLeft(2, '0');
-    final d = now.day.toString().padLeft(2, '0');
-    final rand = (Random().nextInt(900) + 100).toString();
-    _cdnCtrl.text = 'CDN-$y$m$d-$rand';
+    _cdnCtrl.text = ''; // Empty by default for manual paper slip scanning or input
 
     if (widget.prefillPlot != null) {
       final p = widget.prefillPlot!;
-      _plotCtrl.text = (p['name'] ?? p['plot_manual_code'] ?? '').toString();
+      _plotCtrl.text = (p['plot_manual_code'] ?? p['name'] ?? p['plot_no'] ?? '').toString();
       _farmerNameCtrl.text = (p['farmer_name'] ?? '').toString();
       _farmerNoCtrl.text = (p['farmer_no'] ?? '').toString();
       _sectorCtrl.text = (p['sector_no'] ?? '').toString();
@@ -4542,6 +4650,69 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     _cropCycleCtrl.dispose();
     _trackerSearchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanCdnSlip() async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+      if (picked == null) return;
+      final file = File(picked.path);
+      setState(() {
+        _cdnPhoto = file;
+      });
+
+      // Google ML Kit Text Recognition (Runs 100% offline on device)
+      final inputImage = InputImage.fromFilePath(picked.path);
+      final textRecognizer = TextRecognizer();
+      final recognizedText = await textRecognizer.processImage(inputImage);
+      await textRecognizer.close();
+
+      String? detectedCdn;
+      final allText = recognizedText.text;
+
+      // 1. Search for CDN NO pattern: e.g. CDN NO: B 11465 or C 342162
+      final matchCdnNo = RegExp(r'CDN\s*NO[^\w]*([A-Za-z])\s*(\d{4,7})', caseSensitive: false).firstMatch(allText);
+      if (matchCdnNo != null) {
+        final pfx = (matchCdnNo.group(1) ?? '').toUpperCase();
+        final numPart = matchCdnNo.group(2) ?? '';
+        detectedCdn = '$pfx$numPart';
+      } else {
+        // 2. Fallback: series letter followed by 4-7 digits like B 11465 or C 342162
+        final matchGeneral = RegExp(r'\b([A-Z])\s*(\d{4,7})\b').firstMatch(allText);
+        if (matchGeneral != null) {
+          final pfx = (matchGeneral.group(1) ?? '').toUpperCase();
+          final numPart = matchGeneral.group(2) ?? '';
+          detectedCdn = '$pfx$numPart';
+        }
+      }
+
+      if (detectedCdn != null && detectedCdn.isNotEmpty) {
+        detectedCdn = detectedCdn.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+        setState(() {
+          _cdnCtrl.text = detectedCdn!;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xff059669),
+              content: Text('✅ CDN Slip අංකය හඳුනාගන්නා ලදී: $detectedCdn'),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Color(0xffd97706),
+              content: Text('📷 CDN ඡායාරූපය ඇතුළත් විය. කරුණාකර අංකය type කරන්න.'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('OCR Scan error: ');
+    }
   }
 
   Future<void> _pickVerificationPhoto(int type) async {
@@ -4806,7 +4977,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
 
   Future<void> _submitCdn() async {
     if (!_formKey.currentState!.validate()) return;
-    final cdnNo = _cdnCtrl.text.trim();
+    final cdnNo = _cdnCtrl.text.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
     final plotCode = _plotCtrl.text.trim();
     final vehicleNo = _vehicleCtrl.text.trim().toUpperCase();
 
@@ -4839,6 +5010,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
         'crop_cycle': _cropCycleCtrl.text.trim(),
         'cdn_photo': _cdnPhoto?.path,
         'tractor_photo': _tractorPhoto?.path,
+        'trailer_photo': _trailerPhoto?.path,
         'load_photo': _loadPhoto?.path,
         'lat': widget.currentPosition?.latitude,
         'lng': widget.currentPosition?.longitude,
@@ -5170,8 +5342,8 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
                       child: GestureDetector(
                         onTap: () {
                           setState(() {
-                            if (type == 1) _cdnPhoto = null;
-                            if (type == 2) _tractorPhoto = null;
+                            if (type == 1) _tractorPhoto = null;
+                            if (type == 2) _trailerPhoto = null;
                             if (type == 3) _loadPhoto = null;
                           });
                         },
@@ -5226,14 +5398,39 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          // CDN Number
+          // CDN Number with Camera Scan Slip Button
           TextFormField(
             controller: _cdnCtrl,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
             decoration: InputDecoration(
-              labelText: 'CDN Number',
+              labelText: 'CDN Number (e.g. B11465, C342162)',
               labelStyle: const TextStyle(color: Color(0xfffbbf24)),
               prefixIcon: const Icon(Icons.tag, color: Color(0xfff59e0b), size: 18),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_cdnPhoto != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(_cdnPhoto!, width: 32, height: 32, fit: BoxFit.cover),
+                      ),
+                    ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff0284c7),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.camera_alt, size: 16),
+                    label: const Text('Scan Slip', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: _scanCdnSlip,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
               filled: true,
               fillColor: const Color(0xff1e293b),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
@@ -5690,11 +5887,11 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    _buildPhotoSlot(1, 'CDN Slip', _cdnPhoto, Icons.receipt_long),
+                    _buildPhotoSlot(1, 'Tractor Plate', _tractorPhoto, Icons.local_shipping),
                     const SizedBox(width: 8),
-                    _buildPhotoSlot(2, 'Tractor Front', _tractorPhoto, Icons.local_shipping),
+                    _buildPhotoSlot(2, 'Trailer No', _trailerPhoto, Icons.rv_hookup),
                     const SizedBox(width: 8),
-                    _buildPhotoSlot(3, 'Cane Load', _loadPhoto, Icons.agriculture),
+                    _buildPhotoSlot(3, 'Loaded Cane', _loadPhoto, Icons.agriculture),
                   ],
                 ),
               ],

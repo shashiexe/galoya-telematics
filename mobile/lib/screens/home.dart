@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -3513,7 +3513,7 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
     final p = _p;
     final code = (p['plot_manual_code'] ?? p['name'] ?? p['code'] ?? 'Unknown Plot').toString();
     final sector = (p['sector_no'] ?? '').toString();
-    final landArea = p['land_area'] != null ? '${p['land_area']} Ac' : '';
+    final landArea = p['land_area'] != null ? '${p['land_area']} Ha' : '';
     final farmerName = (p['farmer_name'] ?? '').toString();
     final farmerPhone = _cleanPhone(p['farmer_phone']?.toString());
     final farmerNic = (p['farmer_nic'] ?? '').toString();
@@ -3819,7 +3819,7 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
                         Column(
                           children: _crops.map((c) {
                             final cycle = (c['crop_cycle'] ?? '').toString();
-                            final ext = c['crop_extent'] != null ? '${c['crop_extent']} Ac' : '';
+                            final ext = c['crop_extent'] != null ? '${c['crop_extent']} Ha' : '';
                             final varName = (c['variety'] ?? '').toString();
                             final age = (c['age_month'] ?? '').toString();
                             return Container(
@@ -4335,34 +4335,16 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          name,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: isMasterOnly ? const Color(0xffb45309) : const Color(0xff065f46),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          isMasterOnly ? 'ERP Master' : 'Geofence',
-                                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                    ],
+                                  Text(
+                                    name,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 3),
                                   if (farmerName.isNotEmpty || landArea > 0)
                                     Text(
-                                      '${farmerName.isNotEmpty ? "👨🌾 $farmerName" : ""}${landArea > 0 ? " • 📐 ${landArea.toStringAsFixed(2)} Ac" : ""}',
+                                      '${farmerName.isNotEmpty ? "👨🌾 $farmerName" : ""}${landArea > 0 ? " • 📐 ${landArea.toStringAsFixed(2)} Ha" : ""}',
                                       style: const TextStyle(color: Color(0xffe2e8f0), fontSize: 11),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -4393,7 +4375,9 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                             ),
                             // Action 0: Plot, Farmer & Nominee Profile Sheet
                             IconButton(
-                              icon: const Icon(Icons.info_outline, color: Color(0xff38bdf8), size: 22),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              icon: const Icon(Icons.info_outline, color: Color(0xff38bdf8), size: 20),
                               tooltip: 'Plot & Nominee Profile',
                               onPressed: () {
                                 showModalBottomSheet(
@@ -4410,29 +4394,36 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                               },
                             ),
                             if (!isMasterOnly) ...[
+                              const SizedBox(width: 2),
                               // Action 1: In-App Map
                               IconButton(
-                                icon: const Icon(Icons.map_outlined, color: Color(0xff38bdf8), size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                icon: const Icon(Icons.map_outlined, color: Color(0xff38bdf8), size: 19),
                                 tooltip: 'Show on Map',
                                 onPressed: () => widget.onSelectPlot(p),
                               ),
+                              const SizedBox(width: 4),
                               // Action 2: Google Maps Turn-by-Turn
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xff059669),
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
-                                icon: const Icon(Icons.navigation, size: 14),
+                                icon: const Icon(Icons.navigation, size: 12),
                                 label: const Text('Go', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                                 onPressed: () => widget.onGoogleNavigate(lat, lng, name),
                               ),
-                              const SizedBox(width: 4),
                             ],
                             if (isMasterOnly && farmerPhone.isNotEmpty) ...[
                               IconButton(
-                                icon: const Icon(Icons.call, color: Color(0xff38bdf8), size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                icon: const Icon(Icons.call, color: Color(0xff38bdf8), size: 19),
                                 tooltip: 'Call Farmer',
                                 onPressed: () => launchUrl(Uri.parse('tel:$farmerPhone')),
                               ),
@@ -4478,6 +4469,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   final _farmerNameCtrl = TextEditingController();
   final _farmerNoCtrl = TextEditingController();
   final _sectorCtrl = TextEditingController();
+  final _landAreaCtrl = TextEditingController();
   final _vehicleCtrl = TextEditingController();
   final _trailerCtrl = TextEditingController();
   final _cropCycleCtrl = TextEditingController(text: 'R1');
@@ -4576,6 +4568,12 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
           if (_farmerNoCtrl.text.isEmpty && (master['farmer_no'] ?? '').toString().isNotEmpty) {
             _farmerNoCtrl.text = master['farmer_no']!;
           }
+          if (_landAreaCtrl.text.isEmpty && master['land_area'] != null && master['land_area'].toString().isNotEmpty && master['land_area'].toString() != '0.0') {
+            _landAreaCtrl.text = '${master['land_area']} Ha';
+          }
+          if (_sectorCtrl.text.isEmpty && (master['sector_no'] ?? '').toString().isNotEmpty) {
+            _sectorCtrl.text = master['sector_no']!;
+          }
         });
       }
 
@@ -4595,6 +4593,12 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
             }
             if (_farmerNoCtrl.text.isEmpty && (p['farmer_no'] ?? '').toString().isNotEmpty) {
               _farmerNoCtrl.text = p['farmer_no']!;
+            }
+            if (_landAreaCtrl.text.isEmpty && p['land_area'] != null && p['land_area'].toString().isNotEmpty && p['land_area'].toString() != '0.0') {
+              _landAreaCtrl.text = '${p['land_area']} Ha';
+            }
+            if (_sectorCtrl.text.isEmpty && (p['sector_no'] ?? '').toString().isNotEmpty) {
+              _sectorCtrl.text = p['sector_no']!;
             }
             await LocalDb.saveMasterPlots([p]);
           }
@@ -4645,6 +4649,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     _farmerNameCtrl.dispose();
     _farmerNoCtrl.dispose();
     _sectorCtrl.dispose();
+    _landAreaCtrl.dispose();
     _vehicleCtrl.dispose();
     _trailerCtrl.dispose();
     _cropCycleCtrl.dispose();
@@ -4722,8 +4727,8 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
       final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
       if (picked != null && mounted) {
         setState(() {
-          if (type == 1) _cdnPhoto = File(picked.path);
-          if (type == 2) _tractorPhoto = File(picked.path);
+          if (type == 1) _tractorPhoto = File(picked.path);
+          if (type == 2) _trailerPhoto = File(picked.path);
           if (type == 3) _loadPhoto = File(picked.path);
         });
       }
@@ -4885,12 +4890,14 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     final farmerName = (plot['farmer_name'] ?? '').toString();
     final farmerNo = (plot['farmer_no'] ?? '').toString();
     final sectorNo = (plot['sector_no'] ?? '').toString();
+    final landArea = (plot['land_area'] != null && plot['land_area'].toString().isNotEmpty && plot['land_area'].toString() != '0.0') ? '${plot['land_area']} Ha' : '';
 
     setState(() {
       _plotCtrl.text = code;
       _farmerNameCtrl.text = farmerName;
       _farmerNoCtrl.text = farmerNo;
       _sectorCtrl.text = sectorNo;
+      _landAreaCtrl.text = landArea;
       _plotSuggestions = [];
       _searchingPlots = false;
     });
@@ -4949,10 +4956,12 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
       final matches = await LocalDb.searchMasterPlots(q, limit: 1);
       if (matches.isNotEmpty && mounted) {
         final m = matches.first;
+        final area = (m['land_area'] != null && m['land_area'].toString().isNotEmpty && m['land_area'].toString() != '0.0') ? '${m['land_area']} Ha' : '';
         setState(() {
           _farmerNameCtrl.text = m['farmer_name']?.toString() ?? '';
           _farmerNoCtrl.text = m['farmer_no']?.toString() ?? '';
           _sectorCtrl.text = m['sector_no']?.toString() ?? '';
+          _landAreaCtrl.text = area;
         });
         return;
       }
@@ -4965,10 +4974,12 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
       }).timeout(const Duration(milliseconds: 2500));
       if (onlineRes['ok'] == true && onlineRes['plots'] is List && (onlineRes['plots'] as List).isNotEmpty && mounted) {
         final m = (onlineRes['plots'] as List).first as Map<String, dynamic>;
+        final area = (m['land_area'] != null && m['land_area'].toString().isNotEmpty && m['land_area'].toString() != '0.0') ? '${m['land_area']} Ha' : '';
         setState(() {
           _farmerNameCtrl.text = m['farmer_name']?.toString() ?? '';
           _farmerNoCtrl.text = m['farmer_no']?.toString() ?? '';
           _sectorCtrl.text = m['sector_no']?.toString() ?? '';
+          _landAreaCtrl.text = area;
         });
         _loadPlotCrops(q);
       }
@@ -5537,7 +5548,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
                             final code = (p['plot_manual_code'] ?? p['plot_no'] ?? '').toString();
                             final farmer = (p['farmer_name'] ?? '').toString();
                             final sector = (p['sector_no'] ?? '').toString();
-                            final area = p['land_area'] != null ? '${p['land_area']} Ac' : '';
+                            final area = (p['land_area'] != null && p['land_area'].toString().isNotEmpty && p['land_area'].toString() != '0.0') ? '${p['land_area']} Ha' : '';
                             final hasGf = p['has_geofence'] == 1;
 
                             return ListTile(
@@ -5609,14 +5620,17 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          // Sector No
+          // Plot Land Area (Ha)
           TextFormField(
-            controller: _sectorCtrl,
-            style: const TextStyle(color: Colors.white),
+            controller: _landAreaCtrl,
+            readOnly: true,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
-              labelText: 'Sector No',
+              labelText: 'Plot Land Area (Ha) / වගා බිමේ ප්‍රමාණය',
               labelStyle: const TextStyle(color: Color(0xff94a3b8)),
-              prefixIcon: const Icon(Icons.grid_view, color: Color(0xffcbd5e1), size: 18),
+              prefixIcon: const Icon(Icons.square_foot, color: Color(0xff34d399), size: 18),
+              suffixText: 'Ha',
+              suffixStyle: const TextStyle(color: Color(0xff34d399), fontWeight: FontWeight.bold),
               filled: true,
               fillColor: const Color(0xff1e293b),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
@@ -5691,14 +5705,33 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
                     runSpacing: 8,
                     children: _activeCrops.map((c) {
                       final cycle = (c['crop_cycle'] ?? '').toString();
-                      final ext = c['crop_extent'] != null ? '${c['crop_extent']} Ac' : '';
+                      final ext = (c['crop_extent'] != null && c['crop_extent'].toString().isNotEmpty && c['crop_extent'].toString() != '0.0') ? '${c['crop_extent']} Ha' : '';
                       final varName = (c['variety'] ?? '').toString();
+                      final age = (c['age_month'] ?? '').toString();
                       final isSel = _selectedCropCycle == cycle;
                       return ChoiceChip(
                         selected: isSel,
-                        label: Text(
-                          '$cycle ($ext${varName.isNotEmpty ? " • $varName" : ""})',
-                          style: TextStyle(color: isSel ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        label: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$cycle ($ext${varName.isNotEmpty ? " • $varName" : ""})',
+                              style: TextStyle(color: isSel ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                            if (age.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  '⏳ Age: $age Mo (මාස $age)',
+                                  style: TextStyle(
+                                    color: isSel ? Colors.black87 : const Color(0xff38bdf8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         selectedColor: const Color(0xff10b981),
                         backgroundColor: const Color(0xff0f172a),
@@ -5858,7 +5891,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
             items: _categories.map((c) {
               return DropdownMenuItem<String>(
                 value: c['code'],
-                child: Text('${c['code']} - ${c['name']}', style: const TextStyle(color: Colors.white)),
+                child: Text(c['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
               );
             }).toList(),
             onChanged: (val) {

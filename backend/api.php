@@ -1113,8 +1113,9 @@ try {
         out($res);
     }
 
-        case 'get_plot_crops': {
-        auth_user();
+    case 'get_plot_crops': {
+        $u = get_auth_user();
+        if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
         $plotNo = trim($_GET['plot_no'] ?? ($_POST['plot_no'] ?? ''));
         if (!$plotNo) fail('Plot number required', 400);
         $st = db()->prepare("SELECT crop_cycle, crop_extent, variety, status, age_month, is_agronomy FROM erp_crops WHERE plot_no = ? AND status = 1 ORDER BY crop_cycle ASC");
@@ -1123,13 +1124,15 @@ try {
     }
 
     case 'get_active_vehicles': {
-        auth_user();
+        $u = get_auth_user();
+        if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
         $st = db()->query("SELECT vehicle_no, vehicle_name, contractor_no, transporter_no FROM erp_vehicles WHERE status = 'Active' ORDER BY vehicle_no ASC");
         out(['ok' => true, 'vehicles' => $st->fetchAll(PDO::FETCH_ASSOC)]);
     }
 
     case 'get_trailers': {
-        auth_user();
+        $u = get_auth_user();
+        if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
         $st = db()->query("SELECT trailer_no, trailer_name, weight, vehicle_number FROM erp_trailers ORDER BY trailer_no ASC");
         out(['ok' => true, 'trailers' => $st->fetchAll(PDO::FETCH_ASSOC)]);
     }

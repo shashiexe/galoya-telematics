@@ -303,6 +303,59 @@ if ($type === 'all' || $type === 'task') {
         } catch (Throwable $e2) {}
     }
 }
+if ($type === 'all' || $type === 'cdn') {
+    try {
+        $cdnRows = q("SELECT id, cdn, plot_manual_code, farmer_name, vehicle_no, trailer_no, crop_cycle, 
+                             cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, create_time 
+                      FROM cdn_details 
+                      WHERE create_time BETWEEN ? AND ? 
+                        AND (cdn_photo IS NOT NULL OR tractor_photo IS NOT NULL OR trailer_photo IS NOT NULL OR load_photo IS NOT NULL)", 
+                      [$from_dt, $to_dt])->fetchAll();
+        foreach ($cdnRows as $c) {
+            $notesBase = "CDN #{$c['cdn']} | Plot: {$c['plot_manual_code']} | Farmer: {$c['farmer_name']} | Vehicle: {$c['vehicle_no']} | Trailer: {$c['trailer_no']} | Crop: {$c['crop_cycle']}";
+            if (!empty($c['cdn_photo'])) {
+                $photos[] = [
+                    'id' => $c['id'], 'user_id' => 0, 'file_path' => $c['cdn_photo'], 'lat' => $c['lat'], 'lng' => $c['lng'],
+                    'note' => "$notesBase (Paper Slip)", 'geofence_name' => $c['plot_manual_code'],
+                    'activity_type' => 'CDN Manual Ticket Slip', 'auto_geofence' => $c['plot_manual_code'], 'selected_geofence' => $c['plot_manual_code'],
+                    'is_selfie' => 0, 'face_match_status' => 'skipped', 'face_confidence' => null, 'taken_at' => $c['create_time'],
+                    'photo_type' => 'cdn_slip', 'user_name' => $c['create_user'], 'user_code' => '', 'unit_type' => 'CDN',
+                    'user_profile_photo' => null, 'dept_name' => 'Harvesting', 'sec_name' => 'Cane Transport'
+                ];
+            }
+            if (!empty($c['tractor_photo'])) {
+                $photos[] = [
+                    'id' => $c['id'], 'user_id' => 0, 'file_path' => $c['tractor_photo'], 'lat' => $c['lat'], 'lng' => $c['lng'],
+                    'note' => "$notesBase (Tractor Plate)", 'geofence_name' => $c['plot_manual_code'],
+                    'activity_type' => 'Tractor Front & Plate', 'auto_geofence' => $c['plot_manual_code'], 'selected_geofence' => $c['plot_manual_code'],
+                    'is_selfie' => 0, 'face_match_status' => 'skipped', 'face_confidence' => null, 'taken_at' => $c['create_time'],
+                    'photo_type' => 'tractor', 'user_name' => $c['create_user'], 'user_code' => '', 'unit_type' => 'CDN',
+                    'user_profile_photo' => null, 'dept_name' => 'Harvesting', 'sec_name' => 'Cane Transport'
+                ];
+            }
+            if (!empty($c['trailer_photo'])) {
+                $photos[] = [
+                    'id' => $c['id'], 'user_id' => 0, 'file_path' => $c['trailer_photo'], 'lat' => $c['lat'], 'lng' => $c['lng'],
+                    'note' => "$notesBase (Trailer Number)", 'geofence_name' => $c['plot_manual_code'],
+                    'activity_type' => 'Trailer Verification', 'auto_geofence' => $c['plot_manual_code'], 'selected_geofence' => $c['plot_manual_code'],
+                    'is_selfie' => 0, 'face_match_status' => 'skipped', 'face_confidence' => null, 'taken_at' => $c['create_time'],
+                    'photo_type' => 'trailer', 'user_name' => $c['create_user'], 'user_code' => '', 'unit_type' => 'CDN',
+                    'user_profile_photo' => null, 'dept_name' => 'Harvesting', 'sec_name' => 'Cane Transport'
+                ];
+            }
+            if (!empty($c['load_photo'])) {
+                $photos[] = [
+                    'id' => $c['id'], 'user_id' => 0, 'file_path' => $c['load_photo'], 'lat' => $c['lat'], 'lng' => $c['lng'],
+                    'note' => "$notesBase (Loaded Cane)", 'geofence_name' => $c['plot_manual_code'],
+                    'activity_type' => 'Sugarcane Load', 'auto_geofence' => $c['plot_manual_code'], 'selected_geofence' => $c['plot_manual_code'],
+                    'is_selfie' => 0, 'face_match_status' => 'skipped', 'face_confidence' => null, 'taken_at' => $c['create_time'],
+                    'photo_type' => 'load', 'user_name' => $c['create_user'], 'user_code' => '', 'unit_type' => 'CDN',
+                    'user_profile_photo' => null, 'dept_name' => 'Harvesting', 'sec_name' => 'Cane Transport'
+                ];
+            }
+        }
+    } catch (Throwable $e) {}
+}
 
 // Sort all photos chronologically descending
 usort($photos, function($a, $b) {
@@ -441,6 +494,7 @@ layout_start('Photos & Field Media', 'photos.php');
           <option value="field" <?= $type === 'field' ? 'selected' : '' ?>>Field Snaps 📷</option>
           <option value="task" <?= $type === 'task' ? 'selected' : '' ?>>Task Verification ✓</option>
           <option value="selfie" <?= $type === 'selfie' ? 'selected' : '' ?>>🤳 Verification Selfies</option>
+          <option value="cdn" <?= $type === 'cdn' ? 'selected' : '' ?>>🌾 Cane Delivery Notes (CDN Verification)</option>
           <option value="mismatch" <?= $type === 'mismatch' ? 'selected' : '' ?>>🔴 ⚠️ Proxy / Face Mismatches</option>
         </select>
       </div>

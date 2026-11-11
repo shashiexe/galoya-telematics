@@ -895,22 +895,25 @@ try {
 
     case 'cdn_issue': {
         $u = auth_user();
-        $cdn = preg_replace('/\s+/', '', trim($_POST['cdn'] ?? ''));
+        $rawBody = body();
+        $data = array_merge(is_array($rawBody) ? $rawBody : [], $_POST);
+
+        $cdn = preg_replace('/\s+/', '', trim($data['cdn'] ?? ''));
         if (!$cdn) fail('CDN Number is required', 400);
 
-        $plotNo = trim($_POST['plot_no'] ?? '');
-        $plotManualCode = trim($_POST['plot_manual_code'] ?? '');
-        $farmerNo = trim($_POST['farmer_no'] ?? '');
-        $farmerName = trim($_POST['farmer_name'] ?? '');
-        $fieldAsstNo = trim($_POST['field_asst_no'] ?? ($u['code'] ?? ''));
-        $fieldAsstName = trim($_POST['field_asst_name'] ?? ($u['name'] ?? ''));
-        $type = trim($_POST['type'] ?? 'OUT');
-        $caneCat = trim($_POST['cane_category_code'] ?? 'CAT1');
-        $vehicleNo = trim($_POST['vehicle_no'] ?? '');
-        $trailerNo = trim($_POST['trailer_no'] ?? '');
-        $cropCycle = trim($_POST['crop_cycle'] ?? '');
-        $lat = !empty($_POST['lat']) ? (float)$_POST['lat'] : null;
-        $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
+        $plotNo = trim($data['plot_no'] ?? '');
+        $plotManualCode = trim($data['plot_manual_code'] ?? '');
+        $farmerNo = trim($data['farmer_no'] ?? '');
+        $farmerName = trim($data['farmer_name'] ?? '');
+        $fieldAsstNo = trim($data['field_asst_no'] ?? ($u['code'] ?? ''));
+        $fieldAsstName = trim($data['field_asst_name'] ?? ($u['name'] ?? ''));
+        $type = trim($data['type'] ?? 'OUT');
+        $caneCat = trim($data['cane_category_code'] ?? 'CAT1');
+        $vehicleNo = trim($data['vehicle_no'] ?? '');
+        $trailerNo = trim($data['trailer_no'] ?? '');
+        $cropCycle = trim($data['crop_cycle'] ?? '');
+        $lat = !empty($data['lat']) ? (float)$data['lat'] : null;
+        $lng = !empty($data['lng']) ? (float)$data['lng'] : null;
         $createUser = $u['name'] ?? ($u['phone'] ?? 'FieldOfficer');
 
         // Verification Photos: CDN Slip, Tractor Front, Trailer No & Cane Load (Total 4 Photos)

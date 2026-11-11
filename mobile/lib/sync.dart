@@ -151,6 +151,11 @@ class Sync {
             final f = File(tractorPhotoPath);
             if (await f.exists()) filesToUpload['tractor_photo'] = f;
           }
+          final trailerPhotoPath = payload['trailer_photo']?.toString() ?? '';
+          if (trailerPhotoPath.isNotEmpty) {
+            final f = File(trailerPhotoPath);
+            if (await f.exists()) filesToUpload['trailer_photo'] = f;
+          }
           final loadPhotoPath = payload['load_photo']?.toString() ?? '';
           if (loadPhotoPath.isNotEmpty) {
             final f = File(loadPhotoPath);

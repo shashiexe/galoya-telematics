@@ -36,9 +36,28 @@ class Sync {
       try {
         await refreshGeofences();
       } catch (_) {}
+      try {
+        await refreshMasterVehiclesAndTrailers();
+      } catch (_) {}
     } finally {
       _running = false;
     }
+  }
+
+  static Future<void> refreshMasterVehiclesAndTrailers() async {
+    try {
+      final vRes = await Api.get('get_active_vehicles');
+      if (vRes['ok'] == true && vRes['vehicles'] is List) {
+        await LocalDb.saveVehicles(vRes['vehicles'] as List);
+      }
+    } catch (_) {}
+
+    try {
+      final tRes = await Api.get('get_trailers');
+      if (tRes['ok'] == true && tRes['trailers'] is List) {
+        await LocalDb.saveTrailers(tRes['trailers'] as List);
+      }
+    } catch (_) {}
   }
 
   /// Sync lightweight geofences for offline proximity calculation (< 50KB)
@@ -121,13 +140,31 @@ class Sync {
             't': payload['t'] ?? DateTime.now().millisecondsSinceEpoch,
           });
         } else if (q['kind'] == 'cdn_issue') {
-          if (q['file'] != null && q['file'].toString().isNotEmpty) {
-            final f = File(q['file'] as String);
-            if (await f.exists()) {
-              await Api.upload('cdn_issue', payload.map((k, v) => MapEntry(k, v?.toString() ?? '')), f);
+          final filesToUpload = <String, File>{};
+          final cdnPhotoPath = payload['cdn_photo']?.toString() ?? q['file']?.toString() ?? '';
+          if (cdnPhotoPath.isNotEmpty) {
+            final f = File(cdnPhotoPath);
+            if (await f.exists()) filesToUpload['cdn_photo'] = f;
+          }
+          final tractorPhotoPath = payload['tractor_photo']?.toString() ?? '';
+          if (tractorPhotoPath.isNotEmpty) {
+            final f = File(tractorPhotoPath);
+            if (await f.exists()) filesToUpload['tractor_photo'] = f;
+          }
+          final loadPhotoPath = payload['load_photo']?.toString() ?? '';
+          if (loadPhotoPath.isNotEmpty) {
+            final f = File(loadPhotoPath);
+            if (await f.exists()) filesToUpload['load_photo'] = f;
+          }
+
+          if (filesToUpload.isNotEmpty) {
+            await Api.uploadFiles(
+              'cdn_issue',
+              payload.map((k, v) => MapEntry(k, v?.toString() ?? '')),
+              filesToUpload,
+            );
+            for (final f in filesToUpload.values) {
               await f.delete().catchError((_) => f);
-            } else {
-              await Api.post('cdn_issue', payload);
             }
           } else {
             await Api.post('cdn_issue', payload);

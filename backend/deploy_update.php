@@ -1017,6 +1017,64 @@ try {
       ('CAT5', 'Compost'),
       ('CAT6', 'Machine Harvested');");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_nominees` (
+      `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+      `nomininame` VARCHAR(150) NULL,
+      `nic` VARCHAR(50) NULL,
+      `contact_no` VARCHAR(50) NULL,
+      `address` TEXT NULL,
+      `bank_code` VARCHAR(20) NULL,
+      `branch_code` VARCHAR(20) NULL,
+      `bank_accno` VARCHAR(50) NULL,
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_nic` (`nic`),
+      INDEX `idx_contact` (`contact_no`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_crops` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `plot_no` VARCHAR(30) NOT NULL,
+      `crop_cycle` VARCHAR(30) NOT NULL,
+      `crop_extent` DECIMAL(10,2) NULL,
+      `variety` VARCHAR(50) NULL,
+      `status` TINYINT(1) DEFAULT 1,
+      `age_month` VARCHAR(20) NULL,
+      `is_agronomy` TINYINT(1) DEFAULT 0,
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY `uk_plot_cycle` (`plot_no`, `crop_cycle`, `is_agronomy`),
+      INDEX `idx_plot` (`plot_no`),
+      INDEX `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_vehicles` (
+      `vehicle_no` VARCHAR(50) NOT NULL PRIMARY KEY,
+      `vehicle_name` VARCHAR(100) NULL,
+      `contractor_no` VARCHAR(50) NULL,
+      `transporter_no` VARCHAR(50) NULL,
+      `status` VARCHAR(20) DEFAULT 'Active',
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `erp_trailers` (
+      `trailer_no` VARCHAR(50) NOT NULL PRIMARY KEY,
+      `trailer_name` VARCHAR(100) NULL,
+      `weight` DECIMAL(10,2) DEFAULT 0.00,
+      `vehicle_number` VARCHAR(50) NULL,
+      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX `idx_vno` (`vehicle_number`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    // Add new columns to erp_plots for Nominee, Permissions and Block_ID
+    try { @$pdo->exec("ALTER TABLE `erp_plots` ADD COLUMN `nominee_id` VARCHAR(50) NULL AFTER `farmer_no`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `erp_plots` ADD COLUMN `payment_permission` TINYINT(1) DEFAULT 0 AFTER `nominee_id`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `erp_plots` ADD COLUMN `debit_permission` TINYINT(1) DEFAULT 0 AFTER `payment_permission`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `erp_plots` ADD COLUMN `block_id` INT NULL AFTER `debit_permission`"); } catch (Throwable $e) {}
+
+    // Add photo columns to cdn_details
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `tractor_photo` VARCHAR(255) NULL AFTER `cdn_photo`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `load_photo` VARCHAR(255) NULL AFTER `tractor_photo`"); } catch (Throwable $e) {}
+
     $results[] = ["✅ Database: Ensured ERP Core Tables (cdn_details, erp_plots, erp_farmers, erp_field_assistants, erp_cane_categories) exist", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Database ERP tables error: " . $e->getMessage(), "color:#ef4444"];

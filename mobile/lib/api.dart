@@ -154,6 +154,47 @@ class Api {
     }
   }
 
+  /// Multi-file upload (e.g. CDN Slip + Tractor Photo + Cane Load Photo)
+  static Future<Map<String, dynamic>> uploadFiles(
+    String action,
+    Map<String, String> fields,
+    Map<String, File> files,
+  ) async {
+    final t = await token();
+    final fMap = Map<String, String>.from(fields);
+    if (t != null) {
+      fMap['token'] = t;
+    }
+    int totalBytes = 600;
+    for (final f in files.values) {
+      if (f.existsSync()) totalBytes += f.lengthSync();
+    }
+
+    Future<http.Response> sendTo(String url) async {
+      final req = http.MultipartRequest('POST', Uri.parse(url))..fields.addAll(fMap);
+      for (final entry in files.entries) {
+        if (entry.value.existsSync()) {
+          req.files.add(await http.MultipartFile.fromPath(entry.key, entry.value.path));
+        }
+      }
+      req.headers.addAll(_defaultHeaders);
+      if (t != null) req.headers['Authorization'] = 'Bearer $t';
+      return http.Response.fromStream(await req.send().timeout(const Duration(seconds: 150)));
+    }
+
+    try {
+      final r = await sendTo('$kApiUrl?action=$action');
+      return _handle(r, totalBytes);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      try {
+        final rHttp = await sendTo('$kApiUrlHttp?action=$action');
+        return _handle(rHttp, totalBytes);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
   static Future<void> saveServerConfig(Map c) async {
     final sp = await SharedPreferences.getInstance();
     if (c['location_interval'] != null) await sp.setInt('server_interval', (c['location_interval'] as num).toInt());

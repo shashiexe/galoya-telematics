@@ -35,7 +35,7 @@ class LocalDb {
         await d.execute('''CREATE TABLE IF NOT EXISTS cdn_records(
           cdn TEXT PRIMARY KEY, plot_no TEXT, plot_manual_code TEXT, farmer_no TEXT, farmer_name TEXT,
           field_asst_no TEXT, field_asst_name TEXT, type TEXT, cane_category_code TEXT, vehicle_no TEXT,
-          trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, tractor_photo TEXT, load_photo TEXT,
+          trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, tractor_photo TEXT, trailer_photo TEXT, load_photo TEXT,
           lat REAL, lng REAL, create_user TEXT, create_time TEXT, weige_ticket_no TEXT,
           tonnage_received REAL, gross_weight REAL, tare_weight REAL, weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
         await d.execute('''CREATE TABLE IF NOT EXISTS local_vehicles(
@@ -89,6 +89,7 @@ class LocalDb {
             await d.execute('ALTER TABLE erp_plots ADD COLUMN debit_permission INTEGER DEFAULT 0');
             await d.execute('ALTER TABLE erp_plots ADD COLUMN block_id INTEGER');
             await d.execute('ALTER TABLE cdn_records ADD COLUMN tractor_photo TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN trailer_photo TEXT');
             await d.execute('ALTER TABLE cdn_records ADD COLUMN load_photo TEXT');
           } catch (_) {}
         }
@@ -699,14 +700,30 @@ class LocalDb {
     await batch.commit(noResult: true);
   }
 
-  static Future<List<Map<String, dynamic>>> getActiveCrops(String plotNo) async {
+  static Future<List<Map<String, dynamic>>> getActiveCrops(String plotCode) async {
     final d = await db;
-    final clean = plotNo.trim();
+    final clean = plotCode.trim();
+    if (clean.isEmpty) return [];
     return d.rawQuery('''
-      SELECT * FROM local_crops 
-      WHERE plot_no = ? AND status = 1 
-      ORDER BY crop_cycle ASC
-    ''', [clean]);
+      SELECT c.* FROM local_crops c
+      LEFT JOIN erp_plots p ON c.plot_no = p.plot_no
+      WHERE (c.plot_no = ? OR p.plot_manual_code = ? OR c.plot_no IN (
+        SELECT plot_no FROM erp_plots WHERE plot_manual_code = ?
+      )) AND c.status = 1
+      ORDER BY c.crop_cycle ASC
+    ''', [clean, clean, clean]);
+  }
+
+  static Future<Map<String, dynamic>?> getMasterPlotByCode(String code) async {
+    final d = await db;
+    final clean = code.trim();
+    if (clean.isEmpty) return null;
+    final rows = await d.rawQuery('''
+      SELECT * FROM erp_plots 
+      WHERE plot_manual_code = ? OR plot_no = ? 
+      LIMIT 1
+    ''', [clean, clean]);
+    return rows.isNotEmpty ? rows.first : null;
   }
 }
 

@@ -3411,6 +3411,481 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 }
 
+/// Detailed Bottom Sheet showing Plot, Registered Farmer, Appointed Nominee, Permissions & Standing Crops
+class _PlotDetailsSheet extends StatefulWidget {
+  final Map<String, dynamic> plot;
+  final VoidCallback onNavigate;
+  final VoidCallback onShowMap;
+  final VoidCallback onIssueCdn;
+
+  const _PlotDetailsSheet({
+    required this.plot,
+    required this.onNavigate,
+    required this.onShowMap,
+    required this.onIssueCdn,
+  });
+
+  @override
+  State<_PlotDetailsSheet> createState() => _PlotDetailsSheetState();
+}
+
+class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
+  List<Map<String, dynamic>> _crops = [];
+  bool _loadingCrops = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCrops();
+  }
+
+  Future<void> _fetchCrops() async {
+    final plotNo = (widget.plot['plot_no'] ?? widget.plot['code'] ?? widget.plot['name'] ?? '').toString();
+    try {
+      final local = await LocalDb.getActiveCrops(plotNo);
+      if (local.isNotEmpty && mounted) {
+        setState(() {
+          _crops = local;
+          _loadingCrops = false;
+        });
+        return;
+      }
+      final res = await Api.get('get_plot_crops', params: {
+        'plot_no': plotNo,
+        'key': 'galoya2026',
+      }).timeout(const Duration(milliseconds: 2500));
+      if (res['ok'] == true && res['crops'] is List && mounted) {
+        final list = (res['crops'] as List).cast<Map<String, dynamic>>();
+        setState(() {
+          _crops = list;
+          _loadingCrops = false;
+        });
+        await LocalDb.saveCrops(list);
+      } else {
+        if (mounted) setState(() => _loadingCrops = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingCrops = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.plot;
+    final code = (p['plot_manual_code'] ?? p['name'] ?? p['code'] ?? 'Unknown Plot').toString();
+    final sector = (p['sector_no'] ?? '').toString();
+    final landArea = p['land_area'] != null ? '${p['land_area']} Ac' : '';
+    final farmerName = (p['farmer_name'] ?? '').toString();
+    final farmerPhone = (p['farmer_phone'] ?? '').toString();
+    final farmerNic = (p['farmer_nic'] ?? '').toString();
+    final farmerNo = (p['farmer_no'] ?? '').toString();
+
+    final nomineeName = (p['nominee_name'] ?? '').toString();
+    final nomineePhone = (p['nominee_phone'] ?? '').toString();
+    final nomineeNic = (p['nominee_nic'] ?? '').toString();
+    final bankCode = (p['bank_code'] ?? '').toString();
+    final bankAcc = (p['bank_accno'] ?? '').toString();
+    final branchCode = (p['branch_code'] ?? '').toString();
+
+    final payPerm = (p['payment_permission'] == 1 || p['payment_permission'] == true);
+    final debitPerm = (p['debit_permission'] == 1 || p['debit_permission'] == true);
+    final isAgronomy = p['block_id'] != null;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Color(0xff0f172a),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0xff334155), width: 1.5)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 8),
+            width: 44,
+            height: 4,
+            decoration: BoxDecoration(color: const Color(0xff475569), borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff059669).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.terrain, color: Color(0xff34d399), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(code, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          if (sector.isNotEmpty) ...[
+                            Text('Sector: $sector', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 12)),
+                            const SizedBox(width: 8),
+                          ],
+                          if (landArea.isNotEmpty) ...[
+                            Text('• $landArea', style: const TextStyle(color: Color(0xff34d399), fontSize: 12, fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                          ],
+                          Text(isAgronomy ? '• Agronomy' : '• Plantation', style: const TextStyle(color: Color(0xff38bdf8), fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xff334155)),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // 1. REGISTERED FARMER SECTION
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff1e293b),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xff334155)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person, color: Color(0xff38bdf8), size: 18),
+                          const SizedBox(width: 8),
+                          const Text('REGISTERED FARMER (ගොවියා)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
+                          const Spacer(),
+                          if (farmerNo.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: const Color(0xff334155), borderRadius: BorderRadius.circular(6)),
+                              child: Text(farmerNo, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        farmerName.isNotEmpty ? farmerName : 'No Farmer Name recorded',
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                      if (farmerNic.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text('NIC: $farmerNic', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 12)),
+                      ],
+                      const SizedBox(height: 10),
+                      if (farmerPhone.isNotEmpty)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xff059669),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            icon: const Icon(Icons.phone, size: 16),
+                            label: Text('CALL FARMER ($farmerPhone)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            onPressed: () => launchUrl(Uri.parse('tel:$farmerPhone')),
+                          ),
+                        )
+                      else
+                        const Text('No contact number available', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // 2. APPOINTED NOMINEE SECTION
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff1e293b),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: nomineeName.isNotEmpty ? const Color(0xff8b5cf6).withOpacity(0.5) : const Color(0xff334155)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.people_alt, color: Color(0xffa78bfa), size: 18),
+                          const SizedBox(width: 8),
+                          const Text('APPOINTED NOMINEE (නොමිනී)', style: TextStyle(color: Color(0xffa78bfa), fontWeight: FontWeight.bold, fontSize: 12)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (nomineeName.isNotEmpty) ...[
+                        Text(nomineeName, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                        if (nomineeNic.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('NIC: $nomineeNic', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 12)),
+                        ],
+                        if (bankAcc.isNotEmpty || bankCode.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('Bank: $bankCode $branchCode (Acc: $bankAcc)', style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 12)),
+                        ],
+                        const SizedBox(height: 10),
+                        if (nomineePhone.isNotEmpty)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff7c3aed),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.phone, size: 16),
+                              label: Text('CALL NOMINEE ($nomineePhone)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              onPressed: () => launchUrl(Uri.parse('tel:$nomineePhone')),
+                            ),
+                          )
+                        else
+                          const Text('No nominee contact number recorded', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      ] else ...[
+                        const Text('No Nominee Appointed for this plot (තවමත් නොමිනී පවරා නැත)', style: TextStyle(color: Colors.white54, fontSize: 13, fontStyle: FontStyle.italic)),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // 3. PERMISSIONS BADGES
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff1e293b),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xff334155)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('PERMISSIONS / බලයලත් ක්‍රියාමාර්ග', style: TextStyle(color: Color(0xff94a3b8), fontWeight: FontWeight.bold, fontSize: 11)),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: payPerm ? const Color(0xff065f46).withOpacity(0.5) : const Color(0xff991b1b).withOpacity(0.4),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: payPerm ? const Color(0xff10b981) : const Color(0xffef4444)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(payPerm ? Icons.check_circle : Icons.cancel, color: payPerm ? const Color(0xff34d399) : const Color(0xfff87171), size: 16),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('Payment Sign', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                                        Text(payPerm ? 'ALLOWED' : 'DENIED', style: TextStyle(color: payPerm ? const Color(0xff34d399) : const Color(0xfff87171), fontWeight: FontWeight.bold, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: debitPerm ? const Color(0xff065f46).withOpacity(0.5) : const Color(0xff991b1b).withOpacity(0.4),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: debitPerm ? const Color(0xff10b981) : const Color(0xffef4444)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(debitPerm ? Icons.check_circle : Icons.cancel, color: debitPerm ? const Color(0xff34d399) : const Color(0xfff87171), size: 16),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('Debit Sign', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                                        Text(debitPerm ? 'ALLOWED' : 'DENIED', style: TextStyle(color: debitPerm ? const Color(0xff34d399) : const Color(0xfff87171), fontWeight: FontWeight.bold, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // 4. STANDING ACTIVE CROPS (Status = 1)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff1e293b),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xff334155)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.eco, color: Color(0xff10b981), size: 18),
+                          const SizedBox(width: 8),
+                          const Text('ACTIVE STANDING CROPS (සක්‍රීය බෝග)', style: TextStyle(color: Color(0xff10b981), fontWeight: FontWeight.bold, fontSize: 12)),
+                          const Spacer(),
+                          if (_loadingCrops)
+                            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff10b981))),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (!_loadingCrops && _crops.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: const Color(0xff7f1d1d).withOpacity(0.4), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xffef4444))),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.warning, color: Color(0xfff87171), size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'මෙම ඉඩමේ සක්‍රීය බෝගයක් (Status = 1) නොමැත. CDN ලිවීම තහනම් කර ඇත.',
+                                  style: TextStyle(color: Color(0xfffca5a5), fontSize: 11),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (_crops.isNotEmpty)
+                        Column(
+                          children: _crops.map((c) {
+                            final cycle = (c['crop_cycle'] ?? '').toString();
+                            final ext = c['crop_extent'] != null ? '${c['crop_extent']} Ac' : '';
+                            final varName = (c['variety'] ?? '').toString();
+                            final age = (c['age_month'] ?? '').toString();
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xff0f172a),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xff059669)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(color: const Color(0xff059669), borderRadius: BorderRadius.circular(6)),
+                                    child: Text(cycle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Variety: ${varName.isNotEmpty ? varName : "Standard"} • $ext', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                        if (age.isNotEmpty)
+                                          Text('Age: $age Months', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.check_circle, color: Color(0xff34d399), size: 18),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // 5. ACTION BUTTONS
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xff0284c7),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.map, size: 18),
+                        label: const Text('Show Map', style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          widget.onShowMap();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xff059669),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.navigation, size: 18),
+                        label: const Text('Navigate', style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          widget.onNavigate();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xfff59e0b),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: const Text('ISSUE CANE DELIVERY NOTE (CDN)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      widget.onIssueCdn();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
 /// Modal bottom sheet for searching plantation plots and launching turn-by-turn navigation
 class _PlotNavigatorModalSheet extends StatefulWidget {
   final Position? currentPosition;
@@ -3825,10 +4300,28 @@ class _PlotNavigatorModalSheetState extends State<_PlotNavigatorModalSheet> {
                                 ],
                               ),
                             ),
+                            // Action 0: Plot, Farmer & Nominee Profile Sheet
+                            IconButton(
+                              icon: const Icon(Icons.info_outline, color: Color(0xff38bdf8), size: 22),
+                              tooltip: 'Plot & Nominee Profile',
+                              onPressed: () {
+                                showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (_) => _PlotDetailsSheet(
+                                    plot: p,
+                                    onNavigate: () => widget.onGoogleNavigate(lat, lng, name),
+                                    onShowMap: () => widget.onSelectPlot(p),
+                                    onIssueCdn: () => widget.onIssueCdn?.call(p),
+                                  ),
+                                );
+                              },
+                            ),
                             if (!isMasterOnly) ...[
                               // Action 1: In-App Map
                               IconButton(
-                                icon: const Icon(Icons.map_outlined, color: Color(0xff38bdf8), size: 22),
+                                icon: const Icon(Icons.map_outlined, color: Color(0xff38bdf8), size: 20),
                                 tooltip: 'Show on Map',
                                 onPressed: () => widget.onSelectPlot(p),
                               ),
@@ -3901,10 +4394,22 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   final _sectorCtrl = TextEditingController();
   final _vehicleCtrl = TextEditingController();
   final _trailerCtrl = TextEditingController();
-  final _cropCycleCtrl = TextEditingController(text: 'Ratoon 1');
+  final _cropCycleCtrl = TextEditingController(text: 'R1');
   String _selectedCategory = 'CAT1';
   File? _cdnPhoto;
+  File? _tractorPhoto;
+  File? _loadPhoto;
   bool _submitting = false;
+
+  // Active Vehicle & Trailer Auto-suggest
+  List<String> _availableVehicles = [];
+  List<String> _availableTrailers = [];
+
+  // Active Crop Verification (Status = 1)
+  List<Map<String, dynamic>> _activeCrops = [];
+  bool _loadingCrops = false;
+  bool _hasNoActiveCrop = false;
+  String? _selectedCropCycle;
 
   final List<Map<String, String>> _categories = const [
     {'code': 'CAT1', 'name': 'Green Cane'},
@@ -3938,6 +4443,73 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     super.initState();
     _initPrefill();
     _loadTrackerData();
+    _loadVehiclesAndTrailers();
+    if (widget.prefillPlot != null) {
+      final code = (widget.prefillPlot!['name'] ?? widget.prefillPlot!['plot_manual_code'] ?? widget.prefillPlot!['plot_no'] ?? '').toString();
+      if (code.isNotEmpty) _loadPlotCrops(code);
+    }
+  }
+
+  Future<void> _loadVehiclesAndTrailers() async {
+    try {
+      final vList = await LocalDb.getActiveVehicleList();
+      final tList = await LocalDb.getTrailerList();
+      if (mounted) {
+        setState(() {
+          _availableVehicles = vList;
+          _availableTrailers = tList;
+        });
+      }
+      if (vList.isEmpty || tList.isEmpty) {
+        await Sync.refreshMasterVehiclesAndTrailers();
+        final vList2 = await LocalDb.getActiveVehicleList();
+        final tList2 = await LocalDb.getTrailerList();
+        if (mounted) {
+          setState(() {
+            _availableVehicles = vList2;
+            _availableTrailers = tList2;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadPlotCrops(String plotCode) async {
+    if (plotCode.trim().isEmpty) return;
+    if (mounted) setState(() => _loadingCrops = true);
+    try {
+      // 1. Local SQLite check
+      var crops = await LocalDb.getActiveCrops(plotCode);
+      if (crops.isEmpty) {
+        // 2. Cloud lookup
+        final res = await Api.get('get_plot_crops', params: {
+          'plot_no': plotCode,
+          'key': 'galoya2026',
+        }).timeout(const Duration(milliseconds: 3000));
+        if (res['ok'] == true && res['crops'] is List) {
+          crops = (res['crops'] as List).cast<Map<String, dynamic>>();
+          await LocalDb.saveCrops(crops);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _loadingCrops = false;
+          _activeCrops = crops;
+          if (crops.isEmpty) {
+            _hasNoActiveCrop = true;
+            _selectedCropCycle = null;
+            _cropCycleCtrl.text = '';
+          } else {
+            _hasNoActiveCrop = false;
+            _selectedCropCycle = crops.first['crop_cycle']?.toString() ?? 'P';
+            _cropCycleCtrl.text = _selectedCropCycle!;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingCrops = false);
+    }
   }
 
   void _initPrefill() {
@@ -3972,15 +4544,20 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     super.dispose();
   }
 
-  Future<void> _pickCdnPhoto() async {
+  Future<void> _pickVerificationPhoto(int type) async {
+    // type: 1 = CDN Slip, 2 = Tractor Front, 3 = Cane Load
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
-      if (picked != null) {
-        setState(() => _cdnPhoto = File(picked.path));
+      final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+      if (picked != null && mounted) {
+        setState(() {
+          if (type == 1) _cdnPhoto = File(picked.path);
+          if (type == 2) _tractorPhoto = File(picked.path);
+          if (type == 3) _loadPhoto = File(picked.path);
+        });
       }
     } catch (e) {
-      debugPrint('Error picking CDN photo: $e');
+      debugPrint('Error capturing photo: $e');
     }
   }
 
@@ -4147,6 +4724,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
       _searchingPlots = false;
     });
     FocusScope.of(context).unfocus();
+    _loadPlotCrops(code);
   }
 
   Future<void> _pickNearestGpsPlot() async {
@@ -4221,6 +4799,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
           _farmerNoCtrl.text = m['farmer_no']?.toString() ?? '';
           _sectorCtrl.text = m['sector_no']?.toString() ?? '';
         });
+        _loadPlotCrops(q);
       }
     } catch (_) {}
   }
@@ -4234,6 +4813,17 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
     setState(() => _submitting = true);
 
     try {
+      if (_hasNoActiveCrop) {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.red,
+            content: Text('🛑 මෙම ඉඩමේ සක්‍රීය බෝගයක් (Active Crop) නොමැත. CDN නිකුත් කළ නොහැක!'),
+          ),
+        );
+        return;
+      }
+
       final record = <String, dynamic>{
         'cdn': cdnNo,
         'plot_no': plotCode,
@@ -4248,6 +4838,8 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
         'trailer_no': _trailerCtrl.text.trim().toUpperCase(),
         'crop_cycle': _cropCycleCtrl.text.trim(),
         'cdn_photo': _cdnPhoto?.path,
+        'tractor_photo': _tractorPhoto?.path,
+        'load_photo': _loadPhoto?.path,
         'lat': widget.currentPosition?.latitude,
         'lng': widget.currentPosition?.longitude,
         'create_user': widget.userName ?? 'Field Officer',
@@ -4280,6 +4872,9 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
           'vehicle_no': vehicleNo,
           'trailer_no': _trailerCtrl.text.trim().toUpperCase(),
           'crop_cycle': _cropCycleCtrl.text.trim(),
+          'cdn_photo': _cdnPhoto?.path,
+          'tractor_photo': _tractorPhoto?.path,
+          'load_photo': _loadPhoto?.path,
           'lat': widget.currentPosition?.latitude,
           'lng': widget.currentPosition?.longitude,
           'create_user': widget.userName ?? 'Field Officer',
@@ -4548,6 +5143,83 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
   }
 
   // --- TAB 1: ISSUE CDN FORM ---
+  Widget _buildPhotoSlot(int type, String title, File? file, IconData icon) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _pickVerificationPhoto(type),
+        child: Container(
+          height: 96,
+          decoration: BoxDecoration(
+            color: file != null ? const Color(0xff065f46).withOpacity(0.3) : const Color(0xff0f172a),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: file != null ? const Color(0xff10b981) : const Color(0xff334155),
+              width: file != null ? 1.5 : 1.0,
+            ),
+          ),
+          child: file != null
+              ? Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: Image.file(file, width: double.infinity, height: double.infinity, fit: BoxFit.cover),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            if (type == 1) _cdnPhoto = null;
+                            if (type == 2) _tractorPhoto = null;
+                            if (type == 3) _loadPhoto = null;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
+                          child: const Icon(Icons.close, color: Colors.white, size: 14),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.vertical(bottom: Radius.circular(11)),
+                        ),
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: const Color(0xff38bdf8), size: 24),
+                    const SizedBox(height: 6),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text('+ Take Photo', style: TextStyle(color: Color(0xff38bdf8), fontSize: 9)),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildIssueTab() {
     return Form(
       key: _formKey,
@@ -4555,44 +5227,18 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           // CDN Number
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _cdnCtrl,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    labelText: 'CDN Number',
-                    labelStyle: const TextStyle(color: Color(0xfffbbf24)),
-                    prefixIcon: const Icon(Icons.tag, color: Color(0xfff59e0b), size: 18),
-                    filled: true,
-                    fillColor: const Color(0xff1e293b),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
-                  ),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'CDN Number required' : null,
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Optional Photo Button
-              GestureDetector(
-                onTap: _pickCdnPhoto,
-                child: Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: _cdnPhoto != null ? const Color(0xff059669) : const Color(0xff1e293b),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _cdnPhoto != null ? const Color(0xff10b981) : const Color(0xff334155)),
-                  ),
-                  child: _cdnPhoto != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.file(_cdnPhoto!, fit: BoxFit.cover),
-                        )
-                      : const Icon(Icons.add_a_photo, color: Colors.white60, size: 24),
-                ),
-              ),
-            ],
+          TextFormField(
+            controller: _cdnCtrl,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              labelText: 'CDN Number',
+              labelStyle: const TextStyle(color: Color(0xfffbbf24)),
+              prefixIcon: const Icon(Icons.tag, color: Color(0xfff59e0b), size: 18),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
+            validator: (val) => val == null || val.trim().isEmpty ? 'CDN Number required' : null,
           ),
           const SizedBox(height: 12),
           // Plot Manual Code & Auto-complete lookup
@@ -4766,77 +5412,237 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          // Sector No & Crop Cycle
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _sectorCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Sector No',
-                    labelStyle: const TextStyle(color: Color(0xff94a3b8)),
-                    prefixIcon: const Icon(Icons.grid_view, color: Color(0xffcbd5e1), size: 18),
-                    filled: true,
-                    fillColor: const Color(0xff1e293b),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextFormField(
-                  controller: _cropCycleCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Crop Cycle',
-                    labelStyle: const TextStyle(color: Color(0xff94a3b8)),
-                    prefixIcon: const Icon(Icons.autorenew, color: Color(0xffcbd5e1), size: 18),
-                    filled: true,
-                    fillColor: const Color(0xff1e293b),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
-                  ),
-                ),
-              ),
-            ],
+          // Sector No
+          TextFormField(
+            controller: _sectorCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: 'Sector No',
+              labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+              prefixIcon: const Icon(Icons.grid_view, color: Color(0xffcbd5e1), size: 18),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
           ),
           const SizedBox(height: 12),
-          // Vehicle No & Trailer No
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _vehicleCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    labelText: 'Vehicle No (e.g. DAH-8851)',
-                    labelStyle: const TextStyle(color: Color(0xff94a3b8)),
-                    prefixIcon: const Icon(Icons.local_shipping, color: Color(0xfff97316), size: 18),
-                    filled: true,
-                    fillColor: const Color(0xff1e293b),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
-                  ),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Vehicle No required' : null,
-                ),
+          // ACTIVE STANDING CROP VALIDATION & SELECTOR
+          if (_loadingCrops)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0xff1e293b), borderRadius: BorderRadius.circular(12)),
+              child: const Row(
+                children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff10b981))),
+                  SizedBox(width: 12),
+                  Text('Checking standing crops in ERP (Status = 1)...', style: TextStyle(color: Color(0xffcbd5e1), fontSize: 12)),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextFormField(
-                  controller: _trailerCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Trailer No (Optional)',
-                    labelStyle: const TextStyle(color: Color(0xff94a3b8)),
-                    prefixIcon: const Icon(Icons.rv_hookup, color: Color(0xffcbd5e1), size: 18),
-                    filled: true,
-                    fillColor: const Color(0xff1e293b),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            )
+          else if (_hasNoActiveCrop)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xff7f1d1d).withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xffef4444), width: 1.5),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.block, color: Color(0xfff87171), size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '🛑 සක්‍රීය බෝගයක් නොමැත / No Active Crop (Status != 1)',
+                          style: TextStyle(color: Color(0xfffca5a5), fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'මෙම ඉඩමේ දැනට වලංගු බෝගයක් වාර්තා වී නොමැත. බෝගයක් නැති ඉඩම් සඳහා CDN ලිවීම සම්පූර්ණයෙන්ම තහනම් කර ඇත.',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_activeCrops.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xff1e293b),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xff059669)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.eco, color: Color(0xff10b981), size: 16),
+                      SizedBox(width: 6),
+                      Text('STANDING CROP CYCLE (සක්‍රීය බෝගය තෝරන්න):', style: TextStyle(color: Color(0xff10b981), fontWeight: FontWeight.bold, fontSize: 11)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _activeCrops.map((c) {
+                      final cycle = (c['crop_cycle'] ?? '').toString();
+                      final ext = c['crop_extent'] != null ? '${c['crop_extent']} Ac' : '';
+                      final varName = (c['variety'] ?? '').toString();
+                      final isSel = _selectedCropCycle == cycle;
+                      return ChoiceChip(
+                        selected: isSel,
+                        label: Text(
+                          '$cycle ($ext${varName.isNotEmpty ? " • $varName" : ""})',
+                          style: TextStyle(color: isSel ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                        selectedColor: const Color(0xff10b981),
+                        backgroundColor: const Color(0xff0f172a),
+                        onSelected: (val) {
+                          if (val) {
+                            setState(() {
+                              _selectedCropCycle = cycle;
+                              _cropCycleCtrl.text = cycle;
+                            });
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          // Vehicle No (Instant Autocomplete from 263 Active ERP Vehicles)
+          RawAutocomplete<String>(
+            textEditingController: _vehicleCtrl,
+            focusNode: FocusNode(),
+            optionsBuilder: (TextEditingValue val) {
+              if (val.text.trim().isEmpty) return const Iterable<String>.empty();
+              final q = val.text.trim().toUpperCase();
+              return _availableVehicles.where((s) => s.toUpperCase().contains(q)).take(8);
+            },
+            optionsViewBuilder: (ctx, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 6,
+                  color: const Color(0xff0f172a),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.88,
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xfff97316)),
+                    ),
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xff1e293b)),
+                      itemBuilder: (ctx, idx) {
+                        final v = options.elementAt(idx);
+                        return ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.local_shipping, color: Color(0xfff97316), size: 18),
+                          title: Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          subtitle: const Text('Active ERP Vehicle', style: TextStyle(color: Color(0xff10b981), fontSize: 10)),
+                          onTap: () => onSelected(v),
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
+              );
+            },
+            fieldViewBuilder: (ctx, ctrl, fn, onSubmitted) {
+              return TextFormField(
+                controller: ctrl,
+                focusNode: fn,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Vehicle No (e.g. 228- or DAH)',
+                  labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+                  prefixIcon: const Icon(Icons.local_shipping, color: Color(0xfff97316), size: 18),
+                  filled: true,
+                  fillColor: const Color(0xff1e293b),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                ),
+                validator: (val) => val == null || val.trim().isEmpty ? 'Vehicle No required' : null,
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          // Trailer No (Instant Autocomplete from 1,024 ERP Trailers)
+          RawAutocomplete<String>(
+            textEditingController: _trailerCtrl,
+            focusNode: FocusNode(),
+            optionsBuilder: (TextEditingValue val) {
+              if (val.text.trim().isEmpty) return const Iterable<String>.empty();
+              final q = val.text.trim().toUpperCase();
+              return _availableTrailers.where((s) => s.toUpperCase().contains(q)).take(8);
+            },
+            optionsViewBuilder: (ctx, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 6,
+                  color: const Color(0xff0f172a),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.88,
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xff38bdf8)),
+                    ),
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xff1e293b)),
+                      itemBuilder: (ctx, idx) {
+                        final t = options.elementAt(idx);
+                        return ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.rv_hookup, color: Color(0xff38bdf8), size: 18),
+                          title: Text(t, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          subtitle: const Text('ERP Trailer Master', style: TextStyle(color: Color(0xff94a3b8), fontSize: 10)),
+                          onTap: () => onSelected(t),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+            fieldViewBuilder: (ctx, ctrl, fn, onSubmitted) {
+              return TextFormField(
+                controller: ctrl,
+                focusNode: fn,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Trailer No (Type to match trailer)',
+                  labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+                  prefixIcon: const Icon(Icons.rv_hookup, color: Color(0xffcbd5e1), size: 18),
+                  filled: true,
+                  fillColor: const Color(0xff1e293b),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 12),
           // Cane Category Dropdown
@@ -4862,6 +5668,38 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
               if (val != null) setState(() => _selectedCategory = val);
             },
           ),
+          const SizedBox(height: 16),
+          // 3-PHOTO VERIFICATION SECTION (CDN Ticket, Tractor Front, Cane Load)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xff1e293b),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xff334155)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 18),
+                    SizedBox(width: 8),
+                    Text('VERIFICATION PHOTOS (ඡායාරූප 3ක්)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _buildPhotoSlot(1, 'CDN Slip', _cdnPhoto, Icons.receipt_long),
+                    const SizedBox(width: 8),
+                    _buildPhotoSlot(2, 'Tractor Front', _tractorPhoto, Icons.local_shipping),
+                    const SizedBox(width: 8),
+                    _buildPhotoSlot(3, 'Cane Load', _loadPhoto, Icons.agriculture),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 20),
           // Submit Button
           SizedBox(
@@ -4881,7 +5719,7 @@ class _CaneCdnModalSheetState extends State<_CaneCdnModalSheet> {
                 _submitting ? 'ISSUING CDN...' : 'ISSUE CANE DELIVERY NOTE',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5),
               ),
-              onPressed: _submitting ? null : _submitCdn,
+              onPressed: (_submitting || _hasNoActiveCrop) ? null : _submitCdn,
             ),
           ),
           const SizedBox(height: 16),

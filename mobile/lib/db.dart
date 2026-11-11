@@ -15,7 +15,7 @@ class LocalDb {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'stafftrack.db'),
-      version: 4,
+      version: 5,
       onCreate: (d, v) async {
         await d.execute('''CREATE TABLE points(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,14 +28,23 @@ class LocalDb {
           id INTEGER PRIMARY KEY, name TEXT, code TEXT, lat REAL, lng REAL, coordinates TEXT)''');
         await d.execute('''CREATE TABLE IF NOT EXISTS erp_plots(
           plot_no TEXT PRIMARY KEY, plot_manual_code TEXT, sector_no TEXT, farmer_no TEXT, farmer_name TEXT,
-          farmer_phone TEXT, farmer_nic TEXT, land_area REAL, payment_category TEXT, field_asst_no TEXT,
-          field_asst_name TEXT, feild_asst_code TEXT, has_geofence INTEGER DEFAULT 0)''');
+          farmer_phone TEXT, farmer_nic TEXT, nominee_name TEXT, nominee_nic TEXT, nominee_phone TEXT,
+          bank_code TEXT, branch_code TEXT, bank_accno TEXT, payment_permission INTEGER DEFAULT 0,
+          debit_permission INTEGER DEFAULT 0, block_id INTEGER, land_area REAL, payment_category TEXT,
+          field_asst_no TEXT, field_asst_name TEXT, feild_asst_code TEXT, has_geofence INTEGER DEFAULT 0)''');
         await d.execute('''CREATE TABLE IF NOT EXISTS cdn_records(
           cdn TEXT PRIMARY KEY, plot_no TEXT, plot_manual_code TEXT, farmer_no TEXT, farmer_name TEXT,
           field_asst_no TEXT, field_asst_name TEXT, type TEXT, cane_category_code TEXT, vehicle_no TEXT,
-          trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, lat REAL, lng REAL, create_user TEXT,
-          create_time TEXT, weige_ticket_no TEXT, tonnage_received REAL, gross_weight REAL, tare_weight REAL,
-          weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
+          trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, tractor_photo TEXT, load_photo TEXT,
+          lat REAL, lng REAL, create_user TEXT, create_time TEXT, weige_ticket_no TEXT,
+          tonnage_received REAL, gross_weight REAL, tare_weight REAL, weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
+        await d.execute('''CREATE TABLE IF NOT EXISTS local_vehicles(
+          vehicle_no TEXT PRIMARY KEY, vehicle_name TEXT, transporter_no TEXT)''');
+        await d.execute('''CREATE TABLE IF NOT EXISTS local_trailers(
+          trailer_no TEXT PRIMARY KEY, trailer_name TEXT, weight REAL, vehicle_number TEXT)''');
+        await d.execute('''CREATE TABLE IF NOT EXISTS local_crops(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, plot_no TEXT, crop_cycle TEXT, crop_extent REAL,
+          variety TEXT, status INTEGER DEFAULT 1, age_month TEXT, is_agronomy INTEGER DEFAULT 0)''');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 2) {
@@ -59,6 +68,28 @@ class LocalDb {
               trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, lat REAL, lng REAL, create_user TEXT,
               create_time TEXT, weige_ticket_no TEXT, tonnage_received REAL, gross_weight REAL, tare_weight REAL,
               weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
+          } catch (_) {}
+        }
+        if (oldV < 5) {
+          try {
+            await d.execute('''CREATE TABLE IF NOT EXISTS local_vehicles(
+              vehicle_no TEXT PRIMARY KEY, vehicle_name TEXT, transporter_no TEXT)''');
+            await d.execute('''CREATE TABLE IF NOT EXISTS local_trailers(
+              trailer_no TEXT PRIMARY KEY, trailer_name TEXT, weight REAL, vehicle_number TEXT)''');
+            await d.execute('''CREATE TABLE IF NOT EXISTS local_crops(
+              id INTEGER PRIMARY KEY AUTOINCREMENT, plot_no TEXT, crop_cycle TEXT, crop_extent REAL,
+              variety TEXT, status INTEGER DEFAULT 1, age_month TEXT, is_agronomy INTEGER DEFAULT 0)''');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN nominee_name TEXT');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN nominee_nic TEXT');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN nominee_phone TEXT');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN bank_code TEXT');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN branch_code TEXT');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN bank_accno TEXT');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN payment_permission INTEGER DEFAULT 0');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN debit_permission INTEGER DEFAULT 0');
+            await d.execute('ALTER TABLE erp_plots ADD COLUMN block_id INTEGER');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN tractor_photo TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN load_photo TEXT');
           } catch (_) {}
         }
       },
@@ -555,6 +586,15 @@ class LocalDb {
           'farmer_name': p['farmer_name']?.toString(),
           'farmer_phone': p['farmer_phone']?.toString(),
           'farmer_nic': p['farmer_nic']?.toString(),
+          'nominee_name': p['nominee_name']?.toString(),
+          'nominee_nic': p['nominee_nic']?.toString(),
+          'nominee_phone': p['nominee_phone']?.toString(),
+          'bank_code': p['bank_code']?.toString(),
+          'branch_code': p['branch_code']?.toString(),
+          'bank_accno': p['bank_accno']?.toString(),
+          'payment_permission': (p['payment_permission'] == 1 || p['payment_permission'] == true) ? 1 : 0,
+          'debit_permission': (p['debit_permission'] == 1 || p['debit_permission'] == true) ? 1 : 0,
+          'block_id': (p['block_id'] is int) ? p['block_id'] : int.tryParse(p['block_id']?.toString() ?? ''),
           'land_area': (p['land_area'] is num) ? (p['land_area'] as num).toDouble() : 0.0,
           'payment_category': p['payment_category']?.toString(),
           'field_asst_no': p['field_asst_no']?.toString(),
@@ -567,20 +607,106 @@ class LocalDb {
     await batch.commit(noResult: true);
   }
 
-  static Future<List<Map<String, dynamic>>> searchMasterPlots(String query, {int limit = 30}) async {
+  static Future<List<Map<String, dynamic>>> searchMasterPlots(String query, {int limit = 30, bool geofenceOnly = false}) async {
     final d = await db;
     final q = '%${query.trim()}%';
+    final geoFilter = geofenceOnly ? 'AND has_geofence = 1' : '';
     return d.rawQuery('''
       SELECT * FROM erp_plots 
-      WHERE plot_manual_code LIKE ? OR plot_no LIKE ? OR farmer_name LIKE ? OR farmer_nic LIKE ? OR sector_no LIKE ?
+      WHERE (plot_manual_code LIKE ? OR plot_no LIKE ? OR farmer_name LIKE ? OR farmer_nic LIKE ? OR sector_no LIKE ?)
+      $geoFilter
       ORDER BY has_geofence DESC, plot_manual_code ASC
       LIMIT ?
     ''', [q, q, q, q, q, limit]);
   }
 
+  static Future<List<Map<String, dynamic>>> getGeofencedPlots({int limit = 50}) async {
+    final d = await db;
+    return d.rawQuery('''
+      SELECT * FROM erp_plots 
+      WHERE has_geofence = 1
+      ORDER BY plot_manual_code ASC
+      LIMIT ?
+    ''', [limit]);
+  }
+
   static Future<int> countMasterPlots() async {
     final d = await db;
     return Sqflite.firstIntValue(await d.rawQuery('SELECT COUNT(*) FROM erp_plots')) ?? 0;
+  }
+
+  // --- Fast In-Memory Offline Cache for Vehicles, Trailers & Crops (Zero Lag) ---
+
+  static Future<void> saveVehicles(List<dynamic> list) async {
+    final d = await db;
+    final batch = d.batch();
+    for (final v in list) {
+      if (v is Map) {
+        batch.insert('local_vehicles', {
+          'vehicle_no': v['vehicle_no']?.toString().trim() ?? '',
+          'vehicle_name': v['vehicle_name']?.toString() ?? '',
+          'transporter_no': v['transporter_no']?.toString() ?? '',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<String>> getActiveVehicleList() async {
+    final d = await db;
+    final rows = await d.rawQuery('SELECT vehicle_no FROM local_vehicles ORDER BY vehicle_no ASC');
+    return rows.map((r) => r['vehicle_no']?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+  }
+
+  static Future<void> saveTrailers(List<dynamic> list) async {
+    final d = await db;
+    final batch = d.batch();
+    for (final t in list) {
+      if (t is Map) {
+        batch.insert('local_trailers', {
+          'trailer_no': t['trailer_no']?.toString().trim() ?? '',
+          'trailer_name': t['trailer_name']?.toString() ?? '',
+          'weight': (t['weight'] is num) ? (t['weight'] as num).toDouble() : 0.0,
+          'vehicle_number': t['vehicle_number']?.toString() ?? '',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<String>> getTrailerList() async {
+    final d = await db;
+    final rows = await d.rawQuery('SELECT trailer_no FROM local_trailers ORDER BY trailer_no ASC');
+    return rows.map((r) => r['trailer_no']?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+  }
+
+  static Future<void> saveCrops(List<dynamic> list) async {
+    final d = await db;
+    final batch = d.batch();
+    for (final c in list) {
+      if (c is Map) {
+        batch.insert('local_crops', {
+          'plot_no': c['plot_no']?.toString().trim() ?? '',
+          'crop_cycle': c['crop_cycle']?.toString().trim() ?? '',
+          'crop_extent': (c['crop_extent'] is num) ? (c['crop_extent'] as num).toDouble() : 0.0,
+          'variety': c['variety']?.toString() ?? '',
+          'status': (c['status'] == 1 || c['status'] == true) ? 1 : 0,
+          'age_month': c['age_month']?.toString() ?? '',
+          'is_agronomy': (c['is_agronomy'] == 1 || c['is_agronomy'] == true) ? 1 : 0,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<Map<String, dynamic>>> getActiveCrops(String plotNo) async {
+    final d = await db;
+    final clean = plotNo.trim();
+    return d.rawQuery('''
+      SELECT * FROM local_crops 
+      WHERE plot_no = ? AND status = 1 
+      ORDER BY crop_cycle ASC
+    ''', [clean]);
   }
 }
 

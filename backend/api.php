@@ -895,7 +895,7 @@ try {
 
     case 'cdn_issue': {
         $u = auth_user();
-        $cdn = trim($_POST['cdn'] ?? '');
+        $cdn = preg_replace('/\s+/', '', trim($_POST['cdn'] ?? ''));
         if (!$cdn) fail('CDN Number is required', 400);
 
         $plotNo = trim($_POST['plot_no'] ?? '');
@@ -913,7 +913,7 @@ try {
         $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
         $createUser = $u['name'] ?? ($u['phone'] ?? 'FieldOfficer');
 
-        // Verification Photos: CDN Ticket, Tractor & Cane Load
+        // Verification Photos: CDN Slip, Tractor Front, Trailer No & Cane Load (Total 4 Photos)
         $photoPath = null;
         $dir = __DIR__ . '/uploads/cdn';
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
@@ -937,6 +937,16 @@ try {
             }
         }
 
+        $trailerPhotoPath = null;
+        if (!empty($_FILES['trailer_photo']['tmp_name'])) {
+            $ext = strtolower(pathinfo($_FILES['trailer_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
+            $fname = 'trailer_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $cdn) . '_' . time() . '.' . $ext;
+            if (move_uploaded_file($_FILES['trailer_photo']['tmp_name'], $dir . '/' . $fname)) {
+                $trailerPhotoPath = 'uploads/cdn/' . $fname;
+            }
+        }
+
         $loadPhotoPath = null;
         if (!empty($_FILES['load_photo']['tmp_name'])) {
             $ext = strtolower(pathinfo($_FILES['load_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
@@ -947,21 +957,22 @@ try {
             }
         }
 
-        // Upsert into cdn_details
+        // Upsert into cdn_details with all 4 photos
         $stmt = db()->prepare("INSERT INTO cdn_details 
-            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, load_photo, lat, lng, create_user, status, synced_to_mssql)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
+            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, status, synced_to_mssql)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
             ON DUPLICATE KEY UPDATE 
             plot_no=VALUES(plot_no), plot_manual_code=VALUES(plot_manual_code), farmer_no=VALUES(farmer_no), farmer_name=VALUES(farmer_name),
             field_asst_no=VALUES(field_asst_no), field_asst_name=VALUES(field_asst_name), type=VALUES(type), cane_category_code=VALUES(cane_category_code),
             vehicle_no=VALUES(vehicle_no), trailer_no=VALUES(trailer_no), crop_cycle=VALUES(crop_cycle),
             cdn_photo=COALESCE(VALUES(cdn_photo), cdn_photo),
             tractor_photo=COALESCE(VALUES(tractor_photo), tractor_photo),
+            trailer_photo=COALESCE(VALUES(trailer_photo), trailer_photo),
             load_photo=COALESCE(VALUES(load_photo), load_photo),
             lat=COALESCE(VALUES(lat), lat), lng=COALESCE(VALUES(lng), lng)");
         $stmt->execute([
             $cdn, $plotNo, $plotManualCode, $farmerNo, $farmerName, $fieldAsstNo, $fieldAsstName, $type, $caneCat,
-            $vehicleNo, $trailerNo, $cropCycle, $photoPath, $tractorPhotoPath, $loadPhotoPath, $lat, $lng, $createUser
+            $vehicleNo, $trailerNo, $cropCycle, $photoPath, $tractorPhotoPath, $trailerPhotoPath, $loadPhotoPath, $lat, $lng, $createUser
         ]);
 
         out(['ok' => true, 'cdn' => $cdn, 'status' => 'PENDING', 'message' => 'CDN registered successfully']);
@@ -1012,7 +1023,7 @@ try {
         // Fetch records
         $dataStmt = db()->prepare("SELECT 
             id, cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name,
-            type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, lat, lng,
+            type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng,
             create_user, create_time, weige_ticket_no, tonnage_received, gross_weight, tare_weight, weighed_date, status, synced_to_mssql
             FROM cdn_details WHERE $whereSql ORDER BY id DESC LIMIT $limit");
         $dataStmt->execute($params);
@@ -1118,9 +1129,65 @@ try {
         if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
         $plotNo = trim($_GET['plot_no'] ?? ($_POST['plot_no'] ?? ''));
         if (!$plotNo) fail('Plot number required', 400);
-        $st = db()->prepare("SELECT crop_cycle, crop_extent, variety, status, age_month, is_agronomy FROM erp_crops WHERE plot_no = ? AND status = 1 ORDER BY crop_cycle ASC");
-        $st->execute([$plotNo]);
-        out(['ok' => true, 'crops' => $st->fetchAll(PDO::FETCH_ASSOC)]);
+
+        // 1. Cross-match crops by internal plot_no or manual code (e.g. p402 or V/01/20)
+        $st = db()->prepare("SELECT c.crop_cycle, c.crop_extent, c.variety, c.status, c.age_month, c.is_agronomy,
+                                    p.plot_manual_code, p.plot_no, p.sector_no, p.land_area,
+                                    f.name AS farmer_name, f.farmer_no, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                                    n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
+                                    n.bank_code, n.branch_code, n.bank_accno,
+                                    p.payment_permission, p.debit_permission
+                             FROM erp_crops c
+                             JOIN erp_plots p ON c.plot_no = p.plot_no
+                             LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                             LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
+                             WHERE (c.plot_no = ? OR p.plot_manual_code = ?) AND c.status = 1
+                             ORDER BY c.crop_cycle ASC");
+        $st->execute([$plotNo, $plotNo]);
+        $crops = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2. Fetch full plot + farmer profile (even if crops are empty)
+        $plotInfo = null;
+        if (!empty($crops)) {
+            $first = $crops[0];
+            $plotInfo = [
+                'plot_no' => $first['plot_no'],
+                'plot_manual_code' => $first['plot_manual_code'],
+                'sector_no' => $first['sector_no'],
+                'land_area' => $first['land_area'],
+                'farmer_name' => $first['farmer_name'],
+                'farmer_no' => $first['farmer_no'],
+                'farmer_phone' => $first['farmer_phone'],
+                'farmer_nic' => $first['farmer_nic'],
+                'nominee_name' => $first['nominee_name'],
+                'nominee_phone' => $first['nominee_phone'],
+                'nominee_nic' => $first['nominee_nic'],
+                'bank_code' => $first['bank_code'],
+                'branch_code' => $first['branch_code'],
+                'bank_accno' => $first['bank_accno'],
+                'payment_permission' => $first['payment_permission'],
+                'debit_permission' => $first['debit_permission'],
+            ];
+        } else {
+            $stPlot = db()->prepare("SELECT p.plot_manual_code, p.plot_no, p.sector_no, p.land_area,
+                                            f.name AS farmer_name, f.farmer_no, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                                            n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
+                                            n.bank_code, n.branch_code, n.bank_accno,
+                                            p.payment_permission, p.debit_permission
+                                     FROM erp_plots p
+                                     LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                                     LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
+                                     WHERE p.plot_no = ? OR p.plot_manual_code = ?
+                                     LIMIT 1");
+            $stPlot->execute([$plotNo, $plotNo]);
+            $plotInfo = $stPlot->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        out([
+            'ok' => true,
+            'crops' => $crops,
+            'plot' => $plotInfo,
+        ]);
     }
 
     case 'get_active_vehicles': {

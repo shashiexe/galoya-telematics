@@ -913,31 +913,55 @@ try {
         $lng = !empty($_POST['lng']) ? (float)$_POST['lng'] : null;
         $createUser = $u['name'] ?? ($u['phone'] ?? 'FieldOfficer');
 
-        // Optional CDN photo upload
+        // Verification Photos: CDN Ticket, Tractor & Cane Load
         $photoPath = null;
+        $dir = __DIR__ . '/uploads/cdn';
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+
         if (!empty($_FILES['cdn_photo']['tmp_name'])) {
             $ext = strtolower(pathinfo($_FILES['cdn_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
-            $dir = __DIR__ . '/uploads/cdn';
-            if (!is_dir($dir)) @mkdir($dir, 0775, true);
             $fname = 'cdn_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $cdn) . '_' . time() . '.' . $ext;
             if (move_uploaded_file($_FILES['cdn_photo']['tmp_name'], $dir . '/' . $fname)) {
                 $photoPath = 'uploads/cdn/' . $fname;
             }
         }
 
+        $tractorPhotoPath = null;
+        if (!empty($_FILES['tractor_photo']['tmp_name'])) {
+            $ext = strtolower(pathinfo($_FILES['tractor_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
+            $fname = 'tractor_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $cdn) . '_' . time() . '.' . $ext;
+            if (move_uploaded_file($_FILES['tractor_photo']['tmp_name'], $dir . '/' . $fname)) {
+                $tractorPhotoPath = 'uploads/cdn/' . $fname;
+            }
+        }
+
+        $loadPhotoPath = null;
+        if (!empty($_FILES['load_photo']['tmp_name'])) {
+            $ext = strtolower(pathinfo($_FILES['load_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
+            $fname = 'load_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $cdn) . '_' . time() . '.' . $ext;
+            if (move_uploaded_file($_FILES['load_photo']['tmp_name'], $dir . '/' . $fname)) {
+                $loadPhotoPath = 'uploads/cdn/' . $fname;
+            }
+        }
+
         // Upsert into cdn_details
         $stmt = db()->prepare("INSERT INTO cdn_details 
-            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, lat, lng, create_user, status, synced_to_mssql)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
+            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, load_photo, lat, lng, create_user, status, synced_to_mssql)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
             ON DUPLICATE KEY UPDATE 
             plot_no=VALUES(plot_no), plot_manual_code=VALUES(plot_manual_code), farmer_no=VALUES(farmer_no), farmer_name=VALUES(farmer_name),
             field_asst_no=VALUES(field_asst_no), field_asst_name=VALUES(field_asst_name), type=VALUES(type), cane_category_code=VALUES(cane_category_code),
             vehicle_no=VALUES(vehicle_no), trailer_no=VALUES(trailer_no), crop_cycle=VALUES(crop_cycle),
-            cdn_photo=COALESCE(VALUES(cdn_photo), cdn_photo), lat=COALESCE(VALUES(lat), lat), lng=COALESCE(VALUES(lng), lng)");
+            cdn_photo=COALESCE(VALUES(cdn_photo), cdn_photo),
+            tractor_photo=COALESCE(VALUES(tractor_photo), tractor_photo),
+            load_photo=COALESCE(VALUES(load_photo), load_photo),
+            lat=COALESCE(VALUES(lat), lat), lng=COALESCE(VALUES(lng), lng)");
         $stmt->execute([
             $cdn, $plotNo, $plotManualCode, $farmerNo, $farmerName, $fieldAsstNo, $fieldAsstName, $type, $caneCat,
-            $vehicleNo, $trailerNo, $cropCycle, $photoPath, $lat, $lng, $createUser
+            $vehicleNo, $trailerNo, $cropCycle, $photoPath, $tractorPhotoPath, $loadPhotoPath, $lat, $lng, $createUser
         ]);
 
         out(['ok' => true, 'cdn' => $cdn, 'status' => 'PENDING', 'message' => 'CDN registered successfully']);
@@ -1021,15 +1045,19 @@ try {
         try {
             $sql = "SELECT 
                 p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+                p.nominee_id, p.payment_permission, p.debit_permission, p.block_id,
                 f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                n.nomininame AS nominee_name, n.nic AS nominee_nic, n.contact_no AS nominee_phone,
+                n.bank_code, n.branch_code, n.bank_accno,
                 a.name AS field_asst_name, a.feild_asst_code,
                 g.id AS geofence_id, g.center_lat AS gf_lat, g.center_lng AS gf_lng,
                 CASE WHEN g.id IS NOT NULL THEN 1 ELSE 0 END AS has_geofence
                 FROM erp_plots p
                 LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
                 LEFT JOIN erp_field_assistants a ON p.field_asst_no = a.field_asst_no
                 LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active = 1
-                WHERE p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?
+                WHERE (p.plot_manual_code LIKE ? OR p.plot_no LIKE ? OR f.name LIKE ? OR f.nic_no LIKE ? OR p.sector_no LIKE ?)
                 ORDER BY has_geofence DESC, p.plot_manual_code ASC
                 LIMIT $limit";
             $st = db()->prepare($sql);
@@ -1083,6 +1111,27 @@ try {
             $res['plots'] = $st->fetchAll(PDO::FETCH_ASSOC);
         }
         out($res);
+    }
+
+        case 'get_plot_crops': {
+        auth_user();
+        $plotNo = trim($_GET['plot_no'] ?? ($_POST['plot_no'] ?? ''));
+        if (!$plotNo) fail('Plot number required', 400);
+        $st = db()->prepare("SELECT crop_cycle, crop_extent, variety, status, age_month, is_agronomy FROM erp_crops WHERE plot_no = ? AND status = 1 ORDER BY crop_cycle ASC");
+        $st->execute([$plotNo]);
+        out(['ok' => true, 'crops' => $st->fetchAll(PDO::FETCH_ASSOC)]);
+    }
+
+    case 'get_active_vehicles': {
+        auth_user();
+        $st = db()->query("SELECT vehicle_no, vehicle_name, contractor_no, transporter_no FROM erp_vehicles WHERE status = 'Active' ORDER BY vehicle_no ASC");
+        out(['ok' => true, 'vehicles' => $st->fetchAll(PDO::FETCH_ASSOC)]);
+    }
+
+    case 'get_trailers': {
+        auth_user();
+        $st = db()->query("SELECT trailer_no, trailer_name, weight, vehicle_number FROM erp_trailers ORDER BY trailer_no ASC");
+        out(['ok' => true, 'trailers' => $st->fetchAll(PDO::FETCH_ASSOC)]);
     }
 
     case 'erp_sync_bridge': {
@@ -1153,16 +1202,21 @@ try {
 
             if ($entity === 'plots') {
                 $stmt = db()->prepare("INSERT INTO erp_plots 
-                    (plot_no, plot_manual_code, sector_no, farmer_no, land_area, payment_category, field_asst_no, registration_no, method, ownership, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (plot_no, plot_manual_code, sector_no, farmer_no, nominee_id, payment_permission, debit_permission, block_id, land_area, payment_category, field_asst_no, registration_no, method, ownership, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE 
                     plot_manual_code=VALUES(plot_manual_code), sector_no=VALUES(sector_no), farmer_no=VALUES(farmer_no),
-                    land_area=VALUES(land_area), payment_category=VALUES(payment_category), field_asst_no=VALUES(field_asst_no),
+                    nominee_id=VALUES(nominee_id), payment_permission=VALUES(payment_permission), debit_permission=VALUES(debit_permission),
+                    block_id=VALUES(block_id), land_area=VALUES(land_area), payment_category=VALUES(payment_category), field_asst_no=VALUES(field_asst_no),
                     registration_no=VALUES(registration_no), method=VALUES(method), ownership=VALUES(ownership), is_active=VALUES(is_active)");
                 $cnt = 0;
                 foreach ($data as $r) {
                     $stmt->execute([
                         $r['Plot_No'], $r['PlotManual_Code'], $r['Sector_No'], $r['Farmer_No'],
+                        $r['Nominee'] ?? null,
+                        isset($r['PaymentPermission']) ? ((int)$r['PaymentPermission']) : 0,
+                        isset($r['DebitPermission']) ? ((int)$r['DebitPermission']) : 0,
+                        !empty($r['Block_ID']) ? ((int)$r['Block_ID']) : null,
                         (float)($r['Land_Area'] ?? 0), $r['Payment_Catagory'] ?? null, $r['FieldAsst_No'] ?? null,
                         $r['Registration_No'] ?? null, $r['method'] ?? null, $r['Ownership'] ?? null,
                         isset($r['Is_Active']) ? ((int)$r['Is_Active']) : 1
@@ -1170,6 +1224,105 @@ try {
                     $cnt++;
                 }
                 out(['ok' => true, 'entity' => 'plots', 'count' => $cnt]);
+            }
+
+            if ($entity === 'nominees') {
+                $stmt = db()->prepare("INSERT INTO erp_nominees 
+                    (id, nomininame, nic, contact_no, address, bank_code, branch_code, bank_accno)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                    nomininame=VALUES(nomininame), nic=VALUES(nic), contact_no=VALUES(contact_no),
+                    address=VALUES(address), bank_code=VALUES(bank_code), branch_code=VALUES(branch_code), bank_accno=VALUES(bank_accno)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $id = trim((string)($r['ID'] ?? ($r['id'] ?? '')));
+                    if ($id !== '') {
+                        $stmt->execute([
+                            $id,
+                            $r['nomininame'] ?? ($r['name'] ?? null),
+                            $r['NIC'] ?? ($r['nic'] ?? null),
+                            $r['Contact_No'] ?? ($r['contact_no'] ?? null),
+                            $r['Address'] ?? ($r['address'] ?? null),
+                            $r['Bank_Code'] ?? ($r['bank_code'] ?? null),
+                            $r['Branch_Code'] ?? ($r['branch_code'] ?? null),
+                            $r['Bank_AccNo'] ?? ($r['bank_accno'] ?? null),
+                        ]);
+                        $cnt++;
+                    }
+                }
+                out(['ok' => true, 'entity' => 'nominees', 'count' => $cnt]);
+            }
+
+            if ($entity === 'crops') {
+                $stmt = db()->prepare("INSERT INTO erp_crops 
+                    (plot_no, crop_cycle, crop_extent, variety, status, age_month, is_agronomy)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                    crop_extent=VALUES(crop_extent), variety=VALUES(variety), status=VALUES(status), age_month=VALUES(age_month)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $plotNo = trim((string)($r['Plot_No'] ?? ($r['plot_no'] ?? '')));
+                    $cycle = trim((string)($r['Crop_Cycle'] ?? ($r['crop_cycle'] ?? '')));
+                    if ($plotNo !== '' && $cycle !== '') {
+                        $stmt->execute([
+                            $plotNo,
+                            $cycle,
+                            !empty($r['Crop_Extent']) ? (float)$r['Crop_Extent'] : null,
+                            $r['Variety'] ?? ($r['variety'] ?? null),
+                            isset($r['Status']) ? (int)$r['Status'] : 1,
+                            $r['Age_Month'] ?? ($r['age_month'] ?? null),
+                            !empty($r['is_agronomy']) ? 1 : 0,
+                        ]);
+                        $cnt++;
+                    }
+                }
+                out(['ok' => true, 'entity' => 'crops', 'count' => $cnt]);
+            }
+
+            if ($entity === 'vehicles') {
+                $stmt = db()->prepare("INSERT INTO erp_vehicles 
+                    (vehicle_no, vehicle_name, contractor_no, transporter_no, status)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                    vehicle_name=VALUES(vehicle_name), contractor_no=VALUES(contractor_no),
+                    transporter_no=VALUES(transporter_no), status=VALUES(status)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $vNo = trim((string)($r['Vehicle_No'] ?? ($r['vehicle_no'] ?? '')));
+                    if ($vNo !== '') {
+                        $stmt->execute([
+                            $vNo,
+                            $r['Vehicle'] ?? ($r['vehicle_name'] ?? null),
+                            $r['Contractor_No'] ?? ($r['contractor_no'] ?? null),
+                            $r['Transporter_No'] ?? ($r['transporter_no'] ?? null),
+                            $r['status'] ?? 'Active'
+                        ]);
+                        $cnt++;
+                    }
+                }
+                out(['ok' => true, 'entity' => 'vehicles', 'count' => $cnt]);
+            }
+
+            if ($entity === 'trailers') {
+                $stmt = db()->prepare("INSERT INTO erp_trailers 
+                    (trailer_no, trailer_name, weight, vehicle_number)
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                    trailer_name=VALUES(trailer_name), weight=VALUES(weight), vehicle_number=VALUES(vehicle_number)");
+                $cnt = 0;
+                foreach ($data as $r) {
+                    $tNo = trim((string)($r['Trailerno'] ?? ($r['trailer_no'] ?? '')));
+                    if ($tNo !== '') {
+                        $stmt->execute([
+                            $tNo,
+                            $r['Trailer'] ?? ($r['trailer_name'] ?? null),
+                            !empty($r['Weight']) ? (float)$r['Weight'] : 0,
+                            $r['VehicleNumber'] ?? ($r['vehicle_number'] ?? null)
+                        ]);
+                        $cnt++;
+                    }
+                }
+                out(['ok' => true, 'entity' => 'trailers', 'count' => $cnt]);
             }
 
             if ($entity === 'farmers') {

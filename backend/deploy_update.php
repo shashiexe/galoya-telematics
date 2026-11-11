@@ -667,7 +667,7 @@ try {
 
 try {
     set_setting('latest_app_version', '1.4.6');
-    set_setting('latest_app_build', '35');
+    set_setting('latest_app_build', '36');
     set_setting('app_force_update', '1');
     set_setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE CALL & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
     $results[] = ["📱 App Update Broadcast: Configured v1.4.6 (Build 33) [FORCE UPDATE]", "color:#38bdf8;font-weight:bold"];
@@ -1096,7 +1096,7 @@ try {
     }
 
     set_setting('latest_app_version', '1.4.6');
-    set_setting('latest_app_build', '35');
+    set_setting('latest_app_build', '36');
     set_setting('app_force_update', '1');
     set_setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE CALL & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
     $results[] = ["✅ Settings: Updated latest_app_version to 1.4.6 build 33 (Force Update Enabled)", "color:#10b981;font-weight:bold"];

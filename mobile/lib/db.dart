@@ -596,7 +596,9 @@ class LocalDb {
           'payment_permission': (p['payment_permission'] == 1 || p['payment_permission'] == true) ? 1 : 0,
           'debit_permission': (p['debit_permission'] == 1 || p['debit_permission'] == true) ? 1 : 0,
           'block_id': (p['block_id'] is int) ? p['block_id'] : int.tryParse(p['block_id']?.toString() ?? ''),
-          'land_area': (p['land_area'] is num) ? (p['land_area'] as num).toDouble() : 0.0,
+          'land_area': (p['land_area'] is num)
+              ? (p['land_area'] as num).toDouble()
+              : (double.tryParse(p['land_area']?.toString() ?? '') ?? 0.0),
           'payment_category': p['payment_category']?.toString(),
           'field_asst_no': p['field_asst_no']?.toString(),
           'field_asst_name': p['field_asst_name']?.toString(),
@@ -689,7 +691,9 @@ class LocalDb {
         batch.insert('local_crops', {
           'plot_no': c['plot_no']?.toString().trim() ?? '',
           'crop_cycle': c['crop_cycle']?.toString().trim() ?? '',
-          'crop_extent': (c['crop_extent'] is num) ? (c['crop_extent'] as num).toDouble() : 0.0,
+          'crop_extent': (c['crop_extent'] is num)
+              ? (c['crop_extent'] as num).toDouble()
+              : (double.tryParse(c['crop_extent']?.toString() ?? '') ?? 0.0),
           'variety': c['variety']?.toString() ?? '',
           'status': (c['status'] == 1 || c['status'] == true) ? 1 : 0,
           'age_month': c['age_month']?.toString() ?? '',

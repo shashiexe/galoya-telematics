@@ -1216,8 +1216,15 @@ try {
         if ($sub === 'pull_pending_cdns') {
             // CDNs issued on mobile app waiting to be pushed to MSSQL [dbo].[CDN_Details]
             $limit = min(200, (int)($_GET['limit'] ?? 100));
-            $rows = q("SELECT cdn, cdn_issued, plot_no, plot_manual_code, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, create_user, create_time, field_asst_no
-                       FROM cdn_details WHERE synced_to_mssql = 0 ORDER BY id ASC LIMIT $limit")->fetchAll(PDO::FETCH_ASSOC);
+            $cdnFilter = trim($_GET['cdn'] ?? '');
+            $where = "synced_to_mssql = 0";
+            $params = [];
+            if ($cdnFilter) {
+                $where = "cdn = ?";
+                $params = [$cdnFilter];
+            }
+            $rows = q("SELECT cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, create_time, status, synced_to_mssql
+                       FROM cdn_details WHERE $where ORDER BY id DESC LIMIT $limit", $params)->fetchAll(PDO::FETCH_ASSOC);
             out(['ok' => true, 'count' => count($rows), 'cdns' => $rows]);
         }
 

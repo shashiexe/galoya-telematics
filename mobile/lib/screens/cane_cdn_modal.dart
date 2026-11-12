@@ -1,6 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -41,14 +42,14 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
 
   // Category Configuration
   final List<Map<String, String>> _ccCategories = const [
-    {'code': 'CAT1', 'name': 'Green Cane (කොළ උක්)'},
-    {'code': 'CAT2', 'name': 'Burnt Cane (ගිනි තැබූ උක්)'},
-    {'code': 'CAT6', 'name': 'Machine Harvested (මැෂින් අස්වනු)'},
+    {'code': 'CAT1', 'name': 'Green Cane (à¶šà·œà·… à¶‹à¶šà·Š)'},
+    {'code': 'CAT2', 'name': 'Burnt Cane (à¶œà·’à¶±à·’ à¶­à·à¶¶à·– à¶‹à¶šà·Š)'},
+    {'code': 'CAT6', 'name': 'Machine Harvested (à¶¸à·à·‚à·’à¶±à·Š à¶…à·ƒà·Šà·€à¶±à·”)'},
   ];
 
   final List<Map<String, String>> _scCategories = const [
-    {'code': 'CAT3', 'name': 'Seed Cane (බිත්තර උක්)'},
-    {'code': 'CAT4', 'name': 'Seed Cane Top Cutting (කරටි)'},
+    {'code': 'CAT3', 'name': 'Seed Cane (à¶¶à·’à¶­à·Šà¶­à¶» à¶‹à¶šà·Š)'},
+    {'code': 'CAT4', 'name': 'Seed Cane Top Cutting (à¶šà¶»à¶§à·’)'},
   ];
 
   List<Map<String, String>> get _currentCategories =>
@@ -347,7 +348,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               backgroundColor: const Color(0xff059669),
-              content: Text('✅ CDN Slip අංකය හඳුනාගන්නා ලදී: $detectedCdn'),
+              content: Text('âœ… CDN Slip à¶…à¶‚à¶šà¶º à·„à¶³à·”à¶±à·à¶œà¶±à·Šà¶±à· à¶½à¶¯à·“: $detectedCdn'),
             ),
           );
         }
@@ -356,7 +357,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               backgroundColor: Color(0xffd97706),
-              content: Text('📷 CDN ඡායාරූපය ඇතුළත් විය. කරුණාකර අංකය type කරන්න.'),
+              content: Text('ðŸ“· CDN à¶¡à·à¶ºà·à¶»à·–à¶´à¶º à¶‡à¶­à·”à·…à¶­à·Š à·€à·’à¶º. à¶šà¶»à·”à¶«à·à¶šà¶» à¶…à¶‚à¶šà¶º type à¶šà¶»à¶±à·Šà¶±.'),
             ),
           );
         }
@@ -545,7 +546,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Color(0xffd97706),
-          content: Text('GPS ස්ථානය තවමත් සූදානම් නැත. කරුණාකර GPS සක්‍රීය කර ඇත්දැයි බලන්න.'),
+          content: Text('GPS à·ƒà·Šà¶®à·à¶±à¶º à¶­à·€à¶¸à¶­à·Š à·ƒà·–à¶¯à·à¶±à¶¸à·Š à¶±à·à¶­. à¶šà¶»à·”à¶«à·à¶šà¶» GPS à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶šà¶» à¶‡à¶­à·Šà¶¯à·à¶ºà·’ à¶¶à¶½à¶±à·Šà¶±.'),
         ),
       );
       return;
@@ -565,7 +566,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               backgroundColor: const Color(0xff059669),
-              content: Text('📍 ආසන්නතම ඉඩම තෝරා ගන්නා ලදී: $name (දුර: $dist m)'),
+              content: Text('ðŸ“ à¶†à·ƒà¶±à·Šà¶±à¶­à¶¸ à¶‰à¶©à¶¸ à¶­à·à¶»à· à¶œà¶±à·Šà¶±à· à¶½à¶¯à·“: $name (à¶¯à·”à¶»: $dist m)'),
             ),
           );
         }
@@ -574,7 +575,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               backgroundColor: Color(0xffd97706),
-              content: Text('වත්මන් GPS ස්ථානයට ආසන්නව කිසිදු ඉඩමක් හමු නොවීය.'),
+              content: Text('à·€à¶­à·Šà¶¸à¶±à·Š GPS à·ƒà·Šà¶®à·à¶±à¶ºà¶§ à¶†à·ƒà¶±à·Šà¶±à·€ à¶šà·’à·ƒà·’à¶¯à·” à¶‰à¶©à¶¸à¶šà·Š à·„à¶¸à·” à¶±à·œà·€à·“à¶º.'),
             ),
           );
         }
@@ -602,18 +603,18 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               children: [
                 Icon(Icons.warning, color: Colors.red),
                 SizedBox(width: 8),
-                Text('අනුපිටපත් CDN අංකයකි!', style: TextStyle(color: Colors.white, fontSize: 16)),
+                Text('à¶…à¶±à·”à¶´à·’à¶§à¶´à¶­à·Š CDN à¶…à¶‚à¶šà¶ºà¶šà·’!', style: TextStyle(color: Colors.white, fontSize: 16)),
               ],
             ),
             content: Text(
-              'CDN අංකය "$cdnNo" දැනටමත් පද්ධතියේ ලියාපදිංචි කර ඇත.\nඑකම CDN අංකය නැවත ඇතුළත් කළ නොහැක.',
+              'CDN à¶…à¶‚à¶šà¶º "$cdnNo" à¶¯à·à¶±à¶§à¶¸à¶­à·Š à¶´à¶¯à·Šà¶°à¶­à·’à¶ºà·š à¶½à·’à¶ºà·à¶´à¶¯à·’à¶‚à¶ à·’ à¶šà¶» à¶‡à¶­.\nà¶‘à¶šà¶¸ CDN à¶…à¶‚à¶šà¶º à¶±à·à·€à¶­ à¶‡à¶­à·”à·…à¶­à·Š à¶šà·… à¶±à·œà·„à·à¶š.',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             actions: [
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff0284c7)),
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('හරි (OK)'),
+                child: const Text('à·„à¶»à·’ (OK)'),
               ),
             ],
           ),
@@ -627,7 +628,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('🛑 මෙම ඉඩම සඳහා සක්‍රීය බෝගයක් වාර්තා වී නොමැත. CDN නිකුත් කළ නොහැක!'),
+          content: Text('ðŸ›‘ à¶¸à·™à¶¸ à¶‰à¶©à¶¸ à·ƒà¶³à·„à· à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶¶à·à¶œà¶ºà¶šà·Š à·€à·à¶»à·Šà¶­à· à·€à·“ à¶±à·œà¶¸à·à¶­. CDN à¶±à·’à¶šà·”à¶­à·Š à¶šà·… à¶±à·œà·„à·à¶š!'),
         ),
       );
       return;
@@ -638,7 +639,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('⚠️ CDN Slip ඡායාරූපය (Scan Slip) අනිවාර්ය වේ!'),
+          content: Text('âš ï¸ CDN Slip à¶¡à·à¶ºà·à¶»à·–à¶´à¶º (Scan Slip) à¶…à¶±à·’à·€à·à¶»à·Šà¶º à·€à·š!'),
         ),
       );
       return;
@@ -647,7 +648,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('⚠️ Tractor Front & Number Plate ඡායාරූපය අනිවාර්ය වේ!'),
+          content: Text('âš ï¸ Tractor Front & Number Plate à¶¡à·à¶ºà·à¶»à·–à¶´à¶º à¶…à¶±à·’à·€à·à¶»à·Šà¶º à·€à·š!'),
         ),
       );
       return;
@@ -656,7 +657,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('⚠️ Trailer Number ඡායාරූපය අනිවාර්ය වේ!'),
+          content: Text('âš ï¸ Trailer Number à¶¡à·à¶ºà·à¶»à·–à¶´à¶º à¶…à¶±à·’à·€à·à¶»à·Šà¶º à·€à·š!'),
         ),
       );
       return;
@@ -672,22 +673,22 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             children: [
               Icon(Icons.lightbulb, color: Color(0xfffbbf24)),
               SizedBox(width: 8),
-              Text('💡 මතක් කිරීමක් (Reminder)', style: TextStyle(color: Colors.white, fontSize: 15)),
+              Text('ðŸ’¡ à¶¸à¶­à¶šà·Š à¶šà·’à¶»à·“à¶¸à¶šà·Š (Reminder)', style: TextStyle(color: Colors.white, fontSize: 15)),
             ],
           ),
           content: Text(
-            'මෙය ඉඩම $plotManualCode සඳහා අවසාන ට්‍රැක්ටර් ලෝඩ් එකද?\n(Is this the final cane load for this plot?)',
+            'à¶¸à·™à¶º à¶‰à¶©à¶¸ $plotManualCode à·ƒà¶³à·„à· à¶…à·€à·ƒà·à¶± à¶§à·Šâ€à¶»à·à¶šà·Šà¶§à¶»à·Š à¶½à·à¶©à·Š à¶‘à¶šà¶¯?\n(Is this the final cane load for this plot?)',
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('නැත, තව ලෝඩ් ඇත', style: TextStyle(color: Colors.white70)),
+              child: const Text('à¶±à·à¶­, à¶­à·€ à¶½à·à¶©à·Š à¶‡à¶­', style: TextStyle(color: Colors.white70)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff10b981), foregroundColor: Colors.black),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('ඔව්, අවසාන ලෝඩ් එකයි 🏁'),
+              child: const Text('à¶”à·€à·Š, à¶…à·€à·ƒà·à¶± à¶½à·à¶©à·Š à¶‘à¶šà¶ºà·’ ðŸ'),
             ),
           ],
         ),
@@ -788,7 +789,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 8),
-                Expanded(child: Text('🌾 CDN $cdnNo සාර්ථකව නිකුත් කරන ලදී!')),
+                Expanded(child: Text('ðŸŒ¾ CDN $cdnNo à·ƒà·à¶»à·Šà¶®à¶šà·€ à¶±à·’à¶šà·”à¶­à·Š à¶šà¶»à¶± à¶½à¶¯à·“!')),
               ],
             ),
           ),
@@ -977,7 +978,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                       children: [
                         Text('CDN: $cdn', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                         Text(
-                          isDeleted ? '❌ CANCELLED' : (isCompleted ? '✅ WEIGHED' : '⏳ IN-TRANSIT'),
+                          isDeleted ? 'âŒ CANCELLED' : (isCompleted ? 'âœ… WEIGHED' : 'â³ IN-TRANSIT'),
                           style: TextStyle(
                             color: isDeleted ? Colors.redAccent : (isCompleted ? const Color(0xff34d399) : const Color(0xfffbbf24)),
                             fontSize: 11,
@@ -1008,7 +1009,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           color: const Color(0xff065f46),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text('☁️ Cloud Synced ✅', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: const Text('â˜ï¸ Cloud Synced âœ…', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(width: 8),
                       Container(
@@ -1018,7 +1019,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          isSyncedMssql ? '🏢 Factory ERP Synced ✅' : '🏢 Sending to Factory ⏳',
+                          isSyncedMssql ? 'ðŸ¢ Factory ERP Synced âœ…' : 'ðŸ¢ Sending to Factory â³',
                           style: TextStyle(
                             color: isSyncedMssql ? const Color(0xffbae6fd) : const Color(0xfffde68a),
                             fontSize: 10,
@@ -1034,7 +1035,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                             color: const Color(0xff581c87),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('🏁 FINAL LOAD', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 10, fontWeight: FontWeight.bold)),
+                          child: const Text('ðŸ FINAL LOAD', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ],
@@ -1072,7 +1073,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           if (weighedDate.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: Text('🕒 Weighbridge Time: $weighedDate', style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                              child: Text('ðŸ•’ Weighbridge Time: $weighedDate', style: const TextStyle(color: Colors.white60, fontSize: 10)),
                             ),
                         ],
                       ),
@@ -1092,7 +1093,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                         _buildDetailRow('System Plot No', plotNo),
                         _buildDetailRow('Farmer Name', farmer),
                         if (farmerNo.isNotEmpty) _buildDetailRow('Farmer No', farmerNo),
-                        _buildDetailRow('Cane Type', type == 'SC' ? '🌱 Seed Cane (SC)' : '🌾 Commercial Cane (CC)'),
+                        _buildDetailRow('Cane Type', type == 'SC' ? 'ðŸŒ± Seed Cane (SC)' : 'ðŸŒ¾ Commercial Cane (CC)'),
                         _buildDetailRow('Cane Category', cat),
                         _buildDetailRow('Standing Crop', '$crop ${cropCycleId.isNotEmpty ? "(ID: $cropCycleId)" : ""}'),
                         _buildDetailRow('Tractor / Vehicle', vehicle),
@@ -1105,7 +1106,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   ),
                   const SizedBox(height: 14),
                   // Photo Gallery (Tap to view full screen)
-                  const Text('VERIFICATION PHOTOS (ඡායාරූප)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
+                  const Text('VERIFICATION PHOTOS (à¶¡à·à¶ºà·à¶»à·–à¶´)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1133,7 +1134,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           icon: const Icon(Icons.flag, size: 18),
-                          label: const Text('🏁 Mark as Final Load (LstHvstTonnage = 1)'),
+                          label: const Text('ðŸ Mark as Final Load (LstHvstTonnage = 1)'),
                           onPressed: () async {
                             Navigator.pop(ctx);
                             await _markFinalLoadAction(cdn);
@@ -1193,7 +1194,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '🔒 Factory Weighed & Locked (සංස්කරණය කළ නොහැක)',
+                              'ðŸ”’ Factory Weighed & Locked (à·ƒà¶‚à·ƒà·Šà¶šà¶»à¶«à¶º à¶šà·… à¶±à·œà·„à·à¶š)',
                               style: TextStyle(color: Color(0xffa7f3d0), fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -1312,7 +1313,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             backgroundColor: Color(0xff059669),
-            content: Text('🏁 අවසාන අස්වනු ලෝඩ් එක ලෙස ලකුණු කරන ලදී! (LstHvstTonnage = 1)'),
+            content: Text('ðŸ à¶…à·€à·ƒà·à¶± à¶…à·ƒà·Šà·€à¶±à·” à¶½à·à¶©à·Š à¶‘à¶š à¶½à·™à·ƒ à¶½à¶šà·”à¶«à·” à¶šà¶»à¶± à¶½à¶¯à·“! (LstHvstTonnage = 1)'),
           ),
         );
       }
@@ -1474,6 +1475,1305 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ],
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.90,
+      decoration: const BoxDecoration(
+        color: Color(0xff0b1120),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0xfff59e0b), width: 2)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 8),
+            width: 44,
+            height: 4,
+            decoration: BoxDecoration(color: const Color(0xff475569), borderRadius: BorderRadius.circular(2)),
+          ),
+          // Title Bar with Tab Buttons
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xfff59e0b).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.agriculture, color: Color(0xfffbbf24), size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cane Delivery Note (CDN)',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Field Issuance & Weighbridge Tracker',
+                        style: TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          // Tab Switcher Segment
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: const Color(0xff1e293b),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xff334155)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _activeTab = 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _activeTab == 0 ? const Color(0xfff59e0b) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.edit_note, size: 16, color: _activeTab == 0 ? Colors.black : Colors.white70),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Issue CDN',
+                            style: TextStyle(
+                              color: _activeTab == 0 ? Colors.black : Colors.white70,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _activeTab = 1);
+                      _loadTrackerData();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _activeTab == 1 ? const Color(0xff059669) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.scale, size: 16, color: _activeTab == 1 ? Colors.white : Colors.white70),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Weighbridge Tracker',
+                            style: TextStyle(
+                              color: _activeTab == 1 ? Colors.white : Colors.white70,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Color(0xff334155), height: 1),
+          // Tab Body
+          Expanded(
+            child: _activeTab == 0 ? _buildIssueTab(bottomInset) : _buildTrackerTab(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 1: ISSUE CDN FORM ---
+  Widget _buildPhotoSlot(int type, String title, File? file, IconData icon, bool mandatory) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _pickVerificationPhoto(type),
+        child: Container(
+          height: 96,
+          decoration: BoxDecoration(
+            color: file != null ? const Color(0xff065f46).withOpacity(0.3) : const Color(0xff0f172a),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: file != null ? const Color(0xff10b981) : (mandatory ? const Color(0xffef4444) : const Color(0xff334155)),
+              width: file != null ? 1.5 : (mandatory ? 1.2 : 1.0),
+            ),
+          ),
+          child: file != null
+              ? Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: Image.file(file, width: double.infinity, height: double.infinity, fit: BoxFit.cover),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            if (type == 1) _tractorPhoto = null;
+                            if (type == 2) _trailerPhoto = null;
+                            if (type == 3) _loadPhoto = null;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
+                          child: const Icon(Icons.close, color: Colors.white, size: 14),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.vertical(bottom: Radius.circular(11)),
+                        ),
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8), size: 24),
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      mandatory ? '* à¶…à¶±à·’à·€à·à¶»à·Šà¶ºà¶ºà·’' : '+ Take Photo',
+                      style: TextStyle(color: mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8), fontSize: 9),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIssueTab(double bottomInset) {
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: bottomInset + 30),
+        children: [
+          // 1. Dual Cane Types Selector: Commercial Cane (CC) vs Seed Cane (SC)
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xff1e293b),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xff334155)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _onCaneTypeChanged('CC'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _caneType == 'CC' ? const Color(0xfff59e0b) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('ðŸŒ¾ ', style: TextStyle(fontSize: _caneType == 'CC' ? 14 : 12)),
+                          Text(
+                            'Commercial Cane (CC)',
+                            style: TextStyle(
+                              color: _caneType == 'CC' ? Colors.black : Colors.white70,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _onCaneTypeChanged('SC'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _caneType == 'SC' ? const Color(0xff10b981) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('ðŸŒ± ', style: TextStyle(fontSize: _caneType == 'SC' ? 14 : 12)),
+                          Text(
+                            'Seed Cane (SC)',
+                            style: TextStyle(
+                              color: _caneType == 'SC' ? Colors.black : Colors.white70,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 2. CDN Number with Camera Scan Slip Button
+          TextFormField(
+            controller: _cdnCtrl,
+            scrollPadding: const EdgeInsets.only(bottom: 140),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
+            decoration: InputDecoration(
+              labelText: 'CDN Number (e.g. B11465, C342162)',
+              labelStyle: const TextStyle(color: Color(0xfffbbf24)),
+              prefixIcon: const Icon(Icons.tag, color: Color(0xfff59e0b), size: 18),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_cdnPhoto != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(_cdnPhoto!, width: 32, height: 32, fit: BoxFit.cover),
+                      ),
+                    ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff0284c7),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.camera_alt, size: 16),
+                    label: const Text('Scan Slip', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: _scanCdnSlip,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
+            validator: (val) => val == null || val.trim().isEmpty ? 'CDN Number required' : null,
+          ),
+          const SizedBox(height: 12),
+          // 3. Plot Manual Code & Autocomplete lookup
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _plotCtrl,
+                scrollPadding: const EdgeInsets.only(bottom: 140),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Plot Manual Code (e.g. V/07/16, H/179/13B)',
+                  labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+                  prefixIcon: const Icon(Icons.terrain, color: Color(0xff34d399), size: 20),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_searchingPlots)
+                        const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff38bdf8)),
+                          ),
+                        )
+                      else if (_plotCtrl.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                          onPressed: () {
+                            _plotCtrl.clear();
+                            setState(() {
+                              _plotSuggestions = [];
+                              _selectedSystemPlotNo = null;
+                            });
+                          },
+                        ),
+                      IconButton(
+                        tooltip: 'Detect Nearest Plot via GPS',
+                        icon: const Icon(Icons.my_location, color: Color(0xff34d399), size: 20),
+                        onPressed: _pickNearestGpsPlot,
+                      ),
+                      IconButton(
+                        tooltip: 'Search Master Plots',
+                        icon: const Icon(Icons.search, color: Color(0xff38bdf8), size: 20),
+                        onPressed: () => _searchPlotsLocalAndOnline(_plotCtrl.text),
+                      ),
+                    ],
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xff1e293b),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                ),
+                onChanged: _onPlotInputChanged,
+                validator: (val) => val == null || val.trim().isEmpty ? 'Plot code required' : null,
+              ),
+              if (_plotSuggestions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f172a),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xff38bdf8).withOpacity(0.5), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.touch_app, size: 14, color: Color(0xff38bdf8)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Select Plot (${_plotSuggestions.length} found)',
+                              style: const TextStyle(color: Color(0xff38bdf8), fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => setState(() => _plotSuggestions = []),
+                              child: const Icon(Icons.close, size: 16, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, color: Color(0xff334155)),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          itemCount: _plotSuggestions.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xff1e293b)),
+                          itemBuilder: (ctx, idx) {
+                            final p = _plotSuggestions[idx];
+                            final manualCode = (p['plot_manual_code'] ?? p['plot_no'] ?? '').toString();
+                            final systemPlot = p['plot_no']?.toString() ?? '';
+                            final farmer = (p['farmer_name'] ?? '').toString();
+                            final sector = (p['sector_no'] ?? '').toString();
+                            final area = (p['land_area'] != null &&
+                                    p['land_area'].toString().isNotEmpty &&
+                                    p['land_area'].toString() != '0.0')
+                                ? '${p['land_area']} Ha'
+                                : '';
+                            final hasGf = p['has_geofence'] == 1;
+
+                            return ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              leading: Icon(
+                                hasGf ? Icons.terrain : Icons.grid_on,
+                                color: hasGf ? const Color(0xff34d399) : const Color(0xff38bdf8),
+                                size: 20,
+                              ),
+                              title: Row(
+                                children: [
+                                  Text(
+                                    manualCode,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  if (systemPlot.isNotEmpty && systemPlot != manualCode) ...[
+                                    const SizedBox(width: 6),
+                                    Text('($systemPlot)', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 11)),
+                                  ],
+                                  if (sector.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xff334155),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Sec $sector',
+                                        style: const TextStyle(color: Color(0xff94a3b8), fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                  if (area.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Text(area, style: const TextStyle(color: Color(0xffa7f3d0), fontSize: 10)),
+                                  ],
+                                ],
+                              ),
+                              subtitle: farmer.isNotEmpty
+                                  ? Text(
+                                      'Farmer: $farmer',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11),
+                                    )
+                                  : null,
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xff38bdf8)),
+                              onTap: () => _selectPlotSuggestion(p),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 4. Farmer Name
+          TextFormField(
+            controller: _farmerNameCtrl,
+            scrollPadding: const EdgeInsets.only(bottom: 140),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: 'Farmer Name',
+              labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+              prefixIcon: const Icon(Icons.person, color: Color(0xff38bdf8), size: 18),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 5. Land Area (Ha)
+          TextFormField(
+            controller: _landAreaCtrl,
+            readOnly: true,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              labelText: 'Plot Land Area (Ha) / à·€à¶œà· à¶¶à·’à¶¸à·š à¶´à·Šâ€à¶»à¶¸à·à¶«à¶º',
+              labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+              prefixIcon: const Icon(Icons.square_foot, color: Color(0xff34d399), size: 18),
+              suffixText: 'Ha',
+              suffixStyle: const TextStyle(color: Color(0xff34d399), fontWeight: FontWeight.bold),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 6. ELASTIC STANDING CROP SELECTOR (Supports 4+ Crops cleanly)
+          if (_loadingCrops)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0xff1e293b), borderRadius: BorderRadius.circular(12)),
+              child: const Row(
+                children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff10b981))),
+                  SizedBox(width: 12),
+                  Text('Checking standing crops in ERP...', style: TextStyle(color: Color(0xffcbd5e1), fontSize: 12)),
+                ],
+              ),
+            )
+          else if (_hasNoActiveCrop)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xff7f1d1d).withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xffef4444), width: 1.5),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.block, color: Color(0xfff87171), size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ðŸ›‘ à¶¸à·™à¶¸ à¶‰à¶©à¶¸ à·ƒà¶³à·„à· à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶¶à·à¶œà¶ºà¶šà·Š à·€à·à¶»à·Šà¶­à· à·€à·“ à¶±à·œà¶¸à·à¶­',
+                          style: TextStyle(color: Color(0xfffca5a5), fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'à¶¶à·à¶œà¶ºà¶šà·Š à¶±à·œà¶¸à·à¶­à·’ à¶‰à¶©à¶¸à·Š à·ƒà¶³à·„à· Cane Delivery Note à¶±à·’à¶šà·”à¶­à·Š à¶šà·… à¶±à·œà·„à·à¶š.',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_activeCrops.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xff1e293b),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xff059669)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.eco, color: Color(0xff10b981), size: 16),
+                      SizedBox(width: 6),
+                      Text('STANDING CROPS (à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶¶à·à¶œà¶º à¶­à·à¶»à¶±à·Šà¶±):', style: TextStyle(color: Color(0xff10b981), fontWeight: FontWeight.bold, fontSize: 11)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _activeCrops.map((c) {
+                      final cycle = (c['crop_cycle'] ?? '').toString();
+                      final cycleId = (c['crop_cycle_id'] ?? c['ID'] ?? '').toString();
+                      final ext = (c['crop_extent'] != null &&
+                              c['crop_extent'].toString().isNotEmpty &&
+                              c['crop_extent'].toString() != '0.0')
+                          ? '${c['crop_extent']} Ha'
+                          : '';
+                      final varName = (c['variety'] ?? '').toString();
+                      final age = (c['age_month'] ?? '').toString();
+                      final isSel = _selectedCropCycle == cycle;
+                      return ChoiceChip(
+                        selected: isSel,
+                        label: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$cycle (${ext.isNotEmpty ? ext : ""}${varName.isNotEmpty ? " â€¢ $varName" : ""})',
+                              style: TextStyle(color: isSel ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                            if (age.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  'â³ Age: $age Mo (à¶¸à·à·ƒ $age)',
+                                  style: TextStyle(
+                                    color: isSel ? Colors.black87 : const Color(0xff38bdf8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        selectedColor: const Color(0xff10b981),
+                        backgroundColor: const Color(0xff0f172a),
+                        onSelected: (val) {
+                          if (val) {
+                            setState(() {
+                              _selectedCropCycle = cycle;
+                              _selectedCropCycleId = cycleId;
+                              _cropCycleCtrl.text = cycle;
+                            });
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          // 7. Vehicle No (Instant Autocomplete)
+          RawAutocomplete<String>(
+            textEditingController: _vehicleCtrl,
+            focusNode: FocusNode(),
+            optionsBuilder: (TextEditingValue val) {
+              if (val.text.trim().isEmpty) return const Iterable<String>.empty();
+              final q = val.text.trim().toUpperCase();
+              return _availableVehicles.where((s) => s.toUpperCase().contains(q)).take(8);
+            },
+            optionsViewBuilder: (ctx, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 6,
+                  color: const Color(0xff0f172a),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.88,
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xfff97316)),
+                    ),
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xff1e293b)),
+                      itemBuilder: (ctx, idx) {
+                        final v = options.elementAt(idx);
+                        return ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.local_shipping, color: Color(0xfff97316), size: 18),
+                          title: Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          subtitle: const Text('Active ERP Vehicle', style: TextStyle(color: Color(0xff10b981), fontSize: 10)),
+                          onTap: () => onSelected(v),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+            fieldViewBuilder: (ctx, ctrl, fn, onSubmitted) {
+              return TextFormField(
+                controller: ctrl,
+                focusNode: fn,
+                scrollPadding: const EdgeInsets.only(bottom: 140),
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Tractor / Vehicle No (e.g. 228- or DAH)',
+                  labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+                  prefixIcon: const Icon(Icons.local_shipping, color: Color(0xfff97316), size: 18),
+                  filled: true,
+                  fillColor: const Color(0xff1e293b),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                ),
+                validator: (val) => val == null || val.trim().isEmpty ? 'Vehicle No required' : null,
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          // 8. Trailer No (Instant Autocomplete)
+          RawAutocomplete<String>(
+            textEditingController: _trailerCtrl,
+            focusNode: FocusNode(),
+            optionsBuilder: (TextEditingValue val) {
+              if (val.text.trim().isEmpty) return const Iterable<String>.empty();
+              final q = val.text.trim().toUpperCase();
+              return _availableTrailers.where((s) => s.toUpperCase().contains(q)).take(8);
+            },
+            optionsViewBuilder: (ctx, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 6,
+                  color: const Color(0xff0f172a),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.88,
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xff38bdf8)),
+                    ),
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xff1e293b)),
+                      itemBuilder: (ctx, idx) {
+                        final t = options.elementAt(idx);
+                        return ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.rv_hookup, color: Color(0xff38bdf8), size: 18),
+                          title: Text(t, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          subtitle: const Text('ERP Trailer Master', style: TextStyle(color: Color(0xff94a3b8), fontSize: 10)),
+                          onTap: () => onSelected(t),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+            fieldViewBuilder: (ctx, ctrl, fn, onSubmitted) {
+              return TextFormField(
+                controller: ctrl,
+                focusNode: fn,
+                scrollPadding: const EdgeInsets.only(bottom: 140),
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Trailer No (Type to match trailer)',
+                  labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+                  prefixIcon: const Icon(Icons.rv_hookup, color: Color(0xffcbd5e1), size: 18),
+                  filled: true,
+                  fillColor: const Color(0xff1e293b),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+                ),
+                validator: (val) => val == null || val.trim().isEmpty ? 'Trailer No required' : null,
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          // 9. Cane Category Dropdown (Filtered dynamically by Cane Type CC/SC)
+          DropdownButtonFormField<String>(
+            value: _selectedCategory,
+            dropdownColor: const Color(0xff1e293b),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: 'Cane Category (${_caneType == "CC" ? "Commercial Cane" : "Seed Cane"})',
+              labelStyle: const TextStyle(color: Color(0xff94a3b8)),
+              prefixIcon: const Icon(Icons.eco, color: Color(0xff10b981), size: 18),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
+            items: _currentCategories.map((c) {
+              return DropdownMenuItem<String>(
+                value: c['code'],
+                child: Text(c['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) setState(() => _selectedCategory = val);
+            },
+          ),
+          const SizedBox(height: 12),
+          // 10. FINAL HARVEST LOAD CHECKBOX (LstHvstTonnage)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: _isFinalHarvestLoad ? const Color(0xff065f46).withOpacity(0.4) : const Color(0xff1e293b),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isFinalHarvestLoad ? const Color(0xff10b981) : const Color(0xff334155),
+                width: 1.5,
+              ),
+            ),
+            child: CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isFinalHarvestLoad,
+              activeColor: const Color(0xff10b981),
+              title: const Row(
+                children: [
+                  Text('ðŸ ', style: TextStyle(fontSize: 16)),
+                  Expanded(
+                    child: Text(
+                      'à¶…à·€à·ƒà·à¶± à¶…à·ƒà·Šà·€à¶±à·” à¶½à·à¶©à·Š à¶‘à¶š (Final Harvest Load)',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+              subtitle: const Text(
+                'à¶¸à·™à¶¸ à¶‰à¶©à¶¸à·š à¶…à·ƒà·Šà·€à·à¶±à·Šà¶± à¶šà¶´à· à¶…à·€à·ƒà¶±à·Š à¶±à¶¸à·Š à¶´à¶¸à¶«à¶šà·Š à¶¸à·™à¶º Tick à¶šà¶»à¶±à·Šà¶±',
+                style: TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+              ),
+              onChanged: (val) {
+                if (val == true) {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: const Color(0xff0f172a),
+                      title: const Row(
+                        children: [
+                          Icon(Icons.flag, color: Color(0xff10b981)),
+                          SizedBox(width: 8),
+                          Text('à¶­à·„à·€à·”à¶»à·” à¶šà·’à¶»à·“à¶¸', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                      content: const Text(
+                        'à¶¸à·™à¶¸ à¶‰à¶©à¶¸ à·ƒà¶³à·„à· à¶¸à·™à¶º à¶…à·€à·ƒà·à¶± à¶§à·Šâ€à¶»à·à¶šà·Šà¶§à¶»à·Š à¶½à·à¶©à·Š à¶‘à¶š (Final Harvest Load) à¶¶à·€ à¶­à·„à·€à·”à¶»à·” à¶šà¶»à¶±à·€à·à¶¯?',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('à¶±à·à¶­', style: TextStyle(color: Colors.white54)),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff10b981), foregroundColor: Colors.black),
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            setState(() => _isFinalHarvestLoad = true);
+                          },
+                          child: const Text('à¶”à·€à·Š, à¶…à·€à·ƒà·à¶± à¶½à·à¶©à·Š à¶‘à¶šà¶ºà·’'),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  setState(() => _isFinalHarvestLoad = false);
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          // 11. 100% MANDATORY VERIFICATION PHOTOS SECTION
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xff1e293b),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xff334155)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'VERIFICATION PHOTOS (à¶¡à·à¶ºà·à¶»à·–à¶´ à¶…à¶±à·’à·€à·à¶»à·Šà¶ºà¶ºà·’)',
+                      style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _buildPhotoSlot(1, 'Tractor Plate', _tractorPhoto, Icons.local_shipping, true),
+                    const SizedBox(width: 8),
+                    _buildPhotoSlot(2, 'Trailer No', _trailerPhoto, Icons.rv_hookup, true),
+                    const SizedBox(width: 8),
+                    _buildPhotoSlot(3, 'Loaded Cane', _loadPhoto, Icons.agriculture, false),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // 12. Submit Button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xfff59e0b),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 4,
+              ),
+              icon: _submitting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Icon(Icons.check_circle_outline, size: 22),
+              label: Text(
+                _submitting ? 'ISSUING CDN...' : 'ISSUE CANE DELIVERY NOTE',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+              ),
+              onPressed: (_submitting || _hasNoActiveCrop) ? null : _submitCdn,
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 2: WEIGHBRIDGE DELIVERY TRACKER ---
+  Widget _buildTrackerTab() {
+    final totalTonnage = (_summary['total_tonnage'] as num?)?.toDouble() ?? 0.0;
+    final completedCount = (_summary['completed_count'] as num?)?.toInt() ?? 0;
+    final pendingCount = (_summary['pending_count'] as num?)?.toInt() ?? 0;
+    final cancelledCount = (_summary['cancelled_count'] as num?)?.toInt() ?? 0;
+
+    return Column(
+      children: [
+        // Date Selector Bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: const Color(0xff0f172a),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left, color: Colors.white70),
+                onPressed: () => _changeDate(-1),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _pickDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff1e293b),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xff334155)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.calendar_today, size: 14, color: Color(0xfffbbf24)),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatDate(_trackerDate),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right, color: Colors.white70),
+                onPressed: () => _changeDate(1),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Color(0xff38bdf8)),
+                onPressed: _loadTrackerData,
+              ),
+            ],
+          ),
+        ),
+        // Filter Chips Row
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              _buildFilterChip('COMPLETED', 'âœ… Weighed ($completedCount)'),
+              const SizedBox(width: 8),
+              _buildFilterChip('PENDING', 'â³ In-Transit ($pendingCount)'),
+              const SizedBox(width: 8),
+              _buildFilterChip('IN_TRANSIT_ALL', 'ðŸŒ All In-Transit'),
+              const SizedBox(width: 8),
+              _buildFilterChip('CANCELLED', 'âŒ Cancelled ($cancelledCount)'),
+              const SizedBox(width: 8),
+              _buildFilterChip('ALL', 'All'),
+            ],
+          ),
+        ),
+        // Total Tonnage Received Banner (Calculated from net_weight MT)
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xff064e3b), Color(0xff047857)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(color: const Color(0xff064e3b).withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.black.withOpacity(0.2), shape: BoxShape.circle),
+                child: const Icon(Icons.scale, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Total Tonnage Received', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 11, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${totalTonnage.toStringAsFixed(2)} MT',
+                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('$completedCount Weighed', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text('$pendingCount In-Transit', style: const TextStyle(color: Color(0xfffde68a), fontSize: 11)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: TextField(
+            controller: _trackerSearchCtrl,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            onChanged: (val) => _loadTrackerData(),
+            decoration: InputDecoration(
+              hintText: 'Filter by CDN No, Vehicle or Plot...',
+              hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+              prefixIcon: const Icon(Icons.search, size: 16, color: Color(0xff94a3b8)),
+              filled: true,
+              fillColor: const Color(0xff1e293b),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xff334155))),
+            ),
+          ),
+        ),
+        // Delivery Cards List
+        Expanded(
+          child: _loadingTracker
+              ? const Center(child: CircularProgressIndicator(color: Color(0xfff59e0b)))
+              : _cdnList.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          _statusFilter == 'COMPLETED'
+                              ? 'No completed weighbridge tickets for this date.\nSwitch to In-Transit to view dispatched cane.'
+                              : 'No CDN records found for this date.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white38, fontSize: 13),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: _cdnList.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (ctx, i) {
+                        final item = _cdnList[i];
+                        final cdn = item['cdn']?.toString() ?? '';
+                        final status = (item['status'] ?? 'PENDING').toString().toUpperCase();
+                        final isCompleted = status == 'COMPLETED';
+                        final isDeleted = (item['is_deleted'] == 1 || item['is_deleted'] == true || item['is_deleted'] == '1');
+                        final isFinal = (item['lst_hvst_tonnage'] == 1 || item['lst_hvst_tonnage'] == true || item['lst_hvst_tonnage'] == '1');
+                        final isSyncedMssql = (item['synced_to_mssql'] == 1 || item['synced_to_mssql'] == true || item['synced_to_mssql'] == '1');
+                        final wbtNo = item['weige_ticket_no']?.toString() ?? '';
+
+                        final netWeight = (item['net_weight'] is num)
+                            ? (item['net_weight'] as num).toDouble()
+                            : (double.tryParse(item['net_weight']?.toString() ?? '') ?? 0.0);
+                        final tonnage = netWeight > 0
+                            ? (netWeight / 1000.0)
+                            : ((item['tonnage_received'] is num) ? (item['tonnage_received'] as num).toDouble() : 0.0);
+
+                        final vehicle = item['vehicle_no']?.toString() ?? '';
+                        final plotCode = item['plot_manual_code']?.toString() ?? item['plot_no']?.toString() ?? '';
+                        final farmer = item['farmer_name']?.toString() ?? '';
+                        final weighedDate = item['weighed_date']?.toString() ?? item['wbt_create_time']?.toString() ?? '';
+                        final createTime = item['create_time']?.toString() ?? '';
+
+                        return GestureDetector(
+                          onTap: () => _showCdnDetailsDialog(item),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff1e293b),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isDeleted
+                                    ? Colors.redAccent
+                                    : (isCompleted ? const Color(0xff059669) : const Color(0xffd97706)),
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Header Row: CDN No + Badges
+                                Row(
+                                  children: [
+                                    Text(
+                                      cdn,
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                    if (isFinal) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(color: const Color(0xff581c87), borderRadius: BorderRadius.circular(4)),
+                                        child: const Text('ðŸ FINAL', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 9, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isDeleted
+                                            ? Colors.red.withOpacity(0.3)
+                                            : (isCompleted ? const Color(0xff065f46) : const Color(0xff78350f)),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        isDeleted ? 'CANCELLED' : (isCompleted ? 'WEIGHED' : 'IN-TRANSIT'),
+                                        style: TextStyle(
+                                          color: isDeleted
+                                              ? Colors.redAccent
+                                              : (isCompleted ? const Color(0xffa7f3d0) : const Color(0xfffde68a)),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                if (isCompleted) ...[
+                                  // Completed Details Banner
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff064e3b).withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xff059669).withOpacity(0.4)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.receipt, color: Color(0xff34d399), size: 18),
+                                        const SizedBox(width: 8),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('WBT No: ${wbtNo.isNotEmpty ? wbtNo : "Recorded"}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                            if (netWeight > 0)
+                                              Text('Net: ${netWeight.toStringAsFixed(0)} kg', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 10)),
+                                          ],
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          '${tonnage.toStringAsFixed(2)} MT',
+                                          style: const TextStyle(color: Color(0xff34d399), fontWeight: FontWeight.bold, fontSize: 18),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ] else if (isDeleted) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.cancel, color: Colors.redAccent, size: 16),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Cancelled: ${item["cancel_reason"] ?? "Mistake / Deleted"}',
+                                            style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ] else ...[
+                                  // Pending Message with Live Sync Status Indicators
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff78350f).withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.local_shipping, color: Color(0xfffbbf24), size: 16),
+                                        const SizedBox(width: 8),
+                                        const Expanded(
+                                          child: Text(
+                                            'Dispatched to factory â€¢ Awaiting weighbridge',
+                                            style: TextStyle(color: Color(0xfffde68a), fontSize: 11),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isSyncedMssql ? const Color(0xff0369a1) : const Color(0xff334155),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            isSyncedMssql ? 'ðŸ¢ Synced' : 'ðŸ¢ Syncing',
+                                            style: TextStyle(
+                                              color: isSyncedMssql ? const Color(0xffbae6fd) : Colors.white60,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                // Vehicle, Plot & Farmer info
+                                Row(
+                                  children: [
+                                    const Icon(Icons.directions_car, color: Color(0xff94a3b8), size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(vehicle, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 10),
+                                    const Icon(Icons.terrain, color: Color(0xff94a3b8), size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(plotCode, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                                    if (farmer.isNotEmpty) ...[
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          'ðŸ‘¨ðŸŒ¾ $farmer',
+                                          style: const TextStyle(color: Color(0xff94a3b8), fontSize: 11),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (weighedDate.isNotEmpty || createTime.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    isCompleted ? 'ðŸ•’ Weighed: $weighedDate' : 'ðŸ•’ Dispatched: $createTime',
+                                    style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 

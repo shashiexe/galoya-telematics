@@ -693,23 +693,6 @@ class LocalDb {
     }
     return {'total_count': 0, 'completed_count': 0, 'pending_count': 0, 'cancelled_count': 0, 'total_tonnage': 0.0};
   }
-    List<dynamic> args = [];
-    if (date != null && date.isNotEmpty) {
-      sql += " WHERE substr(create_time, 1, 10) = ?";
-      args.add(date);
-    }
-    final rows = await d.rawQuery(sql, args);
-    if (rows.isNotEmpty) {
-      final r = rows.first;
-      return {
-        'total_count': (r['total_count'] as num?)?.toInt() ?? 0,
-        'completed_count': (r['completed_count'] as num?)?.toInt() ?? 0,
-        'pending_count': (r['pending_count'] as num?)?.toInt() ?? 0,
-        'total_tonnage': (r['total_tonnage'] as num?)?.toDouble() ?? 0.0,
-      };
-    }
-    return {'total_count': 0, 'completed_count': 0, 'pending_count': 0, 'total_tonnage': 0.0};
-  }
 
   // --- ERP Master Plots (Offline Hybrid Explorer) ---
 

@@ -901,23 +901,51 @@ try {
         $cdn = preg_replace('/\s+/', '', trim($data['cdn'] ?? ''));
         if (!$cdn) fail('CDN Number is required', 400);
 
+        // Strict Duplicate Prevention: Check if CDN already exists
+        $chk = db()->prepare("SELECT id, status, is_deleted FROM cdn_details WHERE cdn = ?");
+        $chk->execute([$cdn]);
+        $existingCdn = $chk->fetch(PDO::FETCH_ASSOC);
+        if ($existingCdn) {
+            fail("Duplicate CDN Error: CDN Number '$cdn' is already registered in the system. Duplicates are rejected.", 409);
+        }
+
         $plotNo = trim($data['plot_no'] ?? '');
         $plotManualCode = trim($data['plot_manual_code'] ?? '');
         $farmerNo = trim($data['farmer_no'] ?? '');
         $farmerName = trim($data['farmer_name'] ?? '');
         $fieldAsstNo = trim($data['field_asst_no'] ?? ($u['code'] ?? ''));
         $fieldAsstName = trim($data['field_asst_name'] ?? ($u['name'] ?? ''));
-        $type = trim($data['type'] ?? 'OUT');
+        $type = trim($data['type'] ?? 'CC'); // 'CC' (Commercial Cane) or 'SC' (Seed Cane)
         $caneCat = trim($data['cane_category_code'] ?? 'CAT1');
         $vehicleNo = trim($data['vehicle_no'] ?? '');
         $trailerNo = trim($data['trailer_no'] ?? '');
         $cropCycle = trim($data['crop_cycle'] ?? '');
+        $cropCycleId = trim($data['crop_cycle_id'] ?? '');
+        $lstHvst = !empty($data['lst_hvst_tonnage']) ? 1 : 0;
         $lat = !empty($data['lat']) ? (float)$data['lat'] : null;
         $lng = !empty($data['lng']) ? (float)$data['lng'] : null;
         $createUser = $u['name'] ?? ($u['phone'] ?? 'FieldOfficer');
 
+        // Mandatory Field Validation
+        if (!$plotNo) fail('Plot selection is mandatory', 400);
+        if (!$vehicleNo) fail('Tractor/Vehicle Number is mandatory', 400);
+        if (!$trailerNo) fail('Trailer Number is mandatory', 400);
+        if (!$caneCat) fail('Cane Category is mandatory', 400);
+        if (!$cropCycle) fail('Crop selection is mandatory', 400);
+
+        // Mandatory Verification Photos Validation: CDN Slip, Tractor Front, Trailer Number
+        if (empty($_FILES['cdn_photo']['tmp_name']) && empty($data['cdn_photo'])) {
+            fail('CDN Slip Photo is 100% mandatory', 400);
+        }
+        if (empty($_FILES['tractor_photo']['tmp_name']) && empty($data['tractor_photo'])) {
+            fail('Tractor Front & Number Plate Photo is 100% mandatory', 400);
+        }
+        if (empty($_FILES['trailer_photo']['tmp_name']) && empty($data['trailer_photo'])) {
+            fail('Trailer Number Photo is 100% mandatory', 400);
+        }
+
         // Verification Photos: CDN Slip, Tractor Front, Trailer No & Cane Load (Total 4 Photos)
-        $photoPath = null;
+        $photoPath = !empty($data['cdn_photo']) && is_string($data['cdn_photo']) ? $data['cdn_photo'] : null;
         $dir = __DIR__ . '/uploads/cdn';
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
 
@@ -930,7 +958,7 @@ try {
             }
         }
 
-        $tractorPhotoPath = null;
+        $tractorPhotoPath = !empty($data['tractor_photo']) && is_string($data['tractor_photo']) ? $data['tractor_photo'] : null;
         if (!empty($_FILES['tractor_photo']['tmp_name'])) {
             $ext = strtolower(pathinfo($_FILES['tractor_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
@@ -940,7 +968,7 @@ try {
             }
         }
 
-        $trailerPhotoPath = null;
+        $trailerPhotoPath = !empty($data['trailer_photo']) && is_string($data['trailer_photo']) ? $data['trailer_photo'] : null;
         if (!empty($_FILES['trailer_photo']['tmp_name'])) {
             $ext = strtolower(pathinfo($_FILES['trailer_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
@@ -950,7 +978,7 @@ try {
             }
         }
 
-        $loadPhotoPath = null;
+        $loadPhotoPath = !empty($data['load_photo']) && is_string($data['load_photo']) ? $data['load_photo'] : null;
         if (!empty($_FILES['load_photo']['tmp_name'])) {
             $ext = strtolower(pathinfo($_FILES['load_photo']['name'] ?? 'photo.jpg', PATHINFO_EXTENSION));
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
@@ -960,45 +988,190 @@ try {
             }
         }
 
-        // Upsert into cdn_details with all 4 photos
+        // Insert into cdn_details with all photos and Phase 2 fields
         $stmt = db()->prepare("INSERT INTO cdn_details 
-            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, status, synced_to_mssql)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
-            ON DUPLICATE KEY UPDATE 
-            plot_no=VALUES(plot_no), plot_manual_code=VALUES(plot_manual_code), farmer_no=VALUES(farmer_no), farmer_name=VALUES(farmer_name),
-            field_asst_no=VALUES(field_asst_no), field_asst_name=VALUES(field_asst_name), type=VALUES(type), cane_category_code=VALUES(cane_category_code),
-            vehicle_no=VALUES(vehicle_no), trailer_no=VALUES(trailer_no), crop_cycle=VALUES(crop_cycle),
-            cdn_photo=COALESCE(VALUES(cdn_photo), cdn_photo),
-            tractor_photo=COALESCE(VALUES(tractor_photo), tractor_photo),
-            trailer_photo=COALESCE(VALUES(trailer_photo), trailer_photo),
-            load_photo=COALESCE(VALUES(load_photo), load_photo),
-            lat=COALESCE(VALUES(lat), lat), lng=COALESCE(VALUES(lng), lng)");
+            (cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, crop_cycle_id, lst_hvst_tonnage, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, status, synced_to_mssql)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)");
         $stmt->execute([
             $cdn, $plotNo, $plotManualCode, $farmerNo, $farmerName, $fieldAsstNo, $fieldAsstName, $type, $caneCat,
-            $vehicleNo, $trailerNo, $cropCycle, $photoPath, $tractorPhotoPath, $trailerPhotoPath, $loadPhotoPath, $lat, $lng, $createUser
+            $vehicleNo, $trailerNo, $cropCycle, $cropCycleId, $lstHvst, $photoPath, $tractorPhotoPath, $trailerPhotoPath, $loadPhotoPath, $lat, $lng, $createUser
         ]);
 
         out(['ok' => true, 'cdn' => $cdn, 'status' => 'PENDING', 'message' => 'CDN registered successfully']);
     }
 
+    case 'cdn_edit': {
+        $u = auth_user();
+        $rawBody = body();
+        $data = array_merge(is_array($rawBody) ? $rawBody : [], $_POST);
+        $cdn = preg_replace('/\s+/', '', trim($data['cdn'] ?? ''));
+        if (!$cdn) fail('CDN Number required', 400);
+
+        // Check if CDN exists and its weighbridge status
+        $st = db()->prepare("SELECT id, cdn, create_time, weige_ticket_no, net_weight, tonnage_received, status, is_deleted FROM cdn_details WHERE cdn = ?");
+        $st->execute([$cdn]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) fail('CDN not found', 404);
+
+        if ($row['is_deleted'] == 1) {
+            fail('This CDN has been cancelled and cannot be edited.', 400);
+        }
+
+        if (!empty($row['weige_ticket_no']) || ((float)($row['net_weight'] ?? 0) > 0) || $row['status'] === 'COMPLETED') {
+            fail('This CDN has already reached factory weighbridge and been weighed. Editing is locked!', 403);
+        }
+
+        // 30-minute grace window check
+        $createTime = strtotime($row['create_time']);
+        if ((time() - $createTime) > 1800) {
+            fail('30-minute edit grace period has expired for this CDN. Contact Weighbridge Dispatch.', 403);
+        }
+
+        $vehicleNo = trim($data['vehicle_no'] ?? '');
+        $trailerNo = trim($data['trailer_no'] ?? '');
+        $caneCat = trim($data['cane_category_code'] ?? '');
+        $type = trim($data['type'] ?? '');
+        $cropCycle = trim($data['crop_cycle'] ?? '');
+        $cropCycleId = trim($data['crop_cycle_id'] ?? '');
+        $lstHvst = isset($data['lst_hvst_tonnage']) ? ((int)$data['lst_hvst_tonnage']) : null;
+        $modifyUser = $u['code'] ?? ($u['name'] ?? 'Officer');
+
+        $updates = ["modify_user = ?", "modify_date = NOW()", "synced_to_mssql = 0"];
+        $params = [$modifyUser];
+
+        if ($vehicleNo) { $updates[] = "vehicle_no = ?"; $params[] = $vehicleNo; }
+        if ($trailerNo) { $updates[] = "trailer_no = ?"; $params[] = $trailerNo; }
+        if ($caneCat) { $updates[] = "cane_category_code = ?"; $params[] = $caneCat; }
+        if ($type) { $updates[] = "type = ?"; $params[] = $type; }
+        if ($cropCycle) { $updates[] = "crop_cycle = ?"; $params[] = $cropCycle; }
+        if ($cropCycleId) { $updates[] = "crop_cycle_id = ?"; $params[] = $cropCycleId; }
+        if ($lstHvst !== null) { $updates[] = "lst_hvst_tonnage = ?"; $params[] = $lstHvst; }
+
+        $params[] = $cdn;
+        $sql = "UPDATE cdn_details SET " . implode(", ", $updates) . " WHERE cdn = ?";
+        $up = db()->prepare($sql);
+        $up->execute($params);
+
+        out(['ok' => true, 'message' => 'CDN updated successfully']);
+    }
+
+    case 'cdn_cancel': {
+        $u = auth_user();
+        $rawBody = body();
+        $data = array_merge(is_array($rawBody) ? $rawBody : [], $_POST);
+        $cdn = preg_replace('/\s+/', '', trim($data['cdn'] ?? ''));
+        $reason = trim($data['reason'] ?? 'Cancelled by Field Officer');
+        if (!$cdn) fail('CDN Number required', 400);
+
+        $st = db()->prepare("SELECT id, cdn, create_time, weige_ticket_no, net_weight, status FROM cdn_details WHERE cdn = ?");
+        $st->execute([$cdn]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) fail('CDN not found', 404);
+
+        if (!empty($row['weige_ticket_no']) || ((float)($row['net_weight'] ?? 0) > 0) || $row['status'] === 'COMPLETED') {
+            fail('Cannot cancel: This CDN has already been weighed at factory weighbridge.', 403);
+        }
+
+        $createTime = strtotime($row['create_time']);
+        if ((time() - $createTime) > 1800) {
+            fail('30-minute cancellation grace period has expired.', 403);
+        }
+
+        $modifyUser = $u['code'] ?? ($u['name'] ?? 'Officer');
+        $up = db()->prepare("UPDATE cdn_details SET is_deleted = 1, status = 'CANCELLED', cancel_reason = ?, modify_user = ?, modify_date = NOW(), synced_to_mssql = 0 WHERE cdn = ?");
+        $up->execute([$reason, $modifyUser, $cdn]);
+
+        out(['ok' => true, 'message' => 'CDN cancelled successfully']);
+    }
+
+    case 'cdn_mark_final_load': {
+        $u = auth_user();
+        $rawBody = body();
+        $data = array_merge(is_array($rawBody) ? $rawBody : [], $_POST);
+        $cdn = preg_replace('/\s+/', '', trim($data['cdn'] ?? ''));
+        if (!$cdn) fail('CDN Number required', 400);
+        $modifyUser = $u['code'] ?? ($u['name'] ?? 'Officer');
+
+        $up = db()->prepare("UPDATE cdn_details SET lst_hvst_tonnage = 1, modify_user = ?, modify_date = NOW(), synced_to_mssql = 0 WHERE cdn = ?");
+        $up->execute([$modifyUser, $cdn]);
+
+        out(['ok' => true, 'message' => 'Marked as Final Harvest Load (LstHvstTonnage = 1)']);
+    }
+
+    case 'get_all_master_plots_and_crops': {
+        $u = get_auth_user();
+        if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
+
+        // Fetch all active erp_plots with farmer & nominee info for full offline search
+        $plots = q("SELECT 
+            p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
+            p.nominee_id, p.payment_permission, p.debit_permission, p.block_id,
+            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+            n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
+            n.bank_code, n.branch_code, n.bank_accno
+            FROM erp_plots p
+            LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+            LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
+            WHERE p.is_active = 1
+            ORDER BY p.plot_manual_code ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch all active standing crops
+        $crops = q("SELECT plot_no, crop_cycle, crop_cycle_id, crop_extent, variety, status, age_month, is_agronomy
+            FROM erp_crops WHERE status = 1")->fetchAll(PDO::FETCH_ASSOC);
+
+        out([
+            'ok' => true,
+            'plots_count' => count($plots),
+            'crops_count' => count($crops),
+            'plots' => $plots,
+            'crops' => $crops
+        ]);
+    }
+
     case 'cdn_list': {
         $u = auth_user();
         $date = trim($_GET['date'] ?? ($_POST['date'] ?? ''));
-        $status = strtoupper(trim($_GET['status'] ?? ($_POST['status'] ?? 'COMPLETED'))); // Default COMPLETED as requested!
+        $status = strtoupper(trim($_GET['status'] ?? ($_POST['status'] ?? 'COMPLETED'))); // Default COMPLETED
         $search = trim($_GET['search'] ?? ($_POST['search'] ?? ''));
-        $limit = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+        $limit = min(300, max(1, (int)($_GET['limit'] ?? 100)));
 
         $where = ["1=1"];
         $params = [];
 
-        if ($date) {
-            $where[] = "DATE(create_time) = ?";
-            $params[] = $date;
-        }
-
-        if ($status && $status !== 'ALL') {
+        if ($status === 'COMPLETED') {
+            $where[] = "status = 'COMPLETED' AND is_deleted = 0";
+            if ($date) {
+                $where[] = "DATE(COALESCE(weighed_date, create_time)) = ?";
+                $params[] = $date;
+            }
+        } elseif ($status === 'PENDING') {
+            $where[] = "status = 'PENDING' AND is_deleted = 0";
+            if ($date) {
+                $where[] = "DATE(create_time) = ?";
+                $params[] = $date;
+            }
+        } elseif ($status === 'IN_TRANSIT_ALL') {
+            $where[] = "status = 'PENDING' AND is_deleted = 0";
+            // No date restriction: all pending in-transit loads
+        } elseif ($status === 'CANCELLED') {
+            $where[] = "is_deleted = 1";
+            if ($date) {
+                $where[] = "DATE(create_time) = ?";
+                $params[] = $date;
+            }
+        } elseif ($status && $status !== 'ALL') {
             $where[] = "status = ?";
             $params[] = $status;
+            if ($date) {
+                $where[] = "DATE(create_time) = ?";
+                $params[] = $date;
+            }
+        } else {
+            // ALL
+            if ($date) {
+                $where[] = "DATE(create_time) = ?";
+                $params[] = $date;
+            }
         }
 
         if ($search) {
@@ -1013,24 +1186,39 @@ try {
 
         $whereSql = implode(" AND ", $where);
 
-        // Calculate summary metrics
+        // Daily summary calculation (calculates total received MT from net_weight or tonnage_received)
+        $sumDateClause = $date ? "AND DATE(COALESCE(weighed_date, create_time)) = ?" : "";
+        $sumParams = $date ? [$date] : [];
         $sumStmt = db()->prepare("SELECT 
             COUNT(*) as total_count,
-            COALESCE(SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END), 0) as completed_count,
-            COALESCE(SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END), 0) as pending_count,
-            COALESCE(SUM(CASE WHEN status='COMPLETED' THEN tonnage_received ELSE 0.00 END), 0.00) as total_tonnage
-            FROM cdn_details WHERE $whereSql");
-        $sumStmt->execute($params);
+            COALESCE(SUM(CASE WHEN status='COMPLETED' AND is_deleted=0 THEN 1 ELSE 0 END), 0) as completed_count,
+            COALESCE(SUM(CASE WHEN status='PENDING' AND is_deleted=0 THEN 1 ELSE 0 END), 0) as pending_count,
+            COALESCE(SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END), 0) as cancelled_count,
+            COALESCE(SUM(CASE WHEN status='COMPLETED' AND is_deleted=0 THEN 
+                CASE WHEN net_weight > 0 THEN (net_weight / 1000.0) ELSE tonnage_received END 
+            ELSE 0.00 END), 0.00) as total_tonnage
+            FROM cdn_details WHERE 1=1 $sumDateClause");
+        $sumStmt->execute($sumParams);
         $summary = $sumStmt->fetch(PDO::FETCH_ASSOC);
 
         // Fetch records
         $dataStmt = db()->prepare("SELECT 
             id, cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name,
-            type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng,
-            create_user, create_time, weige_ticket_no, tonnage_received, gross_weight, tare_weight, weighed_date, status, synced_to_mssql
+            type, cane_category_code, vehicle_no, trailer_no, crop_cycle, crop_cycle_id, lst_hvst_tonnage,
+            cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng,
+            create_user, create_time, weige_ticket_no, net_weight, tonnage_received, gross_weight, tare_weight,
+            weighed_date, wbt_create_time, status, is_deleted, cancel_reason, modify_user, modify_date, synced_to_mssql
             FROM cdn_details WHERE $whereSql ORDER BY id DESC LIMIT $limit");
         $dataStmt->execute($params);
         $items = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Standardize tonnage display
+        foreach ($items as &$item) {
+            $net = (float)($item['net_weight'] ?? 0);
+            if ($net > 0) {
+                $item['tonnage_received'] = round($net / 1000.0, 2);
+            }
+        }
 
         out([
             'ok' => true,
@@ -1038,6 +1226,7 @@ try {
                 'total_count' => (int)($summary['total_count'] ?? 0),
                 'completed_count' => (int)($summary['completed_count'] ?? 0),
                 'pending_count' => (int)($summary['pending_count'] ?? 0),
+                'cancelled_count' => (int)($summary['cancelled_count'] ?? 0),
                 'total_tonnage' => round((float)($summary['total_tonnage'] ?? 0), 2),
             ],
             'items' => $items,
@@ -1134,7 +1323,7 @@ try {
         if (!$plotNo) fail('Plot number required', 400);
 
         // 1. Cross-match crops by internal plot_no or manual code (e.g. p402 or V/01/20)
-        $st = db()->prepare("SELECT c.crop_cycle, c.crop_extent, c.variety, c.status, c.age_month, c.is_agronomy,
+        $st = db()->prepare("SELECT c.crop_cycle, c.crop_cycle_id, c.crop_extent, c.variety, c.status, c.age_month, c.is_agronomy,
                                     p.plot_manual_code, p.plot_no, p.sector_no, p.land_area,
                                     f.name AS farmer_name, f.farmer_no, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
                                     n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
@@ -1217,7 +1406,7 @@ try {
         $sub = $_GET['sub'] ?? ($_POST['sub'] ?? '');
 
         if ($sub === 'pull_pending_cdns') {
-            // CDNs issued on mobile app waiting to be pushed to MSSQL [dbo].[CDN_Details]
+            // CDNs issued or modified on mobile app waiting to be pushed to MSSQL [dbo].[CDN_Details]
             $limit = min(200, (int)($_GET['limit'] ?? 100));
             $cdnFilter = trim($_GET['cdn'] ?? '');
             $where = "synced_to_mssql = 0";
@@ -1226,7 +1415,7 @@ try {
                 $where = "cdn LIKE ?";
                 $params = ["%$cdnFilter%"];
             }
-            $rows = q("SELECT cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, create_time, status, synced_to_mssql
+            $rows = q("SELECT cdn, cdn_issued, plot_no, plot_manual_code, farmer_no, farmer_name, field_asst_no, field_asst_name, type, cane_category_code, vehicle_no, trailer_no, crop_cycle, crop_cycle_id, lst_hvst_tonnage, is_deleted, cancel_reason, modify_user, modify_date, cdn_photo, tractor_photo, trailer_photo, load_photo, lat, lng, create_user, create_time, status, synced_to_mssql
                        FROM cdn_details WHERE $where ORDER BY id DESC LIMIT $limit", $params)->fetchAll(PDO::FETCH_ASSOC);
             out(['ok' => true, 'count' => count($rows), 'cdns' => $rows]);
         }
@@ -1256,10 +1445,12 @@ try {
 
             $stmt = db()->prepare("UPDATE cdn_details SET 
                 weige_ticket_no = ?, 
+                net_weight = ?,
                 tonnage_received = ?, 
                 gross_weight = ?, 
                 tare_weight = ?, 
                 weighed_date = ?, 
+                wbt_create_time = ?,
                 status = 'COMPLETED',
                 synced_to_mssql = 1
                 WHERE cdn = ?");
@@ -1268,12 +1459,14 @@ try {
             foreach ($items as $item) {
                 $cdn = trim($item['cdn'] ?? '');
                 $wbt = trim($item['WeigeTicket_No'] ?? ($item['weige_ticket_no'] ?? ''));
-                $tonnage = (float)($item['TonnageRecived'] ?? ($item['tonnage_received'] ?? 0));
+                $netWeight = (float)($item['net_weight'] ?? 0);
+                $tonnage = $netWeight > 0 ? round($netWeight / 1000.0, 2) : (float)($item['TonnageRecived'] ?? ($item['tonnage_received'] ?? 0));
                 $gross = (float)($item['gross_weight'] ?? 0);
                 $tare = (float)($item['tare_weight'] ?? 0);
                 $weighedDate = !empty($item['weighed_date']) ? $item['weighed_date'] : date('Y-m-d H:i:s');
-                if ($cdn && $wbt) {
-                    $stmt->execute([$wbt, $tonnage, $gross, $tare, $weighedDate, $cdn]);
+                $wbtCreateTime = !empty($item['WBTCreate_Time']) ? $item['WBTCreate_Time'] : (!empty($item['wbt_create_time']) ? $item['wbt_create_time'] : null);
+                if ($cdn && ($wbt || $netWeight > 0)) {
+                    $stmt->execute([$wbt, $netWeight, $tonnage, $gross, $tare, $weighedDate, $wbtCreateTime, $cdn]);
                     $updated += $stmt->rowCount();
                 }
             }
@@ -1340,18 +1533,20 @@ try {
 
             if ($entity === 'crops') {
                 $stmt = db()->prepare("INSERT INTO erp_crops 
-                    (plot_no, crop_cycle, crop_extent, variety, status, age_month, is_agronomy)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (plot_no, crop_cycle, crop_cycle_id, crop_extent, variety, status, age_month, is_agronomy)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE 
-                    crop_extent=VALUES(crop_extent), variety=VALUES(variety), status=VALUES(status), age_month=VALUES(age_month)");
+                    crop_cycle_id=VALUES(crop_cycle_id), crop_extent=VALUES(crop_extent), variety=VALUES(variety), status=VALUES(status), age_month=VALUES(age_month)");
                 $cnt = 0;
                 foreach ($data as $r) {
                     $plotNo = trim((string)($r['Plot_No'] ?? ($r['plot_no'] ?? '')));
                     $cycle = trim((string)($r['Crop_Cycle'] ?? ($r['crop_cycle'] ?? '')));
+                    $cycleId = trim((string)($r['ID'] ?? ($r['crop_cycle_id'] ?? '')));
                     if ($plotNo !== '' && $cycle !== '') {
                         $stmt->execute([
                             $plotNo,
                             $cycle,
+                            $cycleId ?: null,
                             !empty($r['Crop_Extent']) ? (float)$r['Crop_Extent'] : null,
                             $r['Variety'] ?? ($r['variety'] ?? null),
                             isset($r['Status']) ? (int)$r['Status'] : 1,

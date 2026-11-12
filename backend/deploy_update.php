@@ -667,9 +667,9 @@ try {
 
 try {
     set_setting('latest_app_version', '1.4.6');
-    set_setting('latest_app_build', '36');
+    set_setting('latest_app_build', '37');
     set_setting('app_force_update', '1');
-    set_setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE CALL & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
+    set_setting('app_update_changelog', "🌾 CDN DISPATCH & WEIGHBRIDGE TRACKER PHASE 2\n\n• Dual Cane Types: Commercial Cane (CC) & Seed Cane (SC) with dynamic categories\n• Real-Time Factory Weighbridge Net Weight (MT) sync & total tonnage calculation\n• Cloud & Factory ERP Live Sync Indicators on in-transit cards\n• Strict duplicate CDN prevention & 100% mandatory verification photos\n• 100% Offline SQLite farmer & active standing crop catalog with elastic multi-crop view\n• 30-Minute Grace Window with Weighbridge Lock & Final Harvest Load tracking");
     $results[] = ["📱 App Update Broadcast: Configured v1.4.6 (Build 33) [FORCE UPDATE]", "color:#38bdf8;font-weight:bold"];
 } catch (Throwable $e) {}
 
@@ -1076,6 +1076,19 @@ try {
     try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `trailer_photo` VARCHAR(255) NULL AFTER `tractor_photo`"); } catch (Throwable $e) {}
     try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `load_photo` VARCHAR(255) NULL AFTER `trailer_photo`"); } catch (Throwable $e) {}
 
+    // Add Phase 2 Columns to cdn_details
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `lst_hvst_tonnage` TINYINT(1) DEFAULT 0 AFTER `crop_cycle`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `crop_cycle_id` VARCHAR(50) NULL AFTER `crop_cycle`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `net_weight` DECIMAL(10,2) NULL AFTER `tonnage_received`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `wbt_create_time` DATETIME NULL AFTER `weighed_date`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `modify_user` VARCHAR(50) NULL AFTER `create_user`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `modify_date` DATETIME NULL AFTER `create_time`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `is_deleted` TINYINT(1) DEFAULT 0 AFTER `status`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `cancel_reason` VARCHAR(255) NULL AFTER `is_deleted`"); } catch (Throwable $e) {}
+
+    // Add crop_cycle_id to erp_crops
+    try { @$pdo->exec("ALTER TABLE `erp_crops` ADD COLUMN `crop_cycle_id` VARCHAR(50) NULL AFTER `id`"); } catch (Throwable $e) {}
+
     $results[] = ["✅ Database: Ensured ERP Core Tables (cdn_details, erp_plots, erp_farmers, erp_field_assistants, erp_cane_categories) exist", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Database ERP tables error: " . $e->getMessage(), "color:#ef4444"];
@@ -1096,9 +1109,9 @@ try {
     }
 
     set_setting('latest_app_version', '1.4.6');
-    set_setting('latest_app_build', '36');
+    set_setting('latest_app_build', '37');
     set_setting('app_force_update', '1');
-    set_setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE CALL & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
+    set_setting('app_update_changelog', "🌾 CDN DISPATCH & WEIGHBRIDGE TRACKER PHASE 2\n\n• Dual Cane Types: Commercial Cane (CC) & Seed Cane (SC) with dynamic categories\n• Real-Time Factory Weighbridge Net Weight (MT) sync & total tonnage calculation\n• Cloud & Factory ERP Live Sync Indicators on in-transit cards\n• Strict duplicate CDN prevention & 100% mandatory verification photos\n• 100% Offline SQLite farmer & active standing crop catalog with elastic multi-crop view\n• 30-Minute Grace Window with Weighbridge Lock & Final Harvest Load tracking");
     $results[] = ["✅ Settings: Updated latest_app_version to 1.4.6 build 33 (Force Update Enabled)", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Settings note: " . $e->getMessage(), "color:#f59e0b"];

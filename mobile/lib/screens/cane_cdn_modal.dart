@@ -1305,7 +1305,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   Future<void> _markFinalLoadAction(String cdn) async {
     try {
       await LocalDb.markCdnFinalLoad(cdn);
-      await Api.post('cdn_mark_final_load', body: {'cdn': cdn});
+      await Api.post('cdn_mark_final_load', {'cdn': cdn});
       Sync.run();
       _loadTrackerData();
       if (mounted) {
@@ -1358,7 +1358,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               Navigator.pop(ctx);
               final r = reasonCtrl.text.trim();
               await LocalDb.markCdnCancelled(cdn, r);
-              await Api.post('cdn_cancel', body: {'cdn': cdn, 'reason': r});
+              await Api.post('cdn_cancel', {'cdn': cdn, 'reason': r});
               Sync.run();
               _loadTrackerData();
               if (mounted) {
@@ -1455,7 +1455,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   trailerNo: newT,
                   caneCategoryCode: cat,
                 );
-                await Api.post('cdn_edit', body: {
+                await Api.post('cdn_edit', {
                   'cdn': cdn,
                   'vehicle_no': newV,
                   'trailer_no': newT,

@@ -194,16 +194,36 @@ class Sync {
           }
 
           if (filesToUpload.isNotEmpty) {
-            await Api.uploadFiles(
+            final res = await Api.uploadFiles(
               'cdn_issue',
               payload.map((k, v) => MapEntry(k, v?.toString() ?? '')),
               filesToUpload,
             );
+            final cdnNo = (payload['cdn'] ?? res['cdn'] ?? '').toString().trim();
+            if (cdnNo.isNotEmpty && res is Map) {
+              await LocalDb.updateCdnPhotos(
+                cdn: cdnNo,
+                cdnPhoto: res['cdn_photo']?.toString(),
+                tractorPhoto: res['tractor_photo']?.toString(),
+                trailerPhoto: res['trailer_photo']?.toString(),
+                loadPhoto: res['load_photo']?.toString(),
+              );
+            }
             for (final f in filesToUpload.values) {
               await f.delete().catchError((_) => f);
             }
           } else {
-            await Api.post('cdn_issue', payload);
+            final res = await Api.post('cdn_issue', payload);
+            final cdnNo = (payload['cdn'] ?? res['cdn'] ?? '').toString().trim();
+            if (cdnNo.isNotEmpty && res is Map) {
+              await LocalDb.updateCdnPhotos(
+                cdn: cdnNo,
+                cdnPhoto: res['cdn_photo']?.toString(),
+                tractorPhoto: res['tractor_photo']?.toString(),
+                trailerPhoto: res['trailer_photo']?.toString(),
+                loadPhoto: res['load_photo']?.toString(),
+              );
+            }
           }
         } else if (q['kind'] == 'photo' || q['kind'] == 'field_photo') {
           final f = File(q['file'] as String);

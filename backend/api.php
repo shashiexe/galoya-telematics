@@ -79,7 +79,7 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.4.6');
-        $latestBuild = (int)setting('latest_app_build', 41);
+        $latestBuild = (int)setting('latest_app_build', 42);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
         $forceUpdate = setting('app_force_update', '1') === '1';
@@ -997,7 +997,26 @@ try {
             $vehicleNo, $trailerNo, $cropCycle, $cropCycleId, $lstHvst, $photoPath, $tractorPhotoPath, $trailerPhotoPath, $loadPhotoPath, $lat, $lng, $createUser
         ]);
 
-        out(['ok' => true, 'cdn' => $cdn, 'status' => 'PENDING', 'message' => 'CDN registered successfully']);
+        out([
+            'ok' => true,
+            'cdn' => $cdn,
+            'cdn_photo' => $photoPath,
+            'tractor_photo' => $tractorPhotoPath,
+            'trailer_photo' => $trailerPhotoPath,
+            'load_photo' => $loadPhotoPath,
+            'status' => 'PENDING',
+            'message' => 'CDN registered successfully'
+        ]);
+    }
+
+    case 'cdn_get': {
+        $cdn = preg_replace('/\s+/', '', trim($_GET['cdn'] ?? ($_POST['cdn'] ?? '')));
+        if (!$cdn) fail('CDN required', 400);
+        $st = db()->prepare("SELECT * FROM cdn_details WHERE cdn = ?");
+        $st->execute([$cdn]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) fail('CDN not found', 404);
+        out(['ok' => true, 'item' => $row]);
     }
 
     case 'cdn_edit': {

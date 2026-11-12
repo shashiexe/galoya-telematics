@@ -630,6 +630,32 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   }
 
   Future<void> _submitCdn() async {
+    final cdnNo = _cdnCtrl.text.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
+    if (cdnNo.isEmpty || !RegExp(r'^[CB0-9]+$').hasMatch(cdnNo)) {
+      if (_issueScrollCtrl.hasClients) {
+        _issueScrollCtrl.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xffb91c1c),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('🛑 CDN අංකය ඇතුළත් කිරීම අනිවාර්යයි! C, B සහ 0-9 අංක පමණක් ඇතුළත් කරන්න.',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
     final formValid = _formKey.currentState!.validate();
     if (!formValid) {
       if (_cdnCtrl.text.trim().isEmpty || _plotCtrl.text.trim().isEmpty) {
@@ -997,81 +1023,110 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
 
   // --- FULL CARD INSPECTION & ZOOM MODAL ---
   void _showCdnDetailsDialog(Map<String, dynamic> item) {
-    final cdn = item['cdn']?.toString() ?? '';
-    final plotManual = item['plot_manual_code']?.toString() ?? '';
-    final plotNo = item['plot_no']?.toString() ?? '';
-    final farmer = item['farmer_name']?.toString() ?? '';
-    final farmerNo = item['farmer_no']?.toString() ?? '';
-    final vehicle = item['vehicle_no']?.toString() ?? '';
-    final trailer = item['trailer_no']?.toString() ?? '';
-    final type = (item['type'] ?? 'CC').toString().toUpperCase();
-    final cat = item['cane_category_code']?.toString() ?? '';
-    final crop = item['crop_cycle']?.toString() ?? '';
-    final cropCycleId = item['crop_cycle_id']?.toString() ?? '';
-    final isFinal = (item['lst_hvst_tonnage'] == 1 || item['lst_hvst_tonnage'] == true || item['lst_hvst_tonnage'] == '1');
-    final wbtNo = item['weige_ticket_no']?.toString() ?? '';
-    final netWeight = (item['net_weight'] is num)
-        ? (item['net_weight'] as num).toDouble()
-        : (double.tryParse(item['net_weight']?.toString() ?? '') ?? 0.0);
-    final tonnage = netWeight > 0
-        ? (netWeight / 1000.0)
-        : ((item['tonnage_received'] is num) ? (item['tonnage_received'] as num).toDouble() : 0.0);
-    final gross = (item['gross_weight'] is num) ? (item['gross_weight'] as num).toDouble() : 0.0;
-    final tare = (item['tare_weight'] is num) ? (item['tare_weight'] as num).toDouble() : 0.0;
-    final createTime = item['create_time']?.toString() ?? '';
-    final weighedDate = (item['wbt_create_time'] != null && item['wbt_create_time'].toString().trim().isNotEmpty)
-        ? item['wbt_create_time'].toString().trim()
-        : (item['weighed_date']?.toString() ?? '');
-    final status = (item['status'] ?? 'PENDING').toString().toUpperCase();
-    final isCompleted = status == 'COMPLETED';
-    final isDeleted = (item['is_deleted'] == 1 || item['is_deleted'] == true || item['is_deleted'] == '1');
-    final cancelReason = item['cancel_reason']?.toString() ?? '';
-    final createUser = item['create_user']?.toString() ?? '';
-    final faNo = item['field_asst_no']?.toString() ?? '';
-    final isSyncedMssql = (item['synced_to_mssql'] == 1 || item['synced_to_mssql'] == true || item['synced_to_mssql'] == '1');
-
-    // 30-Minute Grace Window Check
-    DateTime? cDate = DateTime.tryParse(createTime);
-    final isWithin30 = cDate != null && DateTime.now().difference(cDate).inMinutes < 30;
-    final isWeighed = isCompleted || netWeight > 0 || wbtNo.isNotEmpty;
-    final canEditOrCancel = isWithin30 && !isWeighed && !isDeleted;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.88,
-        decoration: const BoxDecoration(
-          color: Color(0xff0b1120),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Color(0xff38bdf8), width: 2)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 8),
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(color: const Color(0xff475569), borderRadius: BorderRadius.circular(2)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(
+      builder: (ctx) {
+        var currentItem = Map<String, dynamic>.from(item);
+        bool fetchedCloudPhotos = false;
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final cdn = currentItem['cdn']?.toString() ?? '';
+            final plotManual = currentItem['plot_manual_code']?.toString() ?? '';
+            final plotNo = currentItem['plot_no']?.toString() ?? '';
+            final farmer = currentItem['farmer_name']?.toString() ?? '';
+            final farmerNo = currentItem['farmer_no']?.toString() ?? '';
+            final vehicle = currentItem['vehicle_no']?.toString() ?? '';
+            final trailer = currentItem['trailer_no']?.toString() ?? '';
+            final type = (currentItem['type'] ?? 'CC').toString().toUpperCase();
+            final cat = currentItem['cane_category_code']?.toString() ?? '';
+            final crop = currentItem['crop_cycle']?.toString() ?? '';
+            final cropCycleId = currentItem['crop_cycle_id']?.toString() ?? '';
+            final isFinal = (currentItem['lst_hvst_tonnage'] == 1 || currentItem['lst_hvst_tonnage'] == true || currentItem['lst_hvst_tonnage'] == '1');
+            final wbtNo = currentItem['weige_ticket_no']?.toString() ?? '';
+            final netWeight = (currentItem['net_weight'] is num)
+                ? (currentItem['net_weight'] as num).toDouble()
+                : (double.tryParse(currentItem['net_weight']?.toString() ?? '') ?? 0.0);
+            final tonnage = netWeight > 0
+                ? (netWeight / 1000.0)
+                : ((currentItem['tonnage_received'] is num) ? (currentItem['tonnage_received'] as num).toDouble() : 0.0);
+            final gross = (currentItem['gross_weight'] is num) ? (currentItem['gross_weight'] as num).toDouble() : 0.0;
+            final tare = (currentItem['tare_weight'] is num) ? (currentItem['tare_weight'] as num).toDouble() : 0.0;
+            final createTime = currentItem['create_time']?.toString() ?? '';
+            final weighedDate = (currentItem['wbt_create_time'] != null && currentItem['wbt_create_time'].toString().trim().isNotEmpty)
+                ? currentItem['wbt_create_time'].toString().trim()
+                : (currentItem['weighed_date']?.toString() ?? '');
+            final status = (currentItem['status'] ?? 'PENDING').toString().toUpperCase();
+            final isCompleted = status == 'COMPLETED';
+            final isDeleted = (currentItem['is_deleted'] == 1 || currentItem['is_deleted'] == true || currentItem['is_deleted'] == '1');
+            final cancelReason = currentItem['cancel_reason']?.toString() ?? '';
+            final createUser = currentItem['create_user']?.toString() ?? '';
+            final faNo = currentItem['field_asst_no']?.toString() ?? '';
+            final isSyncedMssql = (currentItem['synced_to_mssql'] == 1 || currentItem['synced_to_mssql'] == true || currentItem['synced_to_mssql'] == '1');
+
+            // 30-Minute Grace Window Check
+            DateTime? cDate = DateTime.tryParse(createTime);
+            final isWithin30 = cDate != null && DateTime.now().difference(cDate).inMinutes < 30;
+            final isWeighed = isCompleted || netWeight > 0 || wbtNo.isNotEmpty;
+            final canEditOrCancel = isWithin30 && !isWeighed && !isDeleted;
+
+            // Fetch live cloud photos if local files were deleted
+            if (!fetchedCloudPhotos && cdn.isNotEmpty) {
+              fetchedCloudPhotos = true;
+              Future.microtask(() async {
+                try {
+                  final res = await Api.get('cdn_get', params: {'cdn': cdn}).timeout(const Duration(seconds: 4));
+                  if (res['ok'] == true && res['item'] is Map) {
+                    final serverData = Map<String, dynamic>.from(res['item'] as Map);
+                    setModalState(() {
+                      currentItem.addAll(serverData);
+                    });
+                    await LocalDb.updateCdnPhotos(
+                      cdn: cdn,
+                      cdnPhoto: serverData['cdn_photo']?.toString(),
+                      tractorPhoto: serverData['tractor_photo']?.toString(),
+                      trailerPhoto: serverData['trailer_photo']?.toString(),
+                      loadPhoto: serverData['load_photo']?.toString(),
+                    );
+                  }
+                } catch (_) {}
+              });
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.88,
+              decoration: const BoxDecoration(
+                color: Color(0xff0b1120),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(top: BorderSide(color: Color(0xff38bdf8), width: 2)),
+              ),
+              child: Column(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff0284c7).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.receipt_long, color: Color(0xff38bdf8), size: 22),
+                    margin: const EdgeInsets.only(top: 10, bottom: 8),
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(color: const Color(0xff475569), borderRadius: BorderRadius.circular(2)),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Row(
                       children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xff0284c7).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.receipt_long, color: Color(0xff38bdf8), size: 22),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                         Text('CDN: $cdn', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                         Text(
                           isDeleted ? '❌ CANCELLED' : (isCompleted ? '✅ WEIGHED' : '⏳ IN-TRANSIT'),
@@ -1219,13 +1274,13 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      _buildGalleryThumbnail('CDN Slip', item['cdn_photo']?.toString()),
+                      _buildGalleryThumbnail('CDN Slip', currentItem['cdn_photo']?.toString()),
                       const SizedBox(width: 8),
-                      _buildGalleryThumbnail('Tractor', item['tractor_photo']?.toString()),
+                      _buildGalleryThumbnail('Tractor', currentItem['tractor_photo']?.toString()),
                       const SizedBox(width: 8),
-                      _buildGalleryThumbnail('Trailer', item['trailer_photo']?.toString()),
+                      _buildGalleryThumbnail('Trailer', currentItem['trailer_photo']?.toString()),
                       const SizedBox(width: 8),
-                      _buildGalleryThumbnail('Cane Load', item['load_photo']?.toString()),
+                      _buildGalleryThumbnail('Cane Load', currentItem['load_photo']?.toString()),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -1313,10 +1368,10 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   ],
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1368,6 +1423,10 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     }
     if (!clean.startsWith('/') && (clean.endsWith('.jpg') || clean.endsWith('.png') || clean.endsWith('.jpeg'))) {
       return '$kServerBase/uploads/cdn/$clean';
+    }
+    if (clean.startsWith('/') && !File(clean).existsSync()) {
+      final fname = clean.split('/').last;
+      return '$kServerBase/uploads/cdn/$fname';
     }
     return clean;
   }
@@ -1891,10 +1950,12 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   Widget _buildIssueTab(double bottomInset) {
     return Form(
       key: _formKey,
-      child: ListView(
+      child: SingleChildScrollView(
         controller: _issueScrollCtrl,
         padding: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: bottomInset + 30),
-        children: [
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           // 1. Dual Cane Types Selector: Commercial Cane (CC) vs Seed Cane (SC)
           Container(
             padding: const EdgeInsets.all(4),
@@ -2644,7 +2705,8 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             ),
           ),
           const SizedBox(height: 16),
-        ],
+          ],
+        ),
       ),
     );
   }

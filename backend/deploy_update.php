@@ -667,7 +667,7 @@ try {
 
 try {
     set_setting('latest_app_version', '1.4.6');
-    set_setting('latest_app_build', '41');
+    set_setting('latest_app_build', '42');
     set_setting('app_force_update', '1');
     set_setting('app_update_changelog', "🌾 CDN DISPATCH & WEIGHBRIDGE TRACKER PHASE 2\n\n• Dual Cane Types: Commercial Cane (CC) & Seed Cane (SC) with dynamic categories\n• Real-Time Factory Weighbridge Net Weight (MT) sync & total tonnage calculation\n• Cloud & Factory ERP Live Sync Indicators on in-transit cards\n• Strict duplicate CDN prevention & 100% mandatory verification photos\n• 100% Offline SQLite farmer & active standing crop catalog with elastic multi-crop view\n• 30-Minute Grace Window with Weighbridge Lock & Final Harvest Load tracking");
     $results[] = ["📱 App Update Broadcast: Configured v1.4.6 (Build 41) [FORCE UPDATE]", "color:#38bdf8;font-weight:bold"];
@@ -1109,7 +1109,7 @@ try {
     }
 
     set_setting('latest_app_version', '1.4.6');
-    set_setting('latest_app_build', '41');
+    set_setting('latest_app_build', '42');
     set_setting('app_force_update', '1');
     set_setting('app_update_changelog', "🌾 CDN DISPATCH & WEIGHBRIDGE TRACKER PHASE 2\n\n• Dual Cane Types: Commercial Cane (CC) & Seed Cane (SC) with dynamic categories\n• Real-Time Factory Weighbridge Net Weight (MT) sync & total tonnage calculation\n• Cloud & Factory ERP Live Sync Indicators on in-transit cards\n• Strict duplicate CDN prevention & 100% mandatory verification photos\n• 100% Offline SQLite farmer & active standing crop catalog with elastic multi-crop view\n• 30-Minute Grace Window with Weighbridge Lock & Final Harvest Load tracking");
     $results[] = ["✅ Settings: Updated latest_app_version to 1.4.6 build 41 (Force Update Enabled)", "color:#10b981;font-weight:bold"];

@@ -563,6 +563,27 @@ class LocalDb {
     await batch.commit(noResult: true);
   }
 
+  static Future<void> updateCdnPhotos({
+    required String cdn,
+    String? cdnPhoto,
+    String? tractorPhoto,
+    String? trailerPhoto,
+    String? loadPhoto,
+  }) async {
+    final d = await db;
+    final updates = <String, dynamic>{'synced': 1};
+    if (cdnPhoto != null && cdnPhoto.isNotEmpty) updates['cdn_photo'] = cdnPhoto;
+    if (tractorPhoto != null && tractorPhoto.isNotEmpty) updates['tractor_photo'] = tractorPhoto;
+    if (trailerPhoto != null && trailerPhoto.isNotEmpty) updates['trailer_photo'] = trailerPhoto;
+    if (loadPhoto != null && loadPhoto.isNotEmpty) updates['load_photo'] = loadPhoto;
+    await d.update(
+      'cdn_records',
+      updates,
+      where: 'cdn = ?',
+      whereArgs: [cdn.trim()],
+    );
+  }
+
   static Future<void> markCdnFinalLoad(String cdn) async {
     final d = await db;
     await d.update(

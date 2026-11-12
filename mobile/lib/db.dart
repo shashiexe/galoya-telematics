@@ -15,7 +15,7 @@ class LocalDb {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'stafftrack.db'),
-      version: 5,
+      version: 6,
       onCreate: (d, v) async {
         await d.execute('''CREATE TABLE points(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,15 +35,18 @@ class LocalDb {
         await d.execute('''CREATE TABLE IF NOT EXISTS cdn_records(
           cdn TEXT PRIMARY KEY, plot_no TEXT, plot_manual_code TEXT, farmer_no TEXT, farmer_name TEXT,
           field_asst_no TEXT, field_asst_name TEXT, type TEXT, cane_category_code TEXT, vehicle_no TEXT,
-          trailer_no TEXT, crop_cycle TEXT, cdn_photo TEXT, tractor_photo TEXT, trailer_photo TEXT, load_photo TEXT,
+          trailer_no TEXT, crop_cycle TEXT, crop_cycle_id TEXT, lst_hvst_tonnage INTEGER DEFAULT 0,
+          cdn_photo TEXT, tractor_photo TEXT, trailer_photo TEXT, load_photo TEXT,
           lat REAL, lng REAL, create_user TEXT, create_time TEXT, weige_ticket_no TEXT,
-          tonnage_received REAL, gross_weight REAL, tare_weight REAL, weighed_date TEXT, status TEXT, synced INTEGER DEFAULT 1)''');
+          net_weight REAL DEFAULT 0.0, tonnage_received REAL DEFAULT 0.0, gross_weight REAL, tare_weight REAL,
+          weighed_date TEXT, wbt_create_time TEXT, status TEXT, is_deleted INTEGER DEFAULT 0,
+          cancel_reason TEXT, modify_user TEXT, modify_date TEXT, synced INTEGER DEFAULT 1, synced_to_mssql INTEGER DEFAULT 0)''');
         await d.execute('''CREATE TABLE IF NOT EXISTS local_vehicles(
           vehicle_no TEXT PRIMARY KEY, vehicle_name TEXT, transporter_no TEXT)''');
         await d.execute('''CREATE TABLE IF NOT EXISTS local_trailers(
           trailer_no TEXT PRIMARY KEY, trailer_name TEXT, weight REAL, vehicle_number TEXT)''');
         await d.execute('''CREATE TABLE IF NOT EXISTS local_crops(
-          id INTEGER PRIMARY KEY AUTOINCREMENT, plot_no TEXT, crop_cycle TEXT, crop_extent REAL,
+          id INTEGER PRIMARY KEY AUTOINCREMENT, plot_no TEXT, crop_cycle TEXT, crop_cycle_id TEXT, crop_extent REAL,
           variety TEXT, status INTEGER DEFAULT 1, age_month TEXT, is_agronomy INTEGER DEFAULT 0)''');
       },
       onUpgrade: (d, oldV, newV) async {
@@ -91,6 +94,20 @@ class LocalDb {
             await d.execute('ALTER TABLE cdn_records ADD COLUMN tractor_photo TEXT');
             await d.execute('ALTER TABLE cdn_records ADD COLUMN trailer_photo TEXT');
             await d.execute('ALTER TABLE cdn_records ADD COLUMN load_photo TEXT');
+          } catch (_) {}
+        }
+        if (oldV < 6) {
+          try {
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN crop_cycle_id TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN lst_hvst_tonnage INTEGER DEFAULT 0');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN net_weight REAL DEFAULT 0.0');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN wbt_create_time TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN is_deleted INTEGER DEFAULT 0');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN cancel_reason TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN modify_user TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN modify_date TEXT');
+            await d.execute('ALTER TABLE cdn_records ADD COLUMN synced_to_mssql INTEGER DEFAULT 0');
+            await d.execute('ALTER TABLE local_crops ADD COLUMN crop_cycle_id TEXT');
           } catch (_) {}
         }
       },
@@ -472,6 +489,14 @@ class LocalDb {
 
   // --- CDN Records (Offline Storage & Caching) ---
 
+  static Future<bool> isCdnDuplicate(String cdn) async {
+    final d = await db;
+    final clean = cdn.trim();
+    if (clean.isEmpty) return false;
+    final rows = await d.rawQuery('SELECT cdn FROM cdn_records WHERE cdn = ? LIMIT 1', [clean]);
+    return rows.isNotEmpty;
+  }
+
   static Future<void> saveCdnRecord(Map<String, dynamic> cdn) async {
     final d = await db;
     await d.insert('cdn_records', cdn, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -482,6 +507,11 @@ class LocalDb {
     final batch = d.batch();
     for (final item in list) {
       if (item is Map) {
+        final net = (item['net_weight'] is num)
+            ? (item['net_weight'] as num).toDouble()
+            : (double.tryParse(item['net_weight']?.toString() ?? '') ?? 0.0);
+        final ton = net > 0 ? (net / 1000.0) : ((item['tonnage_received'] is num) ? (item['tonnage_received'] as num).toDouble() : 0.0);
+
         batch.insert('cdn_records', {
           'cdn': item['cdn']?.toString() ?? '',
           'plot_no': item['plot_no']?.toString(),
@@ -490,47 +520,135 @@ class LocalDb {
           'farmer_name': item['farmer_name']?.toString(),
           'field_asst_no': item['field_asst_no']?.toString(),
           'field_asst_name': item['field_asst_name']?.toString(),
-          'type': item['type']?.toString() ?? 'OUT',
+          'type': item['type']?.toString() ?? 'CC',
           'cane_category_code': item['cane_category_code']?.toString() ?? 'CAT1',
           'vehicle_no': item['vehicle_no']?.toString() ?? '',
           'trailer_no': item['trailer_no']?.toString() ?? '',
           'crop_cycle': item['crop_cycle']?.toString() ?? '',
+          'crop_cycle_id': item['crop_cycle_id']?.toString(),
+          'lst_hvst_tonnage': (item['lst_hvst_tonnage'] == 1 || item['lst_hvst_tonnage'] == true || item['lst_hvst_tonnage'] == '1') ? 1 : 0,
           'cdn_photo': item['cdn_photo']?.toString(),
+          'tractor_photo': item['tractor_photo']?.toString(),
+          'trailer_photo': item['trailer_photo']?.toString(),
+          'load_photo': item['load_photo']?.toString(),
           'lat': (item['lat'] is num) ? (item['lat'] as num).toDouble() : null,
           'lng': (item['lng'] is num) ? (item['lng'] as num).toDouble() : null,
           'create_user': item['create_user']?.toString(),
           'create_time': item['create_time']?.toString() ?? DateTime.now().toIso8601String(),
           'weige_ticket_no': item['weige_ticket_no']?.toString(),
-          'tonnage_received': (item['tonnage_received'] is num) ? (item['tonnage_received'] as num).toDouble() : 0.0,
+          'net_weight': net,
+          'tonnage_received': ton,
           'gross_weight': (item['gross_weight'] is num) ? (item['gross_weight'] as num).toDouble() : 0.0,
           'tare_weight': (item['tare_weight'] is num) ? (item['tare_weight'] as num).toDouble() : 0.0,
           'weighed_date': item['weighed_date']?.toString(),
+          'wbt_create_time': item['wbt_create_time']?.toString(),
           'status': item['status']?.toString() ?? 'PENDING',
+          'is_deleted': (item['is_deleted'] == 1 || item['is_deleted'] == true || item['is_deleted'] == '1') ? 1 : 0,
+          'cancel_reason': item['cancel_reason']?.toString(),
+          'modify_user': item['modify_user']?.toString(),
+          'modify_date': item['modify_date']?.toString(),
           'synced': 1,
+          'synced_to_mssql': (item['synced_to_mssql'] == 1 || item['synced_to_mssql'] == true || item['synced_to_mssql'] == '1') ? 1 : 0,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     }
     await batch.commit(noResult: true);
   }
 
+  static Future<void> markCdnFinalLoad(String cdn) async {
+    final d = await db;
+    await d.update(
+      'cdn_records',
+      {'lst_hvst_tonnage': 1, 'synced_to_mssql': 0},
+      where: 'cdn = ?',
+      whereArgs: [cdn.trim()],
+    );
+  }
+
+  static Future<void> markCdnCancelled(String cdn, String reason) async {
+    final d = await db;
+    await d.update(
+      'cdn_records',
+      {
+        'is_deleted': 1,
+        'status': 'CANCELLED',
+        'cancel_reason': reason,
+        'synced_to_mssql': 0,
+      },
+      where: 'cdn = ?',
+      whereArgs: [cdn.trim()],
+    );
+  }
+
+  static Future<void> updateCdnRecord({
+    required String cdn,
+    String? vehicleNo,
+    String? trailerNo,
+    String? caneCategoryCode,
+    String? type,
+    String? cropCycle,
+    String? cropCycleId,
+    int? lstHvstTonnage,
+  }) async {
+    final d = await db;
+    final values = <String, dynamic>{'synced_to_mssql': 0};
+    if (vehicleNo != null) values['vehicle_no'] = vehicleNo;
+    if (trailerNo != null) values['trailer_no'] = trailerNo;
+    if (caneCategoryCode != null) values['cane_category_code'] = caneCategoryCode;
+    if (type != null) values['type'] = type;
+    if (cropCycle != null) values['crop_cycle'] = cropCycle;
+    if (cropCycleId != null) values['crop_cycle_id'] = cropCycleId;
+    if (lstHvstTonnage != null) values['lst_hvst_tonnage'] = lstHvstTonnage;
+
+    await d.update('cdn_records', values, where: 'cdn = ?', whereArgs: [cdn.trim()]);
+  }
+
   static Future<List<Map<String, dynamic>>> getCdnRecords({
     String? date,
     String status = 'COMPLETED',
     String? search,
-    int limit = 50,
+    int limit = 100,
   }) async {
     final d = await db;
     final whereClauses = <String>[];
     final whereArgs = <dynamic>[];
 
-    if (date != null && date.isNotEmpty) {
-      whereClauses.add("substr(create_time, 1, 10) = ?");
-      whereArgs.add(date);
-    }
-    if (status.isNotEmpty && status != 'ALL') {
+    if (status == 'COMPLETED') {
+      whereClauses.add("status = 'COMPLETED' AND is_deleted = 0");
+      if (date != null && date.isNotEmpty) {
+        whereClauses.add("substr(COALESCE(weighed_date, create_time), 1, 10) = ?");
+        whereArgs.add(date);
+      }
+    } else if (status == 'PENDING') {
+      whereClauses.add("status = 'PENDING' AND is_deleted = 0");
+      if (date != null && date.isNotEmpty) {
+        whereClauses.add("substr(create_time, 1, 10) = ?");
+        whereArgs.add(date);
+      }
+    } else if (status == 'IN_TRANSIT_ALL') {
+      whereClauses.add("status = 'PENDING' AND is_deleted = 0");
+      // All pending in-transit records regardless of date
+    } else if (status == 'CANCELLED') {
+      whereClauses.add("is_deleted = 1");
+      if (date != null && date.isNotEmpty) {
+        whereClauses.add("substr(create_time, 1, 10) = ?");
+        whereArgs.add(date);
+      }
+    } else if (status.isNotEmpty && status != 'ALL') {
       whereClauses.add("status = ?");
       whereArgs.add(status);
+      if (date != null && date.isNotEmpty) {
+        whereClauses.add("substr(create_time, 1, 10) = ?");
+        whereArgs.add(date);
+      }
+    } else {
+      // ALL
+      if (date != null && date.isNotEmpty) {
+        whereClauses.add("substr(create_time, 1, 10) = ?");
+        whereArgs.add(date);
+      }
     }
+
     if (search != null && search.trim().isNotEmpty) {
       final s = '%${search.trim()}%';
       whereClauses.add("(cdn LIKE ? OR vehicle_no LIKE ? OR plot_manual_code LIKE ? OR farmer_name LIKE ? OR weige_ticket_no LIKE ?)");
@@ -550,10 +668,31 @@ class LocalDb {
   static Future<Map<String, dynamic>> getCdnSummary({String? date}) async {
     final d = await db;
     String sql = "SELECT COUNT(*) as total_count, "
-        "COALESCE(SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END), 0) as completed_count, "
-        "COALESCE(SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END), 0) as pending_count, "
-        "COALESCE(SUM(CASE WHEN status='COMPLETED' THEN tonnage_received ELSE 0.0 END), 0.0) as total_tonnage "
-        "FROM cdn_records";
+        "COALESCE(SUM(CASE WHEN status='COMPLETED' AND is_deleted=0 THEN 1 ELSE 0 END), 0) as completed_count, "
+        "COALESCE(SUM(CASE WHEN status='PENDING' AND is_deleted=0 THEN 1 ELSE 0 END), 0) as pending_count, "
+        "COALESCE(SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END), 0) as cancelled_count, "
+        "COALESCE(SUM(CASE WHEN status='COMPLETED' AND is_deleted=0 THEN "
+        "  CASE WHEN net_weight > 0 THEN (net_weight / 1000.0) ELSE tonnage_received END "
+        "ELSE 0.0 END), 0.0) as total_tonnage "
+        "FROM cdn_records WHERE 1=1";
+    List<dynamic> args = [];
+    if (date != null && date.isNotEmpty) {
+      sql += " AND substr(COALESCE(weighed_date, create_time), 1, 10) = ?";
+      args.add(date);
+    }
+    final rows = await d.rawQuery(sql, args);
+    if (rows.isNotEmpty) {
+      final r = rows.first;
+      return {
+        'total_count': (r['total_count'] as num?)?.toInt() ?? 0,
+        'completed_count': (r['completed_count'] as num?)?.toInt() ?? 0,
+        'pending_count': (r['pending_count'] as num?)?.toInt() ?? 0,
+        'cancelled_count': (r['cancelled_count'] as num?)?.toInt() ?? 0,
+        'total_tonnage': ((r['total_tonnage'] as num?)?.toDouble() ?? 0.0),
+      };
+    }
+    return {'total_count': 0, 'completed_count': 0, 'pending_count': 0, 'cancelled_count': 0, 'total_tonnage': 0.0};
+  }
     List<dynamic> args = [];
     if (date != null && date.isNotEmpty) {
       sql += " WHERE substr(create_time, 1, 10) = ?";
@@ -691,6 +830,7 @@ class LocalDb {
         batch.insert('local_crops', {
           'plot_no': c['plot_no']?.toString().trim() ?? '',
           'crop_cycle': c['crop_cycle']?.toString().trim() ?? '',
+          'crop_cycle_id': c['crop_cycle_id']?.toString() ?? c['ID']?.toString(),
           'crop_extent': (c['crop_extent'] is num)
               ? (c['crop_extent'] as num).toDouble()
               : (double.tryParse(c['crop_extent']?.toString() ?? '') ?? 0.0),
@@ -702,6 +842,17 @@ class LocalDb {
       }
     }
     await batch.commit(noResult: true);
+  }
+
+  static Future<void> saveBulkMasterPlotsAndCrops(List<dynamic> plots, List<dynamic> crops) async {
+    if (plots.isNotEmpty) {
+      await saveMasterPlots(plots);
+    }
+    if (crops.isNotEmpty) {
+      final d = await db;
+      await d.delete('local_crops'); // Refresh active crops table
+      await saveCrops(crops);
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getActiveCrops(String plotCode) async {

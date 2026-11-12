@@ -684,7 +684,6 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       return;
     }
 
-    final cdnNo = _cdnCtrl.text.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
     final plotManualCode = _plotCtrl.text.trim();
     final systemPlotNo = _selectedSystemPlotNo ?? plotManualCode;
     final vehicleNo = _vehicleCtrl.text.trim().toUpperCase();
@@ -1368,12 +1367,15 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   ],
                 ],
               ),
-            );
-          },
-        );
-      },
-    );
-  }
+            ),
+          ],
+        ),
+      );
+    },
+  );
+},
+);
+}
 
   String _formatCaneCategory(String code) {
     switch (code.trim().toUpperCase()) {

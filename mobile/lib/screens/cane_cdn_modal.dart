@@ -76,11 +76,18 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   // Final Harvest Load
   bool _isFinalHarvestLoad = false;
 
-  // 100% Mandatory Verification Photos
+  // 100% Mandatory Verification Photos (All 4 Required)
   File? _cdnPhoto; // Slip
   File? _tractorPhoto; // Tractor Front & Number Plate
   File? _trailerPhoto; // Trailer Plate
-  File? _loadPhoto; // Loaded Cane (Optional 4th photo)
+  File? _loadPhoto; // Loaded Cane (Mandatory)
+  bool _showPhotoValidationErrors = false;
+
+  // Dedicated FocusNodes to prevent jumping & auto-selection
+  late final FocusNode _plotFocusNode = FocusNode();
+  late final FocusNode _vehicleFocusNode = FocusNode();
+  late final FocusNode _trailerFocusNode = FocusNode();
+  final ScrollController _issueScrollCtrl = ScrollController();
 
   bool _submitting = false;
 
@@ -119,6 +126,19 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     _initPrefill();
     _loadTrackerData();
     _loadVehiclesAndTrailers();
+
+    // Auto-dismiss plot suggestion dropdown when vehicle or trailer fields gain focus
+    _vehicleFocusNode.addListener(() {
+      if (_vehicleFocusNode.hasFocus && _plotSuggestions.isNotEmpty) {
+        setState(() => _plotSuggestions = []);
+      }
+    });
+    _trailerFocusNode.addListener(() {
+      if (_trailerFocusNode.hasFocus && _plotSuggestions.isNotEmpty) {
+        setState(() => _plotSuggestions = []);
+      }
+    });
+
     if (widget.prefillPlot != null) {
       final code = (widget.prefillPlot!['plot_manual_code'] ??
               widget.prefillPlot!['name'] ??
@@ -230,8 +250,10 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         final Map<String, Map<String, dynamic>> dedupedMap = {};
         for (final c in crops) {
           final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
-          if (cc.isNotEmpty && !dedupedMap.containsKey(cc)) {
-            dedupedMap[cc] = c;
+          final cid = (c['crop_cycle_id'] ?? c['ID'] ?? '').toString().trim();
+          final key = cid.isNotEmpty ? '${cc}_$cid' : cc;
+          if (cc.isNotEmpty && !dedupedMap.containsKey(key)) {
+            dedupedMap[key] = c;
           }
         }
         final finalCrops = dedupedMap.values.toList();
@@ -289,6 +311,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       _tractorPhoto = null;
       _trailerPhoto = null;
       _loadPhoto = null;
+      _showPhotoValidationErrors = false;
       _selectedSystemPlotNo = null;
       _selectedCropCycle = null;
       _selectedCropCycleId = null;
@@ -303,6 +326,10 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   @override
   void dispose() {
     _debouncePlotSearch?.cancel();
+    _plotFocusNode.dispose();
+    _vehicleFocusNode.dispose();
+    _trailerFocusNode.dispose();
+    _issueScrollCtrl.dispose();
     _cdnCtrl.dispose();
     _plotCtrl.dispose();
     _farmerNameCtrl.dispose();
@@ -349,10 +376,15 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       }
 
       if (detectedCdn != null && detectedCdn.isNotEmpty) {
-        detectedCdn = detectedCdn.replaceAll(RegExp(r'\s+'), '').toUpperCase();
-        setState(() {
-          _cdnCtrl.text = detectedCdn!;
-        });
+        detectedCdn = detectedCdn.replaceAll(RegExp(r'[^cbCB0-9]'), '').toUpperCase();
+        if (detectedCdn.isNotEmpty) {
+          setState(() {
+            _cdnCtrl.text = detectedCdn!;
+            if (_cdnPhoto != null && _tractorPhoto != null && _trailerPhoto != null && _loadPhoto != null) {
+              _showPhotoValidationErrors = false;
+            }
+          });
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -384,6 +416,9 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           if (type == 1) _tractorPhoto = File(picked.path);
           if (type == 2) _trailerPhoto = File(picked.path);
           if (type == 3) _loadPhoto = File(picked.path);
+          if (_cdnPhoto != null && _tractorPhoto != null && _trailerPhoto != null && _loadPhoto != null) {
+            _showPhotoValidationErrors = false;
+          }
         });
       }
     } catch (_) {}
@@ -593,7 +628,34 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   }
 
   Future<void> _submitCdn() async {
-    if (!_formKey.currentState!.validate()) return;
+    final formValid = _formKey.currentState!.validate();
+    if (!formValid) {
+      if (_cdnCtrl.text.trim().isEmpty || _plotCtrl.text.trim().isEmpty) {
+        if (_issueScrollCtrl.hasClients) {
+          _issueScrollCtrl.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xffb91c1c),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('රතු පැහැයෙන් සලකුණු කර ඇති අනිවාර්ය තොරතුරු සම්පූර්ණ කරන්න! (Please fill required fields)',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
     final cdnNo = _cdnCtrl.text.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
     final plotManualCode = _plotCtrl.text.trim();
     final systemPlotNo = _selectedSystemPlotNo ?? plotManualCode;
@@ -643,30 +705,51 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       return;
     }
 
-    // 3. 100% Mandatory Verification Photos Check
-    if (_cdnPhoto == null) {
+    // 3. 100% Mandatory Verification Photos Check (All 4 Photos)
+    if (_cdnPhoto == null || _tractorPhoto == null || _trailerPhoto == null || _loadPhoto == null) {
+      setState(() => _showPhotoValidationErrors = true);
+
+      if (_issueScrollCtrl.hasClients) {
+        if (_cdnPhoto == null) {
+          _issueScrollCtrl.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        } else {
+          _issueScrollCtrl.animateTo(
+            _issueScrollCtrl.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+
+      final List<String> missingPhotos = [];
+      if (_cdnPhoto == null) missingPhotos.add('CDN Slip (ස්ලිප් පත්‍රිකාව - Scan Slip)');
+      if (_tractorPhoto == null) missingPhotos.add('Tractor Plate (ට්‍රැක්ටර් අංකය)');
+      if (_trailerPhoto == null) missingPhotos.add('Trailer No (ට්‍රේලර් අංකය)');
+      if (_loadPhoto == null) missingPhotos.add('Loaded Cane (උක් පැටවූ බර)');
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.red,
-          content: Text('⚠️ CDN Slip ඡායාරූපය (Scan Slip) අනිවාර්ය වේ!'),
-        ),
-      );
-      return;
-    }
-    if (_tractorPhoto == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.red,
-          content: Text('⚠️ Tractor Front & Number Plate ඡායාරූපය අනිවාර්ය වේ!'),
-        ),
-      );
-      return;
-    }
-    if (_trailerPhoto == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.red,
-          content: Text('⚠️ Trailer Number ඡායාරූපය අනිවාර්ය වේ!'),
+        SnackBar(
+          backgroundColor: const Color(0xffb91c1c),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('අනිවාර්ය ඡායාරූප සම්පූර්ණ කර නොමැත!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'කරුණාකර පහත ඡායාරූප ලබා දෙන්න:\n• ' + missingPhotos.join('\n• '),
+                style: const TextStyle(color: Color(0xfffee2e2), fontSize: 11),
+              ),
+            ],
+          ),
         ),
       );
       return;
@@ -1017,10 +1100,23 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: const Color(0xff065f46),
+                          color: (item['synced'] == 1 || item['synced'] == true || item['synced'] == '1' || (item['id'] != null && item['id'] != 0))
+                              ? const Color(0xff065f46)
+                              : const Color(0xff78350f),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text('☁️ Cloud Synced ✅', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          (item['synced'] == 1 || item['synced'] == true || item['synced'] == '1' || (item['id'] != null && item['id'] != 0))
+                              ? '☁️ Cloud Synced ✅'
+                              : '☁️ Sync Pending ⏳',
+                          style: TextStyle(
+                            color: (item['synced'] == 1 || item['synced'] == true || item['synced'] == '1' || (item['id'] != null && item['id'] != 0))
+                                ? const Color(0xffa7f3d0)
+                                : const Color(0xfffde68a),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Container(
@@ -1105,7 +1201,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                         _buildDetailRow('Farmer Name', farmer),
                         if (farmerNo.isNotEmpty) _buildDetailRow('Farmer No', farmerNo),
                         _buildDetailRow('Cane Type', type == 'SC' ? '🌱 Seed Cane (SC)' : '🌾 Commercial Cane (CC)'),
-                        _buildDetailRow('Cane Category', cat),
+                        _buildDetailRow('Cane Category', _formatCaneCategory(cat)),
                         _buildDetailRow('Standing Crop', '$crop ${cropCycleId.isNotEmpty ? "(ID: $cropCycleId)" : ""}'),
                         _buildDetailRow('Tractor / Vehicle', vehicle),
                         _buildDetailRow('Trailer Number', trailer),
@@ -1222,6 +1318,21 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     );
   }
 
+  String _formatCaneCategory(String code) {
+    switch (code.trim().toUpperCase()) {
+      case 'CAT1':
+        return 'CAT1 (Commercial Green / කොළ උක්)';
+      case 'CAT2':
+        return 'CAT2 (Commercial Burnt / පිළිස්සූ උක්)';
+      case 'CAT3':
+        return 'CAT3 (Commercial Seed / බීජ උක්)';
+      case 'CAT4':
+        return 'CAT4 (Certified Nursery / තවාන් බීජ)';
+      default:
+        return code.isNotEmpty ? code : 'Standard';
+    }
+  }
+
   Widget _buildDetailRow(String label, String value) {
     if (value.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -1242,7 +1353,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   }
 
   String _resolvePhotoUrl(String path) {
-    final clean = path.trim();
+    final clean = path.trim().replaceAll('\\', '/');
     if (clean.isEmpty) return '';
     if (clean.startsWith('http://') || clean.startsWith('https://')) {
       return clean;
@@ -1253,7 +1364,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     if (clean.startsWith('/uploads/')) {
       return '$kServerBase$clean';
     }
-    if (!clean.startsWith('/') && !clean.contains('\\') && (clean.endsWith('.jpg') || clean.endsWith('.png') || clean.endsWith('.jpeg'))) {
+    if (!clean.startsWith('/') && (clean.endsWith('.jpg') || clean.endsWith('.png') || clean.endsWith('.jpeg'))) {
       return '$kServerBase/uploads/cdn/$clean';
     }
     return clean;
@@ -1679,17 +1790,22 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
 
   // --- TAB 1: ISSUE CDN FORM ---
   Widget _buildPhotoSlot(int type, String title, File? file, IconData icon, bool mandatory) {
+    final bool isMissing = mandatory && file == null && _showPhotoValidationErrors;
     return Expanded(
       child: GestureDetector(
         onTap: () => _pickVerificationPhoto(type),
         child: Container(
           height: 96,
           decoration: BoxDecoration(
-            color: file != null ? const Color(0xff065f46).withOpacity(0.3) : const Color(0xff0f172a),
+            color: file != null
+                ? const Color(0xff065f46).withOpacity(0.3)
+                : (isMissing ? const Color(0xff450a0a) : const Color(0xff0f172a)),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: file != null ? const Color(0xff10b981) : (mandatory ? const Color(0xffef4444) : const Color(0xff334155)),
-              width: file != null ? 1.5 : (mandatory ? 1.2 : 1.0),
+              color: file != null
+                  ? const Color(0xff10b981)
+                  : (isMissing ? const Color(0xffef4444) : (mandatory ? const Color(0xffef4444) : const Color(0xff334155))),
+              width: file != null ? 1.5 : (isMissing ? 2.2 : (mandatory ? 1.2 : 1.0)),
             ),
           ),
           child: file != null
@@ -1739,17 +1855,29 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               : Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, color: mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8), size: 24),
+                    Icon(
+                      isMissing ? Icons.error : icon,
+                      color: isMissing ? const Color(0xffef4444) : (mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8)),
+                      size: 24,
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       title,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xffcbd5e1), fontSize: 11, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: isMissing ? const Color(0xfffca5a5) : const Color(0xffcbd5e1),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      mandatory ? '* අනිවාර්යයි' : '+ Take Photo',
-                      style: TextStyle(color: mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8), fontSize: 9),
+                      isMissing ? '⚠️ අනිවාර්යයි!' : (mandatory ? '* අනිවාර්යයි' : '+ Take Photo'),
+                      style: TextStyle(
+                        color: isMissing ? const Color(0xffef4444) : (mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8)),
+                        fontSize: 9,
+                        fontWeight: isMissing ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
                   ],
                 ),
@@ -1762,6 +1890,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     return Form(
       key: _formKey,
       child: ListView(
+        controller: _issueScrollCtrl,
         padding: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: bottomInset + 30),
         children: [
           // 1. Dual Cane Types Selector: Commercial Cane (CC) vs Seed Cane (SC)
@@ -1834,11 +1963,20 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           TextFormField(
             controller: _cdnCtrl,
             scrollPadding: const EdgeInsets.only(bottom: 140),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
+            textCapitalization: TextCapitalization.characters,
+            keyboardType: TextInputType.visiblePassword,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[cbCB0-9]')),
+              TextInputFormatter.withFunction((oldVal, newVal) {
+                return newVal.copyWith(text: newVal.text.toUpperCase());
+              }),
+            ],
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5),
             decoration: InputDecoration(
-              labelText: 'CDN Number (e.g. B11465, C342162)',
+              labelText: 'CDN Number (C, B සහ අංක පමණි)',
               labelStyle: const TextStyle(color: Color(0xfffbbf24)),
               prefixIcon: const Icon(Icons.tag, color: Color(0xfff59e0b), size: 18),
+              errorMaxLines: 2,
               suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1852,13 +1990,18 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                     ),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xff0284c7),
+                      backgroundColor: (_showPhotoValidationErrors && _cdnPhoto == null)
+                          ? const Color(0xffdc2626)
+                          : const Color(0xff0284c7),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    icon: const Icon(Icons.camera_alt, size: 16),
-                    label: const Text('Scan Slip', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    icon: Icon((_showPhotoValidationErrors && _cdnPhoto == null) ? Icons.warning : Icons.camera_alt, size: 16),
+                    label: Text(
+                      (_showPhotoValidationErrors && _cdnPhoto == null) ? 'Scan Slip *' : 'Scan Slip',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
                     onPressed: _scanCdnSlip,
                   ),
                   const SizedBox(width: 8),
@@ -1867,8 +2010,24 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               filled: true,
               fillColor: const Color(0xff1e293b),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: (_showPhotoValidationErrors && _cdnPhoto == null) ? Colors.redAccent : const Color(0xff334155),
+                  width: (_showPhotoValidationErrors && _cdnPhoto == null) ? 1.5 : 1.0,
+                ),
+              ),
             ),
-            validator: (val) => val == null || val.trim().isEmpty ? 'CDN Number required' : null,
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) {
+                return 'CDN අංකය අනිවාර්යයි (CDN Number is required)';
+              }
+              final clean = val.trim().toUpperCase();
+              if (!RegExp(r'^[CB0-9]+$').hasMatch(clean)) {
+                return 'වලංගු නොවන CDN අංකයකි! C, B සහ අංක (0-9) පමණක් ඇතුළත් කරන්න.';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 12),
           // 3. Plot Manual Code & Autocomplete lookup
@@ -1877,6 +2036,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             children: [
               TextFormField(
                 controller: _plotCtrl,
+                focusNode: _plotFocusNode,
                 scrollPadding: const EdgeInsets.only(bottom: 140),
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
@@ -2041,22 +2201,27 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             ],
           ),
           const SizedBox(height: 12),
-          // 4. Farmer Name
+          // 4. Farmer Name (Read-Only ERP Master Locked)
           TextFormField(
             controller: _farmerNameCtrl,
+            readOnly: true,
             scrollPadding: const EdgeInsets.only(bottom: 140),
-            style: const TextStyle(color: Colors.white),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
-              labelText: 'Farmer Name',
+              labelText: 'Farmer Name (පද්ධතියෙන් තහවුරු කළ / Locked)',
               labelStyle: const TextStyle(color: Color(0xff94a3b8)),
               prefixIcon: const Icon(Icons.person, color: Color(0xff38bdf8), size: 18),
+              suffixIcon: const Tooltip(
+                message: 'ERP Master Locked',
+                child: Icon(Icons.lock, color: Color(0xff94a3b8), size: 16),
+              ),
               filled: true,
               fillColor: const Color(0xff1e293b),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
             ),
           ),
           const SizedBox(height: 12),
-          // 5. Land Area (Ha)
+          // 5. Land Area (Ha) (Read-Only ERP Master Locked)
           TextFormField(
             controller: _landAreaCtrl,
             readOnly: true,
@@ -2065,8 +2230,14 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               labelText: 'Plot Land Area (Ha) / වගා බිමේ ප්‍රමාණය',
               labelStyle: const TextStyle(color: Color(0xff94a3b8)),
               prefixIcon: const Icon(Icons.square_foot, color: Color(0xff34d399), size: 18),
-              suffixText: 'Ha',
-              suffixStyle: const TextStyle(color: Color(0xff34d399), fontWeight: FontWeight.bold),
+              suffixIcon: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Ha  ', style: TextStyle(color: Color(0xff34d399), fontWeight: FontWeight.bold)),
+                  Icon(Icons.lock, color: Color(0xff94a3b8), size: 16),
+                  SizedBox(width: 8),
+                ],
+              ),
               filled: true,
               fillColor: const Color(0xff1e293b),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
@@ -2195,7 +2366,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           // 7. Vehicle No (Instant Autocomplete)
           RawAutocomplete<String>(
             textEditingController: _vehicleCtrl,
-            focusNode: FocusNode(),
+            focusNode: _vehicleFocusNode,
             optionsBuilder: (TextEditingValue val) {
               if (val.text.trim().isEmpty) return const Iterable<String>.empty();
               final q = val.text.trim().toUpperCase();
@@ -2259,7 +2430,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           // 8. Trailer No (Instant Autocomplete)
           RawAutocomplete<String>(
             textEditingController: _trailerCtrl,
-            focusNode: FocusNode(),
+            focusNode: _trailerFocusNode,
             optionsBuilder: (TextEditingValue val) {
               if (val.text.trim().isEmpty) return const Iterable<String>.empty();
               final q = val.text.trim().toUpperCase();
@@ -2442,7 +2613,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                     const SizedBox(width: 8),
                     _buildPhotoSlot(2, 'Trailer No', _trailerPhoto, Icons.rv_hookup, true),
                     const SizedBox(width: 8),
-                    _buildPhotoSlot(3, 'Loaded Cane', _loadPhoto, Icons.agriculture, false),
+                    _buildPhotoSlot(3, 'Loaded Cane', _loadPhoto, Icons.agriculture, true),
                   ],
                 ),
               ],

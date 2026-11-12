@@ -57,7 +57,7 @@ function auth_user(): array {
 
 function app_config(): array {
     $latestVersion = setting('latest_app_version', '1.4.6');
-    $latestBuild = (int)setting('latest_app_build', 40);
+    $latestBuild = (int)setting('latest_app_build', 41);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -79,7 +79,7 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.4.6');
-        $latestBuild = (int)setting('latest_app_build', 40);
+        $latestBuild = (int)setting('latest_app_build', 41);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
         $forceUpdate = setting('app_force_update', '1') === '1';
@@ -1335,11 +1335,32 @@ try {
                              ORDER BY c.crop_cycle ASC");
         $st->execute([$plotNo, $plotNo]);
         $rawCrops = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fallback: If no crops with status = 1, fetch all recorded crops for this plot
+        if (empty($rawCrops)) {
+            $stFallback = db()->prepare("SELECT c.crop_cycle, c.crop_cycle_id, c.crop_extent, c.variety, c.status, c.age_month, c.is_agronomy,
+                                                p.plot_manual_code, p.plot_no, p.sector_no, p.land_area,
+                                                f.name AS farmer_name, f.farmer_no, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+                                                n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
+                                                n.bank_code, n.branch_code, n.bank_accno,
+                                                p.payment_permission, p.debit_permission
+                                         FROM erp_crops c
+                                         JOIN erp_plots p ON c.plot_no = p.plot_no
+                                         LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+                                         LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
+                                         WHERE (c.plot_no = ? OR p.plot_manual_code = ?)
+                                         ORDER BY c.status DESC, c.crop_cycle ASC");
+            $stFallback->execute([$plotNo, $plotNo]);
+            $rawCrops = $stFallback->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         $dedupCrops = [];
         foreach ($rawCrops as $cr) {
+            $cid = trim($cr['crop_cycle_id'] ?? ($cr['ID'] ?? ''));
             $cc = strtoupper(trim($cr['crop_cycle'] ?? ''));
-            if ($cc !== '' && !isset($dedupCrops[$cc])) {
-                $dedupCrops[$cc] = $cr;
+            $key = $cid !== '' ? "${cc}_${cid}" : $cc;
+            if ($key !== '' && !isset($dedupCrops[$key])) {
+                $dedupCrops[$key] = $cr;
             }
         }
         $crops = array_values($dedupCrops);

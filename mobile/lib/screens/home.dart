@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -3501,7 +3501,9 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
           final Map<String, Map<String, dynamic>> dedup = {};
           for (final c in serverCrops) {
             final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
-            if (cc.isNotEmpty && !dedup.containsKey(cc)) dedup[cc] = c;
+            final cid = (c['crop_cycle_id'] ?? c['ID'] ?? '').toString().trim();
+            final key = cid.isNotEmpty ? '${cc}_$cid' : cc;
+            if (cc.isNotEmpty && !dedup.containsKey(key)) dedup[key] = c;
           }
           final finalCrops = dedup.values.toList();
           setState(() {
@@ -3538,8 +3540,8 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
     final bankAcc = (p['bank_accno'] ?? '').toString();
     final branchCode = (p['branch_code'] ?? '').toString();
 
-    final payPerm = (p['payment_permission'] == 1 || p['payment_permission'] == true);
-    final debitPerm = (p['debit_permission'] == 1 || p['debit_permission'] == true);
+    final payPerm = (p['payment_permission'] == 1 || p['payment_permission'] == true || p['payment_permission'] == '1' || p['payment_permission'] == 'true');
+    final debitPerm = (p['debit_permission'] == 1 || p['debit_permission'] == true || p['debit_permission'] == '1' || p['debit_permission'] == 'true');
     final isAgronomy = p['block_id'] != null;
 
     return Container(

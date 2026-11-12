@@ -727,8 +727,8 @@ class LocalDb {
             'bank_code': p['bank_code']?.toString(),
             'branch_code': p['branch_code']?.toString(),
             'bank_accno': p['bank_accno']?.toString(),
-            'payment_permission': (p['payment_permission'] == 1 || p['payment_permission'] == true) ? 1 : 0,
-            'debit_permission': (p['debit_permission'] == 1 || p['debit_permission'] == true) ? 1 : 0,
+            'payment_permission': (p['payment_permission'] == 1 || p['payment_permission'] == true || p['payment_permission'] == '1' || p['payment_permission'] == 'true') ? 1 : 0,
+            'debit_permission': (p['debit_permission'] == 1 || p['debit_permission'] == true || p['debit_permission'] == '1' || p['debit_permission'] == 'true') ? 1 : 0,
             'block_id': (p['block_id'] is int) ? p['block_id'] : int.tryParse(p['block_id']?.toString() ?? ''),
             'land_area': (p['land_area'] is num)
                 ? (p['land_area'] as num).toDouble()
@@ -830,17 +830,18 @@ class LocalDb {
       if (c is Map) {
         final p = c['plot_no']?.toString().trim() ?? '';
         final cc = c['crop_cycle']?.toString().trim() ?? '';
+        final cid = (c['crop_cycle_id'] ?? c['ID'] ?? '').toString().trim();
         if (p.isEmpty || cc.isEmpty) continue;
-        final key = '${p.toUpperCase()}|${cc.toUpperCase()}';
+        final key = cid.isNotEmpty ? '${p.toUpperCase()}|${cc.toUpperCase()}|$cid' : '${p.toUpperCase()}|${cc.toUpperCase()}';
         deduped[key] = {
           'plot_no': p,
           'crop_cycle': cc,
-          'crop_cycle_id': c['crop_cycle_id']?.toString() ?? c['ID']?.toString(),
+          'crop_cycle_id': cid.isNotEmpty ? cid : null,
           'crop_extent': (c['crop_extent'] is num)
               ? (c['crop_extent'] as num).toDouble()
               : (double.tryParse(c['crop_extent']?.toString() ?? '') ?? 0.0),
           'variety': c['variety']?.toString() ?? '',
-          'status': (c['status'] == 1 || c['status'] == true) ? 1 : 0,
+          'status': (c['status'] == 1 || c['status'] == true || c['status'] == '1') ? 1 : 0,
           'age_month': c['age_month']?.toString() ?? '',
           'is_agronomy': (c['is_agronomy'] == 1 || c['is_agronomy'] == true) ? 1 : 0,
         };
@@ -849,9 +850,15 @@ class LocalDb {
 
     final batch = d.batch();
     for (final row in deduped.values) {
-      batch.delete('local_crops',
-          where: 'UPPER(TRIM(plot_no)) = ? AND UPPER(TRIM(crop_cycle)) = ?',
-          whereArgs: [row['plot_no'].toString().toUpperCase().trim(), row['crop_cycle'].toString().toUpperCase().trim()]);
+      if (row['crop_cycle_id'] != null) {
+        batch.delete('local_crops',
+            where: 'UPPER(TRIM(plot_no)) = ? AND crop_cycle_id = ?',
+            whereArgs: [row['plot_no'].toString().toUpperCase().trim(), row['crop_cycle_id']]);
+      } else {
+        batch.delete('local_crops',
+            where: 'UPPER(TRIM(plot_no)) = ? AND UPPER(TRIM(crop_cycle)) = ?',
+            whereArgs: [row['plot_no'].toString().toUpperCase().trim(), row['crop_cycle'].toString().toUpperCase().trim()]);
+      }
       batch.insert('local_crops', row);
     }
     await batch.commit(noResult: true);
@@ -890,14 +897,13 @@ class LocalDb {
 
     final placeholders = List.filled(targetPlotNos.length, '?').join(',');
     final rows = await d.rawQuery('''
-      SELECT c.crop_cycle, MAX(c.id) as id, MAX(c.plot_no) as plot_no, 
-             MAX(c.crop_cycle_id) as crop_cycle_id, MAX(c.crop_extent) as crop_extent, 
-             MAX(c.variety) as variety, MAX(c.status) as status, 
-             MAX(c.age_month) as age_month, MAX(c.is_agronomy) as is_agronomy
+      SELECT c.crop_cycle, c.id, c.plot_no, 
+             c.crop_cycle_id, c.crop_extent, 
+             c.variety, c.status, 
+             c.age_month, c.is_agronomy
       FROM local_crops c
       WHERE c.plot_no IN ($placeholders) AND c.status = 1
-      GROUP BY UPPER(TRIM(c.crop_cycle))
-      ORDER BY c.crop_cycle ASC
+      ORDER BY c.crop_cycle ASC, c.crop_cycle_id ASC
     ''', targetPlotNos.toList());
 
     return rows;

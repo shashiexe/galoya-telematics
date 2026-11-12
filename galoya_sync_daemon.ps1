@@ -249,6 +249,49 @@ function Execute-SyncCycle {
                 }
                 Log-Write "  -> Synced $($cList.Count) active standing crops." "Green"
             }
+
+            # Sync Plot Nominees & Permissions (Plots with Nominee or Permissions)
+            $pCmd = $conn.CreateCommand()
+            $pCmd.CommandText = @"
+SELECT [Plot_No], [PlotManual_Code], [Sector_No], [Farmer_No], [Nominee], 
+       CASE WHEN [PaymentPermission] = 1 THEN 1 ELSE 0 END AS [PaymentPermission], 
+       CASE WHEN [DebitPermission] = 1 THEN 1 ELSE 0 END AS [DebitPermission], 
+       [Block_ID], [Land_Area], 
+       [Payment_Catagory], [FieldAsst_No], [Registration_No], [method], [Ownership], 
+       CASE WHEN [Is_Active] = 0 THEN 0 ELSE 1 END AS [Is_Active]
+FROM [dbo].[tblMa_Plot]
+WHERE ([Nominee] IS NOT NULL AND LTRIM(RTRIM([Nominee])) <> '') OR [PaymentPermission] = 1 OR [DebitPermission] = 1
+"@
+            $pr = $pCmd.ExecuteReader()
+            $pList = [System.Collections.Generic.List[PSObject]]::new()
+            while ($pr.Read()) {
+                $pList.Add([PSCustomObject]@{
+                    Plot_No           = $pr["Plot_No"].ToString().Trim()
+                    PlotManual_Code   = if ($pr["PlotManual_Code"] -ne [DBNull]::Value) { $pr["PlotManual_Code"].ToString().Trim() } else { "" }
+                    Sector_No         = if ($pr["Sector_No"] -ne [DBNull]::Value) { $pr["Sector_No"].ToString().Trim() } else { "" }
+                    Farmer_No         = if ($pr["Farmer_No"] -ne [DBNull]::Value) { $pr["Farmer_No"].ToString().Trim() } else { "" }
+                    Nominee           = if ($pr["Nominee"] -ne [DBNull]::Value) { $pr["Nominee"].ToString().Trim() } else { "" }
+                    PaymentPermission = [int]$pr["PaymentPermission"]
+                    DebitPermission   = [int]$pr["DebitPermission"]
+                    Block_ID          = if ($pr["Block_ID"] -ne [DBNull]::Value) { [int]$pr["Block_ID"] } else { $null }
+                    Land_Area         = if ($pr["Land_Area"] -ne [DBNull]::Value) { [double]$pr["Land_Area"] } else { 0.0 }
+                    Payment_Catagory  = if ($pr["Payment_Catagory"] -ne [DBNull]::Value) { $pr["Payment_Catagory"].ToString().Trim() } else { "" }
+                    FieldAsst_No      = if ($pr["FieldAsst_No"] -ne [DBNull]::Value) { $pr["FieldAsst_No"].ToString().Trim() } else { "" }
+                    Registration_No   = if ($pr["Registration_No"] -ne [DBNull]::Value) { $pr["Registration_No"].ToString().Trim() } else { "" }
+                    method            = if ($pr["method"] -ne [DBNull]::Value) { $pr["method"].ToString().Trim() } else { "" }
+                    Ownership         = if ($pr["Ownership"] -ne [DBNull]::Value) { $pr["Ownership"].ToString().Trim() } else { "" }
+                    Is_Active         = [int]$pr["Is_Active"]
+                })
+            }
+            $pr.Close()
+            if ($pList.Count -gt 0) {
+                for ($i = 0; $i -lt $pList.Count; $i += 500) {
+                    $chunk = $pList.GetRange($i, [Math]::Min(500, $pList.Count - $i))
+                    $pBody = @{ entity = 'plots'; data = $chunk } | ConvertTo-Json -Depth 4
+                    Invoke-RestMethod -Uri "$($ApiBase)&sub=push_master_batch" -Method Post -Body $pBody -Headers $Headers -ContentType "application/json" -TimeoutSec 30 | Out-Null
+                }
+                Log-Write "  -> Synced $($pList.Count) plots with nominees & permissions." "Green"
+            }
         }
 
     } catch {

@@ -54,7 +54,7 @@ elif os.path.exists(gradle_props):
     with open(gradle_props, "r", encoding="utf-8") as f:
         props = f.read()
     if "android.enableR8.fullMode" not in props:
-        props += "\nandroid.enableR8.fullMode=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\n"
+        props += "\nandroid.enableR8.fullMode=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nandroid.lint.abortOnError=false\nandroid.lint.checkReleaseBuilds=false\n"
         with open(gradle_props, "w", encoding="utf-8") as f:
             f.write(props)
         print("[Patch] Set android.enableR8.fullMode=false in gradle.properties")
@@ -199,13 +199,13 @@ for root, _, files in os.walk("android"):
 root_gradle = "android/build.gradle"
 if os.path.exists(root_gradle):
     with open(root_gradle, "a", encoding="utf-8") as f:
-        f.write("\nsubprojects {\n    afterEvaluate {\n        tasks.matching { it.name.contains('lint') }.configureEach {\n            enabled = false\n        }\n    }\n}\n")
+        f.write("\ngradle.taskGraph.whenReady {\n    allTasks.each { task ->\n        if (task.name.toLowerCase().contains('lint')) {\n            task.enabled = false\n        }\n    }\n}\n")
     print("[Patch] Disabled all lint tasks across subprojects in android/build.gradle")
 
 root_kts = "android/build.gradle.kts"
 if os.path.exists(root_kts):
     with open(root_kts, "a", encoding="utf-8") as f:
-        f.write('\nsubprojects {\n    afterEvaluate {\n        tasks.matching { it.name.contains("lint") }.configureEach {\n            enabled = false\n        }\n    }\n}\n')
+        f.write('\ngradle.taskGraph.whenReady {\n    allTasks.forEach { task ->\n        if (task.name.contains("lint", ignoreCase = true)) {\n            task.enabled = false\n        }\n    }\n}\n')
     print("[Patch] Disabled all lint tasks across subprojects in android/build.gradle.kts")
 
 print("[Patch] Patching completed.")

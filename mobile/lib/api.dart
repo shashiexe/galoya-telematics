@@ -93,7 +93,7 @@ class Api {
     }
   }
 
-  static Future<Map<String, dynamic>> get(String action, {Map<String, String>? params}) async {
+  static Future<Map<String, dynamic>> get(String action, {Map<String, String>? params, Duration timeout = const Duration(seconds: 25)}) async {
     final t = await token();
     final headers = {
       ..._defaultHeaders,
@@ -109,7 +109,7 @@ class Api {
     try {
       final r = await http
           .get(Uri.parse('$kApiUrl?action=$action$queryString'), headers: headers)
-          .timeout(const Duration(seconds: 25));
+          .timeout(timeout);
       return _handle(r, sentBytes);
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -117,7 +117,7 @@ class Api {
       try {
         final rHttp = await http
             .get(Uri.parse('$kApiUrlHttp?action=$action$queryString'), headers: headers)
-            .timeout(const Duration(seconds: 25));
+            .timeout(timeout);
         return _handle(rHttp, sentBytes);
       } catch (_) {}
       rethrow;

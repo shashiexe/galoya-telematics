@@ -111,6 +111,14 @@ class LocalDb {
           } catch (_) {}
         }
       },
+      onOpen: (d) async {
+        try {
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_erp_plots_manual ON erp_plots(plot_manual_code)');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_erp_plots_no ON erp_plots(plot_no)');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_local_crops_plot ON local_crops(plot_no)');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_local_crops_cycle ON local_crops(crop_cycle)');
+        } catch (_) {}
+      },
     );
     return _db!;
   }
@@ -698,38 +706,43 @@ class LocalDb {
 
   static Future<void> saveMasterPlots(List<dynamic> plots) async {
     final d = await db;
-    final batch = d.batch();
-    for (final p in plots) {
-      if (p is Map) {
-        batch.insert('erp_plots', {
-          'plot_no': p['plot_no']?.toString() ?? '',
-          'plot_manual_code': p['plot_manual_code']?.toString() ?? '',
-          'sector_no': p['sector_no']?.toString(),
-          'farmer_no': p['farmer_no']?.toString(),
-          'farmer_name': p['farmer_name']?.toString(),
-          'farmer_phone': p['farmer_phone']?.toString(),
-          'farmer_nic': p['farmer_nic']?.toString(),
-          'nominee_name': p['nominee_name']?.toString(),
-          'nominee_nic': p['nominee_nic']?.toString(),
-          'nominee_phone': p['nominee_phone']?.toString(),
-          'bank_code': p['bank_code']?.toString(),
-          'branch_code': p['branch_code']?.toString(),
-          'bank_accno': p['bank_accno']?.toString(),
-          'payment_permission': (p['payment_permission'] == 1 || p['payment_permission'] == true) ? 1 : 0,
-          'debit_permission': (p['debit_permission'] == 1 || p['debit_permission'] == true) ? 1 : 0,
-          'block_id': (p['block_id'] is int) ? p['block_id'] : int.tryParse(p['block_id']?.toString() ?? ''),
-          'land_area': (p['land_area'] is num)
-              ? (p['land_area'] as num).toDouble()
-              : (double.tryParse(p['land_area']?.toString() ?? '') ?? 0.0),
-          'payment_category': p['payment_category']?.toString(),
-          'field_asst_no': p['field_asst_no']?.toString(),
-          'field_asst_name': p['field_asst_name']?.toString(),
-          'feild_asst_code': p['feild_asst_code']?.toString(),
-          'has_geofence': (p['has_geofence'] == 1 || p['geofence_id'] != null) ? 1 : 0,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+    const chunkSize = 500;
+    for (var i = 0; i < plots.length; i += chunkSize) {
+      final end = (i + chunkSize < plots.length) ? i + chunkSize : plots.length;
+      final chunk = plots.sublist(i, end);
+      final batch = d.batch();
+      for (final p in chunk) {
+        if (p is Map) {
+          batch.insert('erp_plots', {
+            'plot_no': p['plot_no']?.toString() ?? '',
+            'plot_manual_code': p['plot_manual_code']?.toString() ?? '',
+            'sector_no': p['sector_no']?.toString(),
+            'farmer_no': p['farmer_no']?.toString(),
+            'farmer_name': p['farmer_name']?.toString(),
+            'farmer_phone': p['farmer_phone']?.toString(),
+            'farmer_nic': p['farmer_nic']?.toString(),
+            'nominee_name': p['nominee_name']?.toString(),
+            'nominee_nic': p['nominee_nic']?.toString(),
+            'nominee_phone': p['nominee_phone']?.toString(),
+            'bank_code': p['bank_code']?.toString(),
+            'branch_code': p['branch_code']?.toString(),
+            'bank_accno': p['bank_accno']?.toString(),
+            'payment_permission': (p['payment_permission'] == 1 || p['payment_permission'] == true) ? 1 : 0,
+            'debit_permission': (p['debit_permission'] == 1 || p['debit_permission'] == true) ? 1 : 0,
+            'block_id': (p['block_id'] is int) ? p['block_id'] : int.tryParse(p['block_id']?.toString() ?? ''),
+            'land_area': (p['land_area'] is num)
+                ? (p['land_area'] as num).toDouble()
+                : (double.tryParse(p['land_area']?.toString() ?? '') ?? 0.0),
+            'payment_category': p['payment_category']?.toString(),
+            'field_asst_no': p['field_asst_no']?.toString(),
+            'field_asst_name': p['field_asst_name']?.toString(),
+            'feild_asst_code': p['feild_asst_code']?.toString(),
+            'has_geofence': (p['has_geofence'] == 1 || p['geofence_id'] != null) ? 1 : 0,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
       }
+      await batch.commit(noResult: true);
     }
-    await batch.commit(noResult: true);
   }
 
   static Future<List<Map<String, dynamic>>> searchMasterPlots(String query, {int limit = 30, bool geofenceOnly = false}) async {
@@ -805,14 +818,23 @@ class LocalDb {
     return rows.map((r) => r['trailer_no']?.toString() ?? '').where((s) => s.isNotEmpty).toList();
   }
 
+  static Future<int> countCrops() async {
+    final d = await db;
+    return Sqflite.firstIntValue(await d.rawQuery('SELECT COUNT(*) FROM local_crops')) ?? 0;
+  }
+
   static Future<void> saveCrops(List<dynamic> list) async {
     final d = await db;
-    final batch = d.batch();
+    final Map<String, Map<String, dynamic>> deduped = {};
     for (final c in list) {
       if (c is Map) {
-        batch.insert('local_crops', {
-          'plot_no': c['plot_no']?.toString().trim() ?? '',
-          'crop_cycle': c['crop_cycle']?.toString().trim() ?? '',
+        final p = c['plot_no']?.toString().trim() ?? '';
+        final cc = c['crop_cycle']?.toString().trim() ?? '';
+        if (p.isEmpty || cc.isEmpty) continue;
+        final key = '${p.toUpperCase()}|${cc.toUpperCase()}';
+        deduped[key] = {
+          'plot_no': p,
+          'crop_cycle': cc,
           'crop_cycle_id': c['crop_cycle_id']?.toString() ?? c['ID']?.toString(),
           'crop_extent': (c['crop_extent'] is num)
               ? (c['crop_extent'] as num).toDouble()
@@ -821,8 +843,16 @@ class LocalDb {
           'status': (c['status'] == 1 || c['status'] == true) ? 1 : 0,
           'age_month': c['age_month']?.toString() ?? '',
           'is_agronomy': (c['is_agronomy'] == 1 || c['is_agronomy'] == true) ? 1 : 0,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        };
       }
+    }
+
+    final batch = d.batch();
+    for (final row in deduped.values) {
+      batch.delete('local_crops',
+          where: 'UPPER(TRIM(plot_no)) = ? AND UPPER(TRIM(crop_cycle)) = ?',
+          whereArgs: [row['plot_no'].toString().toUpperCase().trim(), row['crop_cycle'].toString().toUpperCase().trim()]);
+      batch.insert('local_crops', row);
     }
     await batch.commit(noResult: true);
   }
@@ -842,14 +872,35 @@ class LocalDb {
     final d = await db;
     final clean = plotCode.trim();
     if (clean.isEmpty) return [];
-    return d.rawQuery('''
-      SELECT c.* FROM local_crops c
-      LEFT JOIN erp_plots p ON c.plot_no = p.plot_no
-      WHERE (c.plot_no = ? OR p.plot_manual_code = ? OR c.plot_no IN (
-        SELECT plot_no FROM erp_plots WHERE plot_manual_code = ?
-      )) AND c.status = 1
+
+    final plotRows = await d.rawQuery('''
+      SELECT plot_no, plot_manual_code FROM erp_plots 
+      WHERE plot_manual_code = ? OR plot_no = ?
+    ''', [clean, clean]);
+
+    final Set<String> targetPlotNos = {clean};
+    for (final r in plotRows) {
+      if (r['plot_no'] != null && r['plot_no'].toString().trim().isNotEmpty) {
+        targetPlotNos.add(r['plot_no'].toString().trim());
+      }
+      if (r['plot_manual_code'] != null && r['plot_manual_code'].toString().trim().isNotEmpty) {
+        targetPlotNos.add(r['plot_manual_code'].toString().trim());
+      }
+    }
+
+    final placeholders = List.filled(targetPlotNos.length, '?').join(',');
+    final rows = await d.rawQuery('''
+      SELECT c.crop_cycle, MAX(c.id) as id, MAX(c.plot_no) as plot_no, 
+             MAX(c.crop_cycle_id) as crop_cycle_id, MAX(c.crop_extent) as crop_extent, 
+             MAX(c.variety) as variety, MAX(c.status) as status, 
+             MAX(c.age_month) as age_month, MAX(c.is_agronomy) as is_agronomy
+      FROM local_crops c
+      WHERE c.plot_no IN ($placeholders) AND c.status = 1
+      GROUP BY UPPER(TRIM(c.crop_cycle))
       ORDER BY c.crop_cycle ASC
-    ''', [clean, clean, clean]);
+    ''', targetPlotNos.toList());
+
+    return rows;
   }
 
   static Future<Map<String, dynamic>?> getMasterPlotByCode(String code) async {

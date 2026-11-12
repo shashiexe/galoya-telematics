@@ -57,7 +57,7 @@ function auth_user(): array {
 
 function app_config(): array {
     $latestVersion = setting('latest_app_version', '1.4.6');
-    $latestBuild = (int)setting('latest_app_build', 38);
+    $latestBuild = (int)setting('latest_app_build', 39);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -79,7 +79,7 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.4.6');
-        $latestBuild = (int)setting('latest_app_build', 38);
+        $latestBuild = (int)setting('latest_app_build', 39);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
         $forceUpdate = setting('app_force_update', '1') === '1';
@@ -1102,22 +1102,20 @@ try {
         $u = get_auth_user();
         if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
 
-        // Fetch all active erp_plots with farmer & nominee info for full offline search
+        // Fetch all active erp_plots with farmer info for full offline search (Fast optimized query)
         $plots = q("SELECT 
             p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
-            p.nominee_id, p.payment_permission, p.debit_permission, p.block_id,
-            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
-            n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
-            n.bank_code, n.branch_code, n.bank_accno
+            p.payment_permission, p.debit_permission, p.block_id,
+            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic
             FROM erp_plots p
             LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
-            LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
             WHERE p.is_active = 1
             ORDER BY p.plot_manual_code ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch all active standing crops
+        // Fetch all active standing crops (deduplicated by plot_no and crop_cycle)
         $crops = q("SELECT plot_no, crop_cycle, crop_cycle_id, crop_extent, variety, status, age_month, is_agronomy
-            FROM erp_crops WHERE status = 1")->fetchAll(PDO::FETCH_ASSOC);
+            FROM erp_crops WHERE status = 1
+            GROUP BY plot_no, crop_cycle")->fetchAll(PDO::FETCH_ASSOC);
 
         out([
             'ok' => true,
@@ -1336,7 +1334,15 @@ try {
                              WHERE (c.plot_no = ? OR p.plot_manual_code = ?) AND c.status = 1
                              ORDER BY c.crop_cycle ASC");
         $st->execute([$plotNo, $plotNo]);
-        $crops = $st->fetchAll(PDO::FETCH_ASSOC);
+        $rawCrops = $st->fetchAll(PDO::FETCH_ASSOC);
+        $dedupCrops = [];
+        foreach ($rawCrops as $cr) {
+            $cc = strtoupper(trim($cr['crop_cycle'] ?? ''));
+            if ($cc !== '' && !isset($dedupCrops[$cc])) {
+                $dedupCrops[$cc] = $cr;
+            }
+        }
+        $crops = array_values($dedupCrops);
 
         // 2. Fetch full plot + farmer profile (even if crops are empty)
         $plotInfo = null;

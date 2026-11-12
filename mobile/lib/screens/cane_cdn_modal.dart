@@ -227,17 +227,26 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       }
 
       if (mounted) {
+        final Map<String, Map<String, dynamic>> dedupedMap = {};
+        for (final c in crops) {
+          final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
+          if (cc.isNotEmpty && !dedupedMap.containsKey(cc)) {
+            dedupedMap[cc] = c;
+          }
+        }
+        final finalCrops = dedupedMap.values.toList();
+
         setState(() {
           _loadingCrops = false;
-          _activeCrops = crops;
-          if (crops.isEmpty) {
+          _activeCrops = finalCrops;
+          if (finalCrops.isEmpty) {
             _hasNoActiveCrop = true;
             _selectedCropCycle = null;
             _selectedCropCycleId = null;
             _cropCycleCtrl.text = '';
           } else {
             _hasNoActiveCrop = false;
-            final first = crops.first;
+            final first = finalCrops.first;
             _selectedCropCycle = first['crop_cycle']?.toString() ?? 'P';
             _selectedCropCycleId = (first['crop_cycle_id'] ?? first['ID'] ?? '').toString();
             _cropCycleCtrl.text = _selectedCropCycle!;

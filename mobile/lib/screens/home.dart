@@ -3469,8 +3469,13 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
       }
       final localCrops = await LocalDb.getActiveCrops(code);
       if (localCrops.isNotEmpty && mounted) {
+        final Map<String, Map<String, dynamic>> dedup = {};
+        for (final c in localCrops) {
+          final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
+          if (cc.isNotEmpty && !dedup.containsKey(cc)) dedup[cc] = c;
+        }
         setState(() {
-          _crops = localCrops;
+          _crops = dedup.values.toList();
           _loadingCrops = false;
         });
       }
@@ -3493,11 +3498,17 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
         }
         if (res['crops'] is List) {
           final serverCrops = (res['crops'] as List).cast<Map<String, dynamic>>();
+          final Map<String, Map<String, dynamic>> dedup = {};
+          for (final c in serverCrops) {
+            final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
+            if (cc.isNotEmpty && !dedup.containsKey(cc)) dedup[cc] = c;
+          }
+          final finalCrops = dedup.values.toList();
           setState(() {
-            _crops = serverCrops;
+            _crops = finalCrops;
             _loadingCrops = false;
           });
-          await LocalDb.saveCrops(serverCrops);
+          await LocalDb.saveCrops(finalCrops);
         } else {
           setState(() => _loadingCrops = false);
         }
@@ -3817,39 +3828,68 @@ class _PlotDetailsSheetState extends State<_PlotDetailsSheet> {
                           ),
                         )
                       else if (_crops.isNotEmpty)
-                        Column(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: _crops.map((c) {
                             final cycle = (c['crop_cycle'] ?? '').toString();
-                            final ext = c['crop_extent'] != null ? '${c['crop_extent']} Ha' : '';
+                            final ext = (c['crop_extent'] != null &&
+                                    c['crop_extent'].toString().isNotEmpty &&
+                                    c['crop_extent'].toString() != '0.0')
+                                ? '${c['crop_extent']} Ha'
+                                : '';
                             final varName = (c['variety'] ?? '').toString();
                             final age = (c['age_month'] ?? '').toString();
                             return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                               decoration: BoxDecoration(
                                 color: const Color(0xff0f172a),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: const Color(0xff059669)),
                               ),
                               child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: const Color(0xff059669), borderRadius: BorderRadius.circular(6)),
-                                    child: Text(cycle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Variety: ${varName.isNotEmpty ? varName : "Standard"} • $ext', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                        if (age.isNotEmpty)
-                                          Text('Age: $age Months', style: const TextStyle(color: Color(0xff94a3b8), fontSize: 10)),
-                                      ],
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff059669),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      cycle,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
-                                  const Icon(Icons.check_circle, color: Color(0xff34d399), size: 18),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${varName.isNotEmpty ? varName : "Standard"}${ext.isNotEmpty ? " • $ext" : ""}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                      if (age.isNotEmpty)
+                                        Text(
+                                          'Age: $age Mo (මාස $age)',
+                                          style: const TextStyle(
+                                            color: Color(0xff38bdf8),
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.check_circle, color: Color(0xff34d399), size: 16),
                                 ],
                               ),
                             );

@@ -57,7 +57,7 @@ function auth_user(): array {
 
 function app_config(): array {
     $latestVersion = setting('latest_app_version', '1.4.6');
-    $latestBuild = (int)setting('latest_app_build', 39);
+    $latestBuild = (int)setting('latest_app_build', 40);
     $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
     return [
         'location_interval' => (int)setting('location_interval', 15),
@@ -79,7 +79,7 @@ try {
         $clientBuild = (int)($_GET['build'] ?? ($_POST['build'] ?? 1));
         
         $latestVersion = setting('latest_app_version', '1.4.6');
-        $latestBuild = (int)setting('latest_app_build', 39);
+        $latestBuild = (int)setting('latest_app_build', 40);
         $apkUrl = setting('apk_download_url', 'https://track.galoya.lk/Galoya-Telematics.apk');
         $changelog = setting('app_update_changelog', "🌾 PLOT NAVIGATOR, NOMINEE & ACTIVE CROP UPDATE\n\n• Instant Plot Autocomplete & Suggestions dropdown in CDN form\n• Auto-fills Farmer Name, NIC, Sector & Land Area\n• GPS Nearest Plot auto-detection button\n• Factory Weighbridge Live Delivery Tracker\n• 100% Offline SQLite caching");
         $forceUpdate = setting('app_force_update', '1') === '1';
@@ -1469,8 +1469,8 @@ try {
                 $tonnage = $netWeight > 0 ? round($netWeight / 1000.0, 2) : (float)($item['TonnageRecived'] ?? ($item['tonnage_received'] ?? 0));
                 $gross = (float)($item['gross_weight'] ?? 0);
                 $tare = (float)($item['tare_weight'] ?? 0);
-                $weighedDate = !empty($item['weighed_date']) ? $item['weighed_date'] : date('Y-m-d H:i:s');
                 $wbtCreateTime = !empty($item['WBTCreate_Time']) ? $item['WBTCreate_Time'] : (!empty($item['wbt_create_time']) ? $item['wbt_create_time'] : null);
+                $weighedDate = !empty($wbtCreateTime) ? $wbtCreateTime : (!empty($item['weighed_date']) ? $item['weighed_date'] : date('Y-m-d H:i:s'));
                 if ($cdn && ($wbt || $netWeight > 0)) {
                     $stmt->execute([$wbt, $netWeight, $tonnage, $gross, $tare, $weighedDate, $wbtCreateTime, $cdn]);
                     $updated += $stmt->rowCount();

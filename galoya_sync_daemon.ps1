@@ -14,7 +14,7 @@ param(
     [string]$MssqlUser = "sa",
     [string]$MssqlPass = "(GopliT@#4900%)",
     [string]$ApiBase = "https://track.galoya.lk/api.php?action=erp_sync_bridge&key=galoya2026",
-    [int]$IntervalSec = 60,
+    [int]$IntervalSec = 15,
     [switch]$RunOnce = $false
 )
 
@@ -66,7 +66,7 @@ function Execute-SyncCycle {
         # ----------------------------------------------------
         # 1. PULL PENDING CDNs FROM CLOUD -> INSERT TO MSSQL
         # ----------------------------------------------------
-        $pullUrl = "$ApiBase&sub=pull_pending_cdns&limit=100"
+        $pullUrl = "$($ApiBase)&sub=pull_pending_cdns&limit=100"
         $pullRes = $null
         try {
             $pullRes = Invoke-RestMethod -Uri $pullUrl -Method Get -Headers $Headers -TimeoutSec 15
@@ -81,22 +81,20 @@ function Execute-SyncCycle {
             foreach ($c in $pullRes.cdns) {
                 $cdnNo = $c.cdn.ToString().Trim()
                 $plotNo = if ($c.plot_no) { $c.plot_no.ToString().Trim() } else { "" }
-                $type = if ($c.type) { $c.type.ToString().Trim() } else { "OUT" }
+                $type = if ($c.type) { $c.type.ToString().Trim() } else { "CC" }
                 $caneCat = if ($c.cane_category_code) { $c.cane_category_code.ToString().Trim() } else { "CAT1" }
                 $vehNo = if ($c.vehicle_no) { $c.vehicle_no.ToString().Trim() } else { "" }
                 $trailerNo = if ($c.trailer_no) { $c.trailer_no.ToString().Trim() } else { "" }
                 $cropCycle = if ($c.crop_cycle) { $c.crop_cycle.ToString().Trim() } else { "" }
+                $cropCycleId = if ($c.crop_cycle_id) { $c.crop_cycle_id.ToString().Trim() } else { $null }
+                $lstHvst = if ($c.lst_hvst_tonnage) { [int]$c.lst_hvst_tonnage } else { 0 }
                 $user = if ($c.create_user) { $c.create_user.ToString().Trim() } else { "FieldOfficer" }
                 $fa = if ($c.field_asst_no) { $c.field_asst_no.ToString().Trim() } else { "" }
+                $isDeleted = if ($c.is_deleted) { [int]$c.is_deleted } else { 0 }
+                $modUser = if ($c.modify_user) { $c.modify_user.ToString().Trim() } else { $user }
 
                 $cmd = $conn.CreateCommand()
-                $cmd.CommandText = @"
-IF NOT EXISTS (SELECT 1 FROM [dbo].[CDN_Details] WHERE [cdn] = @cdn)
-BEGIN
-    INSERT INTO [dbo].[CDN_Details] ([cdn], [CDNIssued], [Plot_No], [Type], [Cane_Catagory_Code], [vehicle_No], [Trailer_no], [Crop_Cycle], [CreateUser], [CreateTime], [FieldAssistant_No], [WeigeTicket_No], [TonnageRecived], [Delete])
-    VALUES (@cdn, 1, @plot, @type, @cat, @veh, @trailer, @cycle, @user, GETDATE(), @fa, NULL, '0', 0)
-END
-"@
+                $cmd.CommandText = "IF NOT EXISTS (SELECT 1 FROM [dbo].[CDN_Details] WHERE [cdn] = @cdn) BEGIN INSERT INTO [dbo].[CDN_Details] ([cdn], [CDNIssued], [Plot_No], [Type], [Cane_Catagory_Code], [vehicle_No], [Trailer_no], [Crop_Cycle], [CreateUser], [CreateTime], [FieldAssistant_No], [CropCycleID], [LstHvstTonnage], [WeigeTicket_No], [TonnageRecived], [Delete]) VALUES (@cdn, 1, @plot, @type, @cat, @veh, @trailer, @cycle, @user, GETDATE(), @fa, @cropCycleId, @lstHvst, NULL, '0', @del) END ELSE BEGIN UPDATE [dbo].[CDN_Details] SET [Plot_No] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @plot ELSE [Plot_No] END, [Type] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @type ELSE [Type] END, [Cane_Catagory_Code] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @cat ELSE [Cane_Catagory_Code] END, [vehicle_No] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @veh ELSE [vehicle_No] END, [Trailer_no] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @trailer ELSE [Trailer_no] END, [Crop_Cycle] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @cycle ELSE [Crop_Cycle] END, [FieldAssistant_No] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @fa ELSE [FieldAssistant_No] END, [CropCycleID] = CASE WHEN [WeigeTicket_No] IS NULL OR LTRIM(RTRIM([WeigeTicket_No])) = '' THEN @cropCycleId ELSE [CropCycleID] END, [LstHvstTonnage] = @lstHvst, [Delete] = @del, [modifyUser] = @modUser, [modifyDate] = GETDATE() WHERE [cdn] = @cdn END"
                 $cmd.Parameters.AddWithValue("@cdn", $cdnNo) | Out-Null
                 $cmd.Parameters.AddWithValue("@plot", $plotNo) | Out-Null
                 $cmd.Parameters.AddWithValue("@type", $type) | Out-Null
@@ -104,18 +102,23 @@ END
                 $cmd.Parameters.AddWithValue("@veh", $vehNo) | Out-Null
                 $cmd.Parameters.AddWithValue("@trailer", $trailerNo) | Out-Null
                 $cmd.Parameters.AddWithValue("@cycle", $cropCycle) | Out-Null
+                $cropCycleVal = if ($cropCycleId) { $cropCycleId } else { [DBNull]::Value }
+                $cmd.Parameters.AddWithValue("@cropCycleId", $cropCycleVal) | Out-Null
+                $cmd.Parameters.AddWithValue("@lstHvst", $lstHvst) | Out-Null
+                $cmd.Parameters.AddWithValue("@del", $isDeleted) | Out-Null
                 $cmd.Parameters.AddWithValue("@user", $user) | Out-Null
                 $cmd.Parameters.AddWithValue("@fa", $fa) | Out-Null
+                $cmd.Parameters.AddWithValue("@modUser", $modUser) | Out-Null
 
                 $cmd.ExecuteNonQuery() | Out-Null
                 $syncedCdns.Add($cdnNo)
-                Log-Write "  -> Inserted CDN: $cdnNo (Plot: $plotNo, Vehicle: $vehNo, Crop: $cropCycle, FA: $fa)" "Green"
+                Log-Write "  -> Synced CDN to MSSQL: $cdnNo (Plot: $plotNo, Vehicle: $vehNo, Crop: $cropCycle, CropCycleID: $cropCycleId, FinalLoad: $lstHvst, Del: $isDeleted)" "Green"
             }
 
             if ($syncedCdns.Count -gt 0) {
                 # Mark as synced in cloud
                 $markBody = @{ cdns = $syncedCdns } | ConvertTo-Json
-                $markRes = Invoke-RestMethod -Uri "$ApiBase&sub=mark_cdn_synced" -Method Post -Body $markBody -Headers $Headers -ContentType "application/json" -TimeoutSec 15
+                $markRes = Invoke-RestMethod -Uri "$($ApiBase)&sub=mark_cdn_synced" -Method Post -Body $markBody -Headers $Headers -ContentType "application/json" -TimeoutSec 15
                 Log-Write "✅ Marked $($syncedCdns.Count) CDN(s) as synced in MySQL cloud." "Green"
             }
         } else {
@@ -126,29 +129,36 @@ END
         # 2. PUSH COMPLETED WEIGHBRIDGE TICKETS -> CLOUD
         # ----------------------------------------------------
         $wbtCmd = $conn.CreateCommand()
-        $wbtCmd.CommandText = @"
-SELECT [cdn], [WeigeTicket_No], [TonnageRecived], [modifyDate]
-FROM [dbo].[CDN_Details]
-WHERE [WeigeTicket_No] IS NOT NULL
-  AND LTRIM(RTRIM([WeigeTicket_No])) != ''
-  AND [TonnageRecived] IS NOT NULL
-  AND LTRIM(RTRIM([TonnageRecived])) != '0'
-  AND ([Delete] = 0 OR [Delete] IS NULL)
-"@
+        $wbtCmd.CommandText = "SELECT [cdn], [WeigeTicket_No], [net_weight], [TonnageRecived], [WBTCreate_Time], [modifyDate] FROM [dbo].[CDN_Details] WHERE [WeigeTicket_No] IS NOT NULL AND LTRIM(RTRIM([WeigeTicket_No])) != '' AND ([Delete] = 0 OR [Delete] IS NULL)"
         $reader = $wbtCmd.ExecuteReader()
         $wbtBatch = [System.Collections.Generic.List[PSObject]]::new()
 
         while ($reader.Read()) {
             $cdn = $reader["cdn"].ToString().Trim()
             $wbt = $reader["WeigeTicket_No"].ToString().Trim()
-            $tonnage = [double]($reader["TonnageRecived"].ToString().Trim())
-            $mDate = if ($reader["modifyDate"] -ne [DBNull]::Value) { [DateTime]$reader["modifyDate"] } else { Get-Date }
+            $rawNet = $reader["net_weight"]
+            $netWeight = 0.0
+            if ($rawNet -ne [DBNull]::Value -and $rawNet -ne $null) {
+                $netWeight = [double]$rawNet
+            }
+            $rawWbtTime = $reader["WBTCreate_Time"]
+            $wbtTime = $null
+            if ($rawWbtTime -ne [DBNull]::Value -and $rawWbtTime -ne $null) {
+                $wbtTime = ([DateTime]$rawWbtTime).ToString("yyyy-MM-dd HH:mm:ss")
+            }
+            $rawMDate = $reader["modifyDate"]
+            $mDate = Get-Date
+            if ($rawMDate -ne [DBNull]::Value -and $rawMDate -ne $null) {
+                $mDate = [DateTime]$rawMDate
+            }
+            $finalWbtTime = if ($wbtTime) { $wbtTime } else { $mDate.ToString("yyyy-MM-dd HH:mm:ss") }
 
             $wbtBatch.Add([PSCustomObject]@{
                 cdn             = $cdn
                 WeigeTicket_No  = $wbt
-                TonnageRecived  = $tonnage
-                weighed_date    = $mDate.ToString("yyyy-MM-dd HH:mm:ss")
+                net_weight      = $netWeight
+                WBTCreate_Time  = $wbtTime
+                weighed_date    = $finalWbtTime
             })
         }
         $reader.Close()
@@ -156,16 +166,17 @@ WHERE [WeigeTicket_No] IS NOT NULL
         if ($wbtBatch.Count -gt 0) {
             Log-Write "⚖️ Found $($wbtBatch.Count) completed Weighbridge ticket(s) in MSSQL..." "Yellow"
             $wbtBody = @{ items = $wbtBatch } | ConvertTo-Json -Depth 5
-            $wbtRes = Invoke-RestMethod -Uri "$ApiBase&sub=push_wbt_batch" -Method Post -Body $wbtBody -Headers $Headers -ContentType "application/json" -TimeoutSec 15
+            $wbtUri = "$($ApiBase)&sub=push_wbt_batch"
+            $wbtRes = Invoke-RestMethod -Uri $wbtUri -Method Post -Body $wbtBody -Headers $Headers -ContentType "application/json" -TimeoutSec 15
             Log-Write "✅ Cloud updated with $($wbtRes.updated) completed weighbridge record(s)!" "Green"
         } else {
             Log-Write "ℹ️ No new completed weighbridge tickets." "DarkGray"
         }
 
         # ----------------------------------------------------
-        # 3. PERIODIC MASTER SYNC (Every 15 cycles ~ 15 minutes)
+        # 3. PERIODIC MASTER SYNC (Every 60 cycles = 15 minutes with 15s interval)
         # ----------------------------------------------------
-        if ($CycleCounter % 15 -eq 1) {
+        if ($CycleCounter % 60 -eq 1) {
             Log-Write "🔄 Running scheduled Master Tables sync (Vehicles, Trailers, Active Crops)..." "Cyan"
             
             # Sync Active Vehicles
@@ -185,8 +196,58 @@ WHERE [WeigeTicket_No] IS NOT NULL
             $vr.Close()
             if ($vList.Count -gt 0) {
                 $vBody = @{ entity = 'vehicles'; data = $vList } | ConvertTo-Json -Depth 4
-                Invoke-RestMethod -Uri "$ApiBase&sub=push_master_batch" -Method Post -Body $vBody -Headers $Headers -ContentType "application/json" -TimeoutSec 30 | Out-Null
+                Invoke-RestMethod -Uri "$($ApiBase)&sub=push_master_batch" -Method Post -Body $vBody -Headers $Headers -ContentType "application/json" -TimeoutSec 30 | Out-Null
                 Log-Write "  -> Synced $($vList.Count) active vehicles." "Green"
+            }
+
+            # Sync Trailers
+            $tCmd = $conn.CreateCommand()
+            $tCmd.CommandText = "SELECT [Trailerno], [Trailer], [Weight], [VehicleNumber] FROM [dbo].[tblma_tailer] WHERE [Deleted_Date] IS NULL"
+            $tr = $tCmd.ExecuteReader()
+            $tList = [System.Collections.Generic.List[PSObject]]::new()
+            while ($tr.Read()) {
+                $tList.Add([PSCustomObject]@{
+                    Trailerno     = $tr["Trailerno"].ToString().Trim()
+                    Trailer       = if ($tr["Trailer"] -ne [DBNull]::Value) { $tr["Trailer"].ToString().Trim() } else { "" }
+                    Weight        = if ($tr["Weight"] -ne [DBNull]::Value) { [double]$tr["Weight"] } else { 0.0 }
+                    VehicleNumber = if ($tr["VehicleNumber"] -ne [DBNull]::Value) { $tr["VehicleNumber"].ToString().Trim() } else { "" }
+                })
+            }
+            $tr.Close()
+            if ($tList.Count -gt 0) {
+                for ($i = 0; $i -lt $tList.Count; $i += 400) {
+                    $chunk = $tList.GetRange($i, [Math]::Min(400, $tList.Count - $i))
+                    $tBody = @{ entity = 'trailers'; data = $chunk } | ConvertTo-Json -Depth 4
+                    Invoke-RestMethod -Uri "$($ApiBase)&sub=push_master_batch" -Method Post -Body $tBody -Headers $Headers -ContentType "application/json" -TimeoutSec 30 | Out-Null
+                }
+                Log-Write "  -> Synced $($tList.Count) trailers." "Green"
+            }
+
+            # Sync Active Standing Crops
+            $cCmd = $conn.CreateCommand()
+            $cCmd.CommandText = "SELECT [ID], [Plot_No], [Crop_Cycle], [Crop_Extent], [Variety], [Status], [Age_Month], 0 AS is_agronomy FROM [dbo].[TblCropCycle] WHERE [Status] = 1 UNION ALL SELECT [ID], [Plot_No], [Crop_Cycle], [Crop_Extent], [Variety], [Status], [Age_Month], 1 AS is_agronomy FROM [dbo].[Agronomy_TblCropCycle] WHERE [Status] = 1"
+            $cr = $cCmd.ExecuteReader()
+            $cList = [System.Collections.Generic.List[PSObject]]::new()
+            while ($cr.Read()) {
+                $cList.Add([PSCustomObject]@{
+                    ID          = $cr["ID"].ToString().Trim()
+                    Plot_No     = $cr["Plot_No"].ToString().Trim()
+                    Crop_Cycle  = if ($cr["Crop_Cycle"] -ne [DBNull]::Value) { $cr["Crop_Cycle"].ToString().Trim() } else { "" }
+                    Crop_Extent = if ($cr["Crop_Extent"] -ne [DBNull]::Value) { [double]$cr["Crop_Extent"] } else { 0.0 }
+                    Variety     = if ($cr["Variety"] -ne [DBNull]::Value) { $cr["Variety"].ToString().Trim() } else { "" }
+                    Status      = 1
+                    Age_Month   = if ($cr["Age_Month"] -ne [DBNull]::Value) { $cr["Age_Month"].ToString().Trim() } else { "" }
+                    is_agronomy = [int]$cr["is_agronomy"]
+                })
+            }
+            $cr.Close()
+            if ($cList.Count -gt 0) {
+                for ($i = 0; $i -lt $cList.Count; $i += 500) {
+                    $chunk = $cList.GetRange($i, [Math]::Min(500, $cList.Count - $i))
+                    $cBody = @{ entity = 'crops'; data = $chunk } | ConvertTo-Json -Depth 4
+                    Invoke-RestMethod -Uri "$($ApiBase)&sub=push_master_batch" -Method Post -Body $cBody -Headers $Headers -ContentType "application/json" -TimeoutSec 30 | Out-Null
+                }
+                Log-Write "  -> Synced $($cList.Count) active standing crops." "Green"
             }
         }
 

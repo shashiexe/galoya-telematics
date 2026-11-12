@@ -934,7 +934,9 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     final gross = (item['gross_weight'] is num) ? (item['gross_weight'] as num).toDouble() : 0.0;
     final tare = (item['tare_weight'] is num) ? (item['tare_weight'] as num).toDouble() : 0.0;
     final createTime = item['create_time']?.toString() ?? '';
-    final weighedDate = item['weighed_date']?.toString() ?? item['wbt_create_time']?.toString() ?? '';
+    final weighedDate = (item['wbt_create_time'] != null && item['wbt_create_time'].toString().trim().isNotEmpty)
+        ? item['wbt_create_time'].toString().trim()
+        : (item['weighed_date']?.toString() ?? '');
     final status = (item['status'] ?? 'PENDING').toString().toUpperCase();
     final isCompleted = status == 'COMPLETED';
     final isDeleted = (item['is_deleted'] == 1 || item['is_deleted'] == true || item['is_deleted'] == '1');
@@ -1239,11 +1241,66 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
     );
   }
 
+  String _resolvePhotoUrl(String path) {
+    final clean = path.trim();
+    if (clean.isEmpty) return '';
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      return clean;
+    }
+    if (clean.startsWith('uploads/')) {
+      return '$kServerBase/$clean';
+    }
+    if (clean.startsWith('/uploads/')) {
+      return '$kServerBase$clean';
+    }
+    if (!clean.startsWith('/') && !clean.contains('\\') && (clean.endsWith('.jpg') || clean.endsWith('.png') || clean.endsWith('.jpeg'))) {
+      return '$kServerBase/uploads/cdn/$clean';
+    }
+    return clean;
+  }
+
+  Widget _buildPhotoWidget(String rawPath, {BoxFit fit = BoxFit.cover}) {
+    final path = _resolvePhotoUrl(rawPath);
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: fit,
+        loadingBuilder: (ctx, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xff38bdf8)),
+            ),
+          );
+        },
+        errorBuilder: (_, err, ___) => const Center(
+          child: Icon(Icons.broken_image, color: Colors.white38, size: 24),
+        ),
+      );
+    }
+    final f = File(path);
+    if (f.existsSync()) {
+      return Image.file(
+        f,
+        fit: fit,
+        errorBuilder: (_, __, ___) => const Center(
+          child: Icon(Icons.photo, color: Colors.white38, size: 24),
+        ),
+      );
+    }
+    return const Center(
+      child: Icon(Icons.photo, color: Colors.white38, size: 24),
+    );
+  }
+
   Widget _buildGalleryThumbnail(String title, String? path) {
+    final hasPhoto = path != null && path.trim().isNotEmpty;
     return Expanded(
       child: GestureDetector(
         onTap: () {
-          if (path != null && path.isNotEmpty) {
+          if (hasPhoto) {
             _openZoomPhoto(title, path);
           }
         },
@@ -1252,14 +1309,12 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           decoration: BoxDecoration(
             color: const Color(0xff0f172a),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: path != null ? const Color(0xff38bdf8) : const Color(0xff334155)),
+            border: Border.all(color: hasPhoto ? const Color(0xff38bdf8) : const Color(0xff334155)),
           ),
-          child: path != null && path.isNotEmpty
+          child: hasPhoto
               ? ClipRRect(
                   borderRadius: BorderRadius.circular(7),
-                  child: path.startsWith('http')
-                      ? Image.network(path, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white38))
-                      : Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.photo, color: Colors.white38)),
+                  child: _buildPhotoWidget(path),
                 )
               : Center(
                   child: Column(
@@ -1288,9 +1343,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               child: InteractiveViewer(
                 minScale: 0.8,
                 maxScale: 4.0,
-                child: path.startsWith('http')
-                    ? Image.network(path, fit: BoxFit.contain)
-                    : Image.file(File(path), fit: BoxFit.contain),
+                child: _buildPhotoWidget(path, fit: BoxFit.contain),
               ),
             ),
             Positioned(
@@ -2601,7 +2654,9 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                         final vehicle = item['vehicle_no']?.toString() ?? '';
                         final plotCode = item['plot_manual_code']?.toString() ?? item['plot_no']?.toString() ?? '';
                         final farmer = item['farmer_name']?.toString() ?? '';
-                        final weighedDate = item['weighed_date']?.toString() ?? item['wbt_create_time']?.toString() ?? '';
+                        final weighedDate = (item['wbt_create_time'] != null && item['wbt_create_time'].toString().trim().isNotEmpty)
+        ? item['wbt_create_time'].toString().trim()
+        : (item['weighed_date']?.toString() ?? '');
                         final createTime = item['create_time']?.toString() ?? '';
 
                         return GestureDetector(

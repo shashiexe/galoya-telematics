@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -42,14 +42,14 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
 
   // Category Configuration
   final List<Map<String, String>> _ccCategories = const [
-    {'code': 'CAT1', 'name': 'Green Cane (à¶šà·œà·… à¶‹à¶šà·Š)'},
-    {'code': 'CAT2', 'name': 'Burnt Cane (à¶œà·’à¶±à·’ à¶­à·à¶¶à·– à¶‹à¶šà·Š)'},
-    {'code': 'CAT6', 'name': 'Machine Harvested (à¶¸à·à·‚à·’à¶±à·Š à¶…à·ƒà·Šà·€à¶±à·”)'},
+    {'code': 'CAT1', 'name': 'Green Cane (කොළ උක්)'},
+    {'code': 'CAT2', 'name': 'Burnt Cane (ගිනි තැබූ උක්)'},
+    {'code': 'CAT6', 'name': 'Machine Harvested (මැෂින් අස්වනු)'},
   ];
 
   final List<Map<String, String>> _scCategories = const [
-    {'code': 'CAT3', 'name': 'Seed Cane (à¶¶à·’à¶­à·Šà¶­à¶» à¶‹à¶šà·Š)'},
-    {'code': 'CAT4', 'name': 'Seed Cane Top Cutting (à¶šà¶»à¶§à·’)'},
+    {'code': 'CAT3', 'name': 'Seed Cane (බිත්තර උක්)'},
+    {'code': 'CAT4', 'name': 'Seed Cane Top Cutting (කරටි)'},
   ];
 
   List<Map<String, String>> get _currentCategories =>
@@ -348,7 +348,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               backgroundColor: const Color(0xff059669),
-              content: Text('âœ… CDN Slip à¶…à¶‚à¶šà¶º à·„à¶³à·”à¶±à·à¶œà¶±à·Šà¶±à· à¶½à¶¯à·“: $detectedCdn'),
+              content: Text('✅ CDN Slip අංකය හඳුනාගන්නා ලදී: $detectedCdn'),
             ),
           );
         }
@@ -357,7 +357,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               backgroundColor: Color(0xffd97706),
-              content: Text('ðŸ“· CDN à¶¡à·à¶ºà·à¶»à·–à¶´à¶º à¶‡à¶­à·”à·…à¶­à·Š à·€à·’à¶º. à¶šà¶»à·”à¶«à·à¶šà¶» à¶…à¶‚à¶šà¶º type à¶šà¶»à¶±à·Šà¶±.'),
+              content: Text('📷 CDN ඡායාරූපය ඇතුළත් විය. කරුණාකර අංකය type කරන්න.'),
             ),
           );
         }
@@ -546,7 +546,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Color(0xffd97706),
-          content: Text('GPS à·ƒà·Šà¶®à·à¶±à¶º à¶­à·€à¶¸à¶­à·Š à·ƒà·–à¶¯à·à¶±à¶¸à·Š à¶±à·à¶­. à¶šà¶»à·”à¶«à·à¶šà¶» GPS à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶šà¶» à¶‡à¶­à·Šà¶¯à·à¶ºà·’ à¶¶à¶½à¶±à·Šà¶±.'),
+          content: Text('GPS ස්ථානය තවමත් සූදානම් නැත. කරුණාකර GPS සක්‍රීය කර ඇත්දැයි බලන්න.'),
         ),
       );
       return;
@@ -566,7 +566,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               backgroundColor: const Color(0xff059669),
-              content: Text('ðŸ“ à¶†à·ƒà¶±à·Šà¶±à¶­à¶¸ à¶‰à¶©à¶¸ à¶­à·à¶»à· à¶œà¶±à·Šà¶±à· à¶½à¶¯à·“: $name (à¶¯à·”à¶»: $dist m)'),
+              content: Text('📍 ආසන්නතම ඉඩම තෝරා ගන්නා ලදී: $name (දුර: $dist m)'),
             ),
           );
         }
@@ -575,7 +575,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               backgroundColor: Color(0xffd97706),
-              content: Text('à·€à¶­à·Šà¶¸à¶±à·Š GPS à·ƒà·Šà¶®à·à¶±à¶ºà¶§ à¶†à·ƒà¶±à·Šà¶±à·€ à¶šà·’à·ƒà·’à¶¯à·” à¶‰à¶©à¶¸à¶šà·Š à·„à¶¸à·” à¶±à·œà·€à·“à¶º.'),
+              content: Text('වත්මන් GPS ස්ථානයට ආසන්නව කිසිදු ඉඩමක් හමු නොවීය.'),
             ),
           );
         }
@@ -603,18 +603,18 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               children: [
                 Icon(Icons.warning, color: Colors.red),
                 SizedBox(width: 8),
-                Text('à¶…à¶±à·”à¶´à·’à¶§à¶´à¶­à·Š CDN à¶…à¶‚à¶šà¶ºà¶šà·’!', style: TextStyle(color: Colors.white, fontSize: 16)),
+                Text('අනුපිටපත් CDN අංකයකි!', style: TextStyle(color: Colors.white, fontSize: 16)),
               ],
             ),
             content: Text(
-              'CDN à¶…à¶‚à¶šà¶º "$cdnNo" à¶¯à·à¶±à¶§à¶¸à¶­à·Š à¶´à¶¯à·Šà¶°à¶­à·’à¶ºà·š à¶½à·’à¶ºà·à¶´à¶¯à·’à¶‚à¶ à·’ à¶šà¶» à¶‡à¶­.\nà¶‘à¶šà¶¸ CDN à¶…à¶‚à¶šà¶º à¶±à·à·€à¶­ à¶‡à¶­à·”à·…à¶­à·Š à¶šà·… à¶±à·œà·„à·à¶š.',
+              'CDN අංකය "$cdnNo" දැනටමත් පද්ධතියේ ලියාපදිංචි කර ඇත.\nඑකම CDN අංකය නැවත ඇතුළත් කළ නොහැක.',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             actions: [
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff0284c7)),
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('à·„à¶»à·’ (OK)'),
+                child: const Text('හරි (OK)'),
               ),
             ],
           ),
@@ -628,7 +628,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('ðŸ›‘ à¶¸à·™à¶¸ à¶‰à¶©à¶¸ à·ƒà¶³à·„à· à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶¶à·à¶œà¶ºà¶šà·Š à·€à·à¶»à·Šà¶­à· à·€à·“ à¶±à·œà¶¸à·à¶­. CDN à¶±à·’à¶šà·”à¶­à·Š à¶šà·… à¶±à·œà·„à·à¶š!'),
+          content: Text('🛑 මෙම ඉඩම සඳහා සක්‍රීය බෝගයක් වාර්තා වී නොමැත. CDN නිකුත් කළ නොහැක!'),
         ),
       );
       return;
@@ -639,7 +639,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('âš ï¸ CDN Slip à¶¡à·à¶ºà·à¶»à·–à¶´à¶º (Scan Slip) à¶…à¶±à·’à·€à·à¶»à·Šà¶º à·€à·š!'),
+          content: Text('⚠️ CDN Slip ඡායාරූපය (Scan Slip) අනිවාර්ය වේ!'),
         ),
       );
       return;
@@ -648,7 +648,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('âš ï¸ Tractor Front & Number Plate à¶¡à·à¶ºà·à¶»à·–à¶´à¶º à¶…à¶±à·’à·€à·à¶»à·Šà¶º à·€à·š!'),
+          content: Text('⚠️ Tractor Front & Number Plate ඡායාරූපය අනිවාර්ය වේ!'),
         ),
       );
       return;
@@ -657,7 +657,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text('âš ï¸ Trailer Number à¶¡à·à¶ºà·à¶»à·–à¶´à¶º à¶…à¶±à·’à·€à·à¶»à·Šà¶º à·€à·š!'),
+          content: Text('⚠️ Trailer Number ඡායාරූපය අනිවාර්ය වේ!'),
         ),
       );
       return;
@@ -673,22 +673,22 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             children: [
               Icon(Icons.lightbulb, color: Color(0xfffbbf24)),
               SizedBox(width: 8),
-              Text('ðŸ’¡ à¶¸à¶­à¶šà·Š à¶šà·’à¶»à·“à¶¸à¶šà·Š (Reminder)', style: TextStyle(color: Colors.white, fontSize: 15)),
+              Text('💡 මතක් කිරීමක් (Reminder)', style: TextStyle(color: Colors.white, fontSize: 15)),
             ],
           ),
           content: Text(
-            'à¶¸à·™à¶º à¶‰à¶©à¶¸ $plotManualCode à·ƒà¶³à·„à· à¶…à·€à·ƒà·à¶± à¶§à·Šâ€à¶»à·à¶šà·Šà¶§à¶»à·Š à¶½à·à¶©à·Š à¶‘à¶šà¶¯?\n(Is this the final cane load for this plot?)',
+            'මෙය ඉඩම $plotManualCode සඳහා අවසාන ට්‍රැක්ටර් ලෝඩ් එකද?\n(Is this the final cane load for this plot?)',
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('à¶±à·à¶­, à¶­à·€ à¶½à·à¶©à·Š à¶‡à¶­', style: TextStyle(color: Colors.white70)),
+              child: const Text('නැත, තව ලෝඩ් ඇත', style: TextStyle(color: Colors.white70)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff10b981), foregroundColor: Colors.black),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('à¶”à·€à·Š, à¶…à·€à·ƒà·à¶± à¶½à·à¶©à·Š à¶‘à¶šà¶ºà·’ ðŸ'),
+              child: const Text('ඔව්, අවසාන ලෝඩ් එකයි 🏁'),
             ),
           ],
         ),
@@ -789,7 +789,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 8),
-                Expanded(child: Text('ðŸŒ¾ CDN $cdnNo à·ƒà·à¶»à·Šà¶®à¶šà·€ à¶±à·’à¶šà·”à¶­à·Š à¶šà¶»à¶± à¶½à¶¯à·“!')),
+                Expanded(child: Text('🌾 CDN $cdnNo සාර්ථකව නිකුත් කරන ලදී!')),
               ],
             ),
           ),
@@ -978,7 +978,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                       children: [
                         Text('CDN: $cdn', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                         Text(
-                          isDeleted ? 'âŒ CANCELLED' : (isCompleted ? 'âœ… WEIGHED' : 'â³ IN-TRANSIT'),
+                          isDeleted ? '❌ CANCELLED' : (isCompleted ? '✅ WEIGHED' : '⏳ IN-TRANSIT'),
                           style: TextStyle(
                             color: isDeleted ? Colors.redAccent : (isCompleted ? const Color(0xff34d399) : const Color(0xfffbbf24)),
                             fontSize: 11,
@@ -1009,7 +1009,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           color: const Color(0xff065f46),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text('â˜ï¸ Cloud Synced âœ…', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: const Text('☁️ Cloud Synced ✅', style: TextStyle(color: Color(0xffa7f3d0), fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(width: 8),
                       Container(
@@ -1019,7 +1019,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          isSyncedMssql ? 'ðŸ¢ Factory ERP Synced âœ…' : 'ðŸ¢ Sending to Factory â³',
+                          isSyncedMssql ? '🏢 Factory ERP Synced ✅' : '🏢 Sending to Factory ⏳',
                           style: TextStyle(
                             color: isSyncedMssql ? const Color(0xffbae6fd) : const Color(0xfffde68a),
                             fontSize: 10,
@@ -1035,7 +1035,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                             color: const Color(0xff581c87),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('ðŸ FINAL LOAD', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 10, fontWeight: FontWeight.bold)),
+                          child: const Text('🏁 FINAL LOAD', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ],
@@ -1073,7 +1073,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           if (weighedDate.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: Text('ðŸ•’ Weighbridge Time: $weighedDate', style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                              child: Text('🕒 Weighbridge Time: $weighedDate', style: const TextStyle(color: Colors.white60, fontSize: 10)),
                             ),
                         ],
                       ),
@@ -1093,7 +1093,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                         _buildDetailRow('System Plot No', plotNo),
                         _buildDetailRow('Farmer Name', farmer),
                         if (farmerNo.isNotEmpty) _buildDetailRow('Farmer No', farmerNo),
-                        _buildDetailRow('Cane Type', type == 'SC' ? 'ðŸŒ± Seed Cane (SC)' : 'ðŸŒ¾ Commercial Cane (CC)'),
+                        _buildDetailRow('Cane Type', type == 'SC' ? '🌱 Seed Cane (SC)' : '🌾 Commercial Cane (CC)'),
                         _buildDetailRow('Cane Category', cat),
                         _buildDetailRow('Standing Crop', '$crop ${cropCycleId.isNotEmpty ? "(ID: $cropCycleId)" : ""}'),
                         _buildDetailRow('Tractor / Vehicle', vehicle),
@@ -1106,7 +1106,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   ),
                   const SizedBox(height: 14),
                   // Photo Gallery (Tap to view full screen)
-                  const Text('VERIFICATION PHOTOS (à¶¡à·à¶ºà·à¶»à·–à¶´)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
+                  const Text('VERIFICATION PHOTOS (ඡායාරූප)', style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1134,7 +1134,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           icon: const Icon(Icons.flag, size: 18),
-                          label: const Text('ðŸ Mark as Final Load (LstHvstTonnage = 1)'),
+                          label: const Text('🏁 Mark as Final Load (LstHvstTonnage = 1)'),
                           onPressed: () async {
                             Navigator.pop(ctx);
                             await _markFinalLoadAction(cdn);
@@ -1194,7 +1194,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'ðŸ”’ Factory Weighed & Locked (à·ƒà¶‚à·ƒà·Šà¶šà¶»à¶«à¶º à¶šà·… à¶±à·œà·„à·à¶š)',
+                              '🔒 Factory Weighed & Locked (සංස්කරණය කළ නොහැක)',
                               style: TextStyle(color: Color(0xffa7f3d0), fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -1313,7 +1313,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             backgroundColor: Color(0xff059669),
-            content: Text('ðŸ à¶…à·€à·ƒà·à¶± à¶…à·ƒà·Šà·€à¶±à·” à¶½à·à¶©à·Š à¶‘à¶š à¶½à·™à·ƒ à¶½à¶šà·”à¶«à·” à¶šà¶»à¶± à¶½à¶¯à·“! (LstHvstTonnage = 1)'),
+            content: Text('🏁 අවසාන අස්වනු ලෝඩ් එක ලෙස ලකුණු කරන ලදී! (LstHvstTonnage = 1)'),
           ),
         );
       }
@@ -1686,7 +1686,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      mandatory ? '* à¶…à¶±à·’à·€à·à¶»à·Šà¶ºà¶ºà·’' : '+ Take Photo',
+                      mandatory ? '* අනිවාර්යයි' : '+ Take Photo',
                       style: TextStyle(color: mandatory ? const Color(0xfff87171) : const Color(0xff38bdf8), fontSize: 9),
                     ),
                   ],
@@ -1724,7 +1724,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('ðŸŒ¾ ', style: TextStyle(fontSize: _caneType == 'CC' ? 14 : 12)),
+                          Text('🌾 ', style: TextStyle(fontSize: _caneType == 'CC' ? 14 : 12)),
                           Text(
                             'Commercial Cane (CC)',
                             style: TextStyle(
@@ -1750,7 +1750,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('ðŸŒ± ', style: TextStyle(fontSize: _caneType == 'SC' ? 14 : 12)),
+                          Text('🌱 ', style: TextStyle(fontSize: _caneType == 'SC' ? 14 : 12)),
                           Text(
                             'Seed Cane (SC)',
                             style: TextStyle(
@@ -2000,7 +2000,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             readOnly: true,
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
-              labelText: 'Plot Land Area (Ha) / à·€à¶œà· à¶¶à·’à¶¸à·š à¶´à·Šâ€à¶»à¶¸à·à¶«à¶º',
+              labelText: 'Plot Land Area (Ha) / වගා බිමේ ප්‍රමාණය',
               labelStyle: const TextStyle(color: Color(0xff94a3b8)),
               prefixIcon: const Icon(Icons.square_foot, color: Color(0xff34d399), size: 18),
               suffixText: 'Ha',
@@ -2041,12 +2041,12 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ðŸ›‘ à¶¸à·™à¶¸ à¶‰à¶©à¶¸ à·ƒà¶³à·„à· à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶¶à·à¶œà¶ºà¶šà·Š à·€à·à¶»à·Šà¶­à· à·€à·“ à¶±à·œà¶¸à·à¶­',
+                          '🛑 මෙම ඉඩම සඳහා සක්‍රීය බෝගයක් වාර්තා වී නොමැත',
                           style: TextStyle(color: Color(0xfffca5a5), fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'à¶¶à·à¶œà¶ºà¶šà·Š à¶±à·œà¶¸à·à¶­à·’ à¶‰à¶©à¶¸à·Š à·ƒà¶³à·„à· Cane Delivery Note à¶±à·’à¶šà·”à¶­à·Š à¶šà·… à¶±à·œà·„à·à¶š.',
+                          'බෝගයක් නොමැති ඉඩම් සඳහා Cane Delivery Note නිකුත් කළ නොහැක.',
                           style: TextStyle(color: Colors.white70, fontSize: 11),
                         ),
                       ],
@@ -2070,7 +2070,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                     children: [
                       Icon(Icons.eco, color: Color(0xff10b981), size: 16),
                       SizedBox(width: 6),
-                      Text('STANDING CROPS (à·ƒà¶šà·Šâ€à¶»à·“à¶º à¶¶à·à¶œà¶º à¶­à·à¶»à¶±à·Šà¶±):', style: TextStyle(color: Color(0xff10b981), fontWeight: FontWeight.bold, fontSize: 11)),
+                      Text('STANDING CROPS (සක්‍රීය බෝගය තෝරන්න):', style: TextStyle(color: Color(0xff10b981), fontWeight: FontWeight.bold, fontSize: 11)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -2095,14 +2095,14 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '$cycle (${ext.isNotEmpty ? ext : ""}${varName.isNotEmpty ? " â€¢ $varName" : ""})',
+                              '$cycle (${ext.isNotEmpty ? ext : ""}${varName.isNotEmpty ? " • $varName" : ""})',
                               style: TextStyle(color: isSel ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                             if (age.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
                                 child: Text(
-                                  'â³ Age: $age Mo (à¶¸à·à·ƒ $age)',
+                                  '⏳ Age: $age Mo (මාස $age)',
                                   style: TextStyle(
                                     color: isSel ? Colors.black87 : const Color(0xff38bdf8),
                                     fontSize: 10,
@@ -2299,17 +2299,17 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               activeColor: const Color(0xff10b981),
               title: const Row(
                 children: [
-                  Text('ðŸ ', style: TextStyle(fontSize: 16)),
+                  Text('🏁 ', style: TextStyle(fontSize: 16)),
                   Expanded(
                     child: Text(
-                      'à¶…à·€à·ƒà·à¶± à¶…à·ƒà·Šà·€à¶±à·” à¶½à·à¶©à·Š à¶‘à¶š (Final Harvest Load)',
+                      'අවසාන අස්වනු ලෝඩ් එක (Final Harvest Load)',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                   ),
                 ],
               ),
               subtitle: const Text(
-                'à¶¸à·™à¶¸ à¶‰à¶©à¶¸à·š à¶…à·ƒà·Šà·€à·à¶±à·Šà¶± à¶šà¶´à· à¶…à·€à·ƒà¶±à·Š à¶±à¶¸à·Š à¶´à¶¸à¶«à¶šà·Š à¶¸à·™à¶º Tick à¶šà¶»à¶±à·Šà¶±',
+                'මෙම ඉඩමේ අස්වැන්න කපා අවසන් නම් පමණක් මෙය Tick කරන්න',
                 style: TextStyle(color: Color(0xff94a3b8), fontSize: 11),
               ),
               onChanged: (val) {
@@ -2322,17 +2322,17 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                         children: [
                           Icon(Icons.flag, color: Color(0xff10b981)),
                           SizedBox(width: 8),
-                          Text('à¶­à·„à·€à·”à¶»à·” à¶šà·’à¶»à·“à¶¸', style: TextStyle(color: Colors.white)),
+                          Text('තහවුරු කිරීම', style: TextStyle(color: Colors.white)),
                         ],
                       ),
                       content: const Text(
-                        'à¶¸à·™à¶¸ à¶‰à¶©à¶¸ à·ƒà¶³à·„à· à¶¸à·™à¶º à¶…à·€à·ƒà·à¶± à¶§à·Šâ€à¶»à·à¶šà·Šà¶§à¶»à·Š à¶½à·à¶©à·Š à¶‘à¶š (Final Harvest Load) à¶¶à·€ à¶­à·„à·€à·”à¶»à·” à¶šà¶»à¶±à·€à·à¶¯?',
+                        'මෙම ඉඩම සඳහා මෙය අවසාන ට්‍රැක්ටර් ලෝඩ් එක (Final Harvest Load) බව තහවුරු කරනවාද?',
                         style: TextStyle(color: Colors.white70),
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx),
-                          child: const Text('à¶±à·à¶­', style: TextStyle(color: Colors.white54)),
+                          child: const Text('නැත', style: TextStyle(color: Colors.white54)),
                         ),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff10b981), foregroundColor: Colors.black),
@@ -2340,7 +2340,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                             Navigator.pop(ctx);
                             setState(() => _isFinalHarvestLoad = true);
                           },
-                          child: const Text('à¶”à·€à·Š, à¶…à·€à·ƒà·à¶± à¶½à·à¶©à·Š à¶‘à¶šà¶ºà·’'),
+                          child: const Text('ඔව්, අවසාන ලෝඩ් එකයි'),
                         ),
                       ],
                     ),
@@ -2368,7 +2368,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                     Icon(Icons.camera_alt, color: Color(0xff38bdf8), size: 18),
                     SizedBox(width: 8),
                     Text(
-                      'VERIFICATION PHOTOS (à¶¡à·à¶ºà·à¶»à·–à¶´ à¶…à¶±à·’à·€à·à¶»à·Šà¶ºà¶ºà·’)',
+                      'VERIFICATION PHOTOS (ඡායාරූප අනිවාර්යයි)',
                       style: TextStyle(color: Color(0xff38bdf8), fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                   ],
@@ -2474,13 +2474,13 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
             children: [
-              _buildFilterChip('COMPLETED', 'âœ… Weighed ($completedCount)'),
+              _buildFilterChip('COMPLETED', '✅ Weighed ($completedCount)'),
               const SizedBox(width: 8),
-              _buildFilterChip('PENDING', 'â³ In-Transit ($pendingCount)'),
+              _buildFilterChip('PENDING', '⏳ In-Transit ($pendingCount)'),
               const SizedBox(width: 8),
-              _buildFilterChip('IN_TRANSIT_ALL', 'ðŸŒ All In-Transit'),
+              _buildFilterChip('IN_TRANSIT_ALL', '🌐 All In-Transit'),
               const SizedBox(width: 8),
-              _buildFilterChip('CANCELLED', 'âŒ Cancelled ($cancelledCount)'),
+              _buildFilterChip('CANCELLED', '❌ Cancelled ($cancelledCount)'),
               const SizedBox(width: 8),
               _buildFilterChip('ALL', 'All'),
             ],
@@ -2624,7 +2624,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                                         decoration: BoxDecoration(color: const Color(0xff581c87), borderRadius: BorderRadius.circular(4)),
-                                        child: const Text('ðŸ FINAL', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 9, fontWeight: FontWeight.bold)),
+                                        child: const Text('🏁 FINAL', style: TextStyle(color: Color(0xfff5d0fe), fontSize: 9, fontWeight: FontWeight.bold)),
                                       ),
                                     ],
                                     const Spacer(),
@@ -2713,7 +2713,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                                         const SizedBox(width: 8),
                                         const Expanded(
                                           child: Text(
-                                            'Dispatched to factory â€¢ Awaiting weighbridge',
+                                            'Dispatched to factory • Awaiting weighbridge',
                                             style: TextStyle(color: Color(0xfffde68a), fontSize: 11),
                                           ),
                                         ),
@@ -2724,7 +2724,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: Text(
-                                            isSyncedMssql ? 'ðŸ¢ Synced' : 'ðŸ¢ Syncing',
+                                            isSyncedMssql ? '🏢 Synced' : '🏢 Syncing',
                                             style: TextStyle(
                                               color: isSyncedMssql ? const Color(0xffbae6fd) : Colors.white60,
                                               fontSize: 9,
@@ -2751,7 +2751,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
-                                          'ðŸ‘¨ðŸŒ¾ $farmer',
+                                          '👨🌾 $farmer',
                                           style: const TextStyle(color: Color(0xff94a3b8), fontSize: 11),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -2762,7 +2762,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                                 if (weighedDate.isNotEmpty || createTime.isNotEmpty) ...[
                                   const SizedBox(height: 4),
                                   Text(
-                                    isCompleted ? 'ðŸ•’ Weighed: $weighedDate' : 'ðŸ•’ Dispatched: $createTime',
+                                    isCompleted ? '🕒 Weighed: $weighedDate' : '🕒 Dispatched: $createTime',
                                     style: const TextStyle(color: Colors.white38, fontSize: 10),
                                   ),
                                 ],

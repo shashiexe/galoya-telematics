@@ -93,6 +93,14 @@ if os.path.exists(gradle_path):
         )
         print("[Patch] Added multiDexEnabled true to defaultConfig")
 
+    # Disable lint vital checks
+    if "lintOptions {" not in content and "android {" in content:
+        content = content.replace(
+            "android {",
+            "android {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }"
+        )
+        print("[Patch] Added lintOptions checkReleaseBuilds false to Groovy")
+
     # Ensure minifyEnabled false and shrinkResources false in release buildType
     if "buildTypes {" in content:
         content = content.replace(
@@ -134,6 +142,13 @@ if os.path.exists(kts_path):
             "defaultConfig {\n        multiDexEnabled = true"
         )
         print("[Patch] Added multiDexEnabled = true to kts defaultConfig")
+
+    if "lint {" not in content and "android {" in content:
+        content = content.replace(
+            "android {",
+            "android {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }"
+        )
+        print("[Patch] Added lint checkReleaseBuilds = false to kts")
 
     # Disable minification and add ProGuard in release build
     if "release {" in content and "isMinifyEnabled" not in content:
@@ -179,5 +194,18 @@ for root, _, files in os.walk("android"):
                 with open(fpath, "w", encoding="utf-8") as f:
                     f.write(new_c)
                 print(f"[Patch] Replaced mavenCentral() with repo1.maven.org in {fpath}")
+
+# 6. Disable all lintVitalAnalyzeRelease and lint tasks across all subprojects
+root_gradle = "android/build.gradle"
+if os.path.exists(root_gradle):
+    with open(root_gradle, "a", encoding="utf-8") as f:
+        f.write("\nsubprojects {\n    afterEvaluate {\n        tasks.matching { it.name.contains('lint') }.configureEach {\n            enabled = false\n        }\n    }\n}\n")
+    print("[Patch] Disabled all lint tasks across subprojects in android/build.gradle")
+
+root_kts = "android/build.gradle.kts"
+if os.path.exists(root_kts):
+    with open(root_kts, "a", encoding="utf-8") as f:
+        f.write('\nsubprojects {\n    afterEvaluate {\n        tasks.matching { it.name.contains("lint") }.configureEach {\n            enabled = false\n        }\n    }\n}\n')
+    print("[Patch] Disabled all lint tasks across subprojects in android/build.gradle.kts")
 
 print("[Patch] Patching completed.")

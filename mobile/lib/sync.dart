@@ -39,9 +39,33 @@ class Sync {
       try {
         await refreshMasterVehiclesAndTrailers();
       } catch (_) {}
+      try {
+        await refreshMasterPlotsAndCrops();
+      } catch (_) {}
     } finally {
       _running = false;
     }
+  }
+
+  static Future<void> refreshMasterPlotsAndCrops({bool force = false}) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final lastSync = sp.getInt('last_erp_master_sync') ?? 0;
+      final count = await LocalDb.countMasterPlots();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      if (!force && count >= 4000 && (now - lastSync < 24 * 3600 * 1000)) {
+        return;
+      }
+
+      final res = await Api.get('get_all_master_plots_and_crops');
+      if (res['ok'] == true) {
+        final plots = (res['plots'] is List) ? (res['plots'] as List) : [];
+        final crops = (res['crops'] is List) ? (res['crops'] as List) : [];
+        await LocalDb.saveBulkMasterPlotsAndCrops(plots, crops);
+        await sp.setInt('last_erp_master_sync', now);
+      }
+    } catch (_) {}
   }
 
   static Future<void> refreshMasterVehiclesAndTrailers() async {

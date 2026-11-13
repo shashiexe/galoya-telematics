@@ -51,11 +51,13 @@ class Sync {
     try {
       final sp = await SharedPreferences.getInstance();
       final lastSync = sp.getInt('last_erp_master_sync') ?? 0;
+      final lastBuildSynced = sp.getInt('last_erp_master_build_synced') ?? 0;
       final count = await LocalDb.countMasterPlots();
       final cropsCount = await LocalDb.countCrops();
       final now = DateTime.now().millisecondsSinceEpoch;
+      const currentBuild = 44;
 
-      if (!force && count >= 14000 && cropsCount >= 4000 && (now - lastSync < 24 * 3600 * 1000)) {
+      if (!force && lastBuildSynced >= currentBuild && count >= 14000 && cropsCount >= 4000 && (now - lastSync < 24 * 3600 * 1000)) {
         return;
       }
 
@@ -70,6 +72,7 @@ class Sync {
         if (plots.isNotEmpty || crops.isNotEmpty) {
           await LocalDb.saveBulkMasterPlotsAndCrops(plots, crops);
           await sp.setInt('last_erp_master_sync', now);
+          await sp.setInt('last_erp_master_build_synced', currentBuild);
         }
       }
     } catch (_) {}

@@ -101,6 +101,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
   List<Map<String, dynamic>> _activeCrops = [];
   bool _loadingCrops = false;
   bool _hasNoActiveCrop = false;
+  bool _isUnregisteredPlot = false;
   String? _selectedCropCycle;
 
   // Tracker State
@@ -186,27 +187,45 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
 
   Future<void> _loadPlotCrops(String plotCode) async {
     final clean = plotCode.trim();
-    if (clean.isEmpty) return;
+    if (clean.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _loadingCrops = false;
+          _hasNoActiveCrop = false;
+          _isUnregisteredPlot = false;
+          _activeCrops = [];
+          _farmerNameCtrl.text = '';
+          _farmerNoCtrl.text = '';
+          _landAreaCtrl.text = '';
+          _sectorCtrl.text = '';
+          _selectedSystemPlotNo = null;
+        });
+      }
+      return;
+    }
     if (mounted) setState(() => _loadingCrops = true);
     try {
-      // 1. Check local master plot
+      bool plotFound = false;
+
+      // 1. Check local master plot (100% offline)
       final master = await LocalDb.getMasterPlotByCode(clean);
       if (master != null && mounted) {
+        plotFound = true;
         setState(() {
+          _isUnregisteredPlot = false;
           _selectedSystemPlotNo = master['plot_no']?.toString();
-          if (_farmerNameCtrl.text.isEmpty && (master['farmer_name'] ?? '').toString().isNotEmpty) {
+          if ((master['farmer_name'] ?? '').toString().isNotEmpty) {
             _farmerNameCtrl.text = master['farmer_name']!;
           }
-          if (_farmerNoCtrl.text.isEmpty && (master['farmer_no'] ?? '').toString().isNotEmpty) {
+          if ((master['farmer_no'] ?? '').toString().isNotEmpty) {
             _farmerNoCtrl.text = master['farmer_no']!;
           }
-          if (_landAreaCtrl.text.isEmpty &&
-              master['land_area'] != null &&
+          if (master['land_area'] != null &&
               master['land_area'].toString().isNotEmpty &&
               master['land_area'].toString() != '0.0') {
             _landAreaCtrl.text = '${master['land_area']} Ha';
           }
-          if (_sectorCtrl.text.isEmpty && (master['sector_no'] ?? '').toString().isNotEmpty) {
+          if ((master['sector_no'] ?? '').toString().isNotEmpty) {
             _sectorCtrl.text = master['sector_no']!;
           }
         });
@@ -218,7 +237,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         _applyCrops(localCrops);
       }
 
-      // 3. Online cloud lookup to fetch latest multi-block standing crops
+      // 3. Online cloud lookup to fetch latest multi-block standing crops & plot details
       try {
         final res = await Api.get('get_plot_crops', params: {
           'plot_no': clean,
@@ -226,24 +245,27 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         }).timeout(const Duration(milliseconds: 3500));
         if (res['ok'] == true && mounted) {
           if (res['plot'] is Map) {
+            plotFound = true;
             final p = (res['plot'] as Map).cast<String, dynamic>();
+            _isUnregisteredPlot = false;
             _selectedSystemPlotNo = p['plot_no']?.toString();
-            if (_farmerNameCtrl.text.isEmpty && (p['farmer_name'] ?? '').toString().isNotEmpty) {
+            if ((p['farmer_name'] ?? '').toString().isNotEmpty) {
               _farmerNameCtrl.text = p['farmer_name']!;
             }
-            if (_farmerNoCtrl.text.isEmpty && (p['farmer_no'] ?? '').toString().isNotEmpty) {
+            if ((p['farmer_no'] ?? '').toString().isNotEmpty) {
               _farmerNoCtrl.text = p['farmer_no']!;
             }
-            if (_landAreaCtrl.text.isEmpty &&
-                p['land_area'] != null &&
+            if (p['land_area'] != null &&
                 p['land_area'].toString().isNotEmpty &&
                 p['land_area'].toString() != '0.0') {
               _landAreaCtrl.text = '${p['land_area']} Ha';
             }
-            if (_sectorCtrl.text.isEmpty && (p['sector_no'] ?? '').toString().isNotEmpty) {
+            if ((p['sector_no'] ?? '').toString().isNotEmpty) {
               _sectorCtrl.text = p['sector_no']!;
             }
             await LocalDb.saveMasterPlots([p]);
+          } else if (!plotFound) {
+            _isUnregisteredPlot = true;
           }
           if (res['crops'] is List) {
             final freshCrops = (res['crops'] as List).cast<Map<String, dynamic>>();
@@ -253,15 +275,29 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             }
           }
         }
-      } catch (_) {}
+      } catch (_) {
+        if (!plotFound && clean.isNotEmpty) {
+          _isUnregisteredPlot = true;
+        }
+      }
 
-      if (mounted && _activeCrops.isEmpty && localCrops.isEmpty) {
+      if (mounted) {
         setState(() {
           _loadingCrops = false;
-          _hasNoActiveCrop = true;
-          _selectedCropCycle = null;
-          _selectedCropCycleId = null;
-          _cropCycleCtrl.text = '';
+          if (!plotFound) {
+            _isUnregisteredPlot = true;
+            _farmerNameCtrl.text = '';
+            _farmerNoCtrl.text = '';
+            _landAreaCtrl.text = '';
+            _sectorCtrl.text = '';
+            _selectedSystemPlotNo = null;
+          }
+          if (_activeCrops.isEmpty) {
+            _hasNoActiveCrop = true;
+            _selectedCropCycle = null;
+            _selectedCropCycleId = null;
+            _cropCycleCtrl.text = '';
+          }
         });
       }
     } catch (_) {
@@ -2177,8 +2213,34 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xff334155))),
                 ),
                 onChanged: _onPlotInputChanged,
-                validator: (val) => val == null || val.trim().isEmpty ? 'Plot code required' : null,
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) return 'Plot code required';
+                  if (_isUnregisteredPlot) return 'කර්මාන්තශාලා ERP පද්ධතියේ ලියාපදිංචි නැති බිම් අංකයකි!';
+                  return null;
+                },
               ),
+              if (_isUnregisteredPlot && _plotCtrl.text.trim().isNotEmpty && _plotSuggestions.isEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff7f1d1d).withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xffef4444)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Color(0xfff87171), size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'අවවාදයයි: මෙම බිම් කේතය (Plot Code) කර්මාන්තශාලා ERP පද්ධතියේ ලියාපදිංචි වී නොමැත. කරුණාකර නිවැරදි කේතය තෝරන්න.',
+                          style: TextStyle(color: Color(0xfffca5a5), fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (_plotSuggestions.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Container(
@@ -2351,38 +2413,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                 ],
               ),
             )
-          else if (_hasNoActiveCrop)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xff7f1d1d).withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xffef4444), width: 1.5),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.block, color: Color(0xfff87171), size: 28),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '🛑 මෙම ඉඩම සඳහා සක්‍රීය බෝගයක් වාර්තා වී නොමැත',
-                          style: TextStyle(color: Color(0xfffca5a5), fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'බෝගයක් නොමැති ඉඩම් සඳහා Cane Delivery Note නිකුත් කළ නොහැක.',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (_activeCrops.isNotEmpty)
+          else if (_plotCtrl.text.trim().isNotEmpty && _activeCrops.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -2455,7 +2486,38 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   ),
                 ],
               ),
-            ),
+            )
+          else if (_plotCtrl.text.trim().isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xff7f1d1d).withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xffef4444), width: 1.5),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.block, color: Color(0xfff87171), size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '🛑 මෙම ඉඩම සඳහා සක්‍රීය බෝගයක් වාර්තා වී නොමැත',
+                          style: TextStyle(color: Color(0xfffca5a5), fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'බෝගයක් නොමැති ඉඩම් සඳහා Cane Delivery Note නිකුත් කළ නොහැක.',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),,
           const SizedBox(height: 12),
           // 7. Vehicle No (Instant Autocomplete)
           RawAutocomplete<String>(

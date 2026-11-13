@@ -1086,8 +1086,11 @@ try {
     try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `is_deleted` TINYINT(1) DEFAULT 0 AFTER `status`"); } catch (Throwable $e) {}
     try { @$pdo->exec("ALTER TABLE `cdn_details` ADD COLUMN `cancel_reason` VARCHAR(255) NULL AFTER `is_deleted`"); } catch (Throwable $e) {}
 
-    // Add crop_cycle_id to erp_crops
-    try { @$pdo->exec("ALTER TABLE `erp_crops` ADD COLUMN `crop_cycle_id` VARCHAR(50) NULL AFTER `id`"); } catch (Throwable $e) {}
+    // Add crop_cycle_id to erp_crops and update unique key to include crop_cycle_id
+    try { @$pdo->exec("ALTER TABLE `erp_crops` ADD COLUMN `crop_cycle_id` VARCHAR(50) NOT NULL DEFAULT '' AFTER `id`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `erp_crops` MODIFY COLUMN `crop_cycle_id` VARCHAR(50) NOT NULL DEFAULT ''"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `erp_crops` DROP INDEX `uk_plot_cycle`"); } catch (Throwable $e) {}
+    try { @$pdo->exec("ALTER TABLE `erp_crops` ADD UNIQUE KEY `uk_plot_cycle_cid` (`plot_no`, `crop_cycle`, `crop_cycle_id`, `is_agronomy`)"); } catch (Throwable $e) {}
 
     $results[] = ["✅ Database: Ensured ERP Core Tables (cdn_details, erp_plots, erp_farmers, erp_field_assistants, erp_cane_categories) exist", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {

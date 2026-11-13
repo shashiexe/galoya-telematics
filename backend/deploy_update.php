@@ -1109,16 +1109,15 @@ try {
     $results[] = ["⚠️ Database ERP tables error: " . $e->getMessage(), "color:#ef4444"];
 }
 
-// GAP ANALYSIS CHECK
-    // Check geofences gap vs erp_plots
+    // GAP ANALYSIS CHECK
     try {
-         = \->query("SELECT COUNT(*) FROM geofences g LEFT JOIN erp_plots p ON g.name = p.plot_manual_code WHERE g.active=1 AND p.plot_no IS NULL")->fetchColumn();
-         = \->query("SELECT COUNT(*) FROM erp_plots p LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active=1 WHERE p.is_active=1 AND g.id IS NULL")->fetchColumn();
-         = \->query("SELECT name FROM geofences WHERE name LIKE 'D/207%' AND active=1")->fetchAll(PDO::FETCH_COLUMN);
-        \[] = ["📊 GAP ANALYSIS: Geofences without ERP plot =  | ERP plots without Geofence = ", "color:#38bdf8;font-weight:bold"];
-        \[] = ["🗺️ D/207 Geofences in GIS: " . implode(', ', ), "color:#a855f7"];
-    } catch (Throwable \) {
-        \[] = ["⚠️ Gap inspect error: " . \->getMessage(), "color:#ef4444"];
+        $gfNoErp = $pdo->query("SELECT COUNT(*) FROM geofences g LEFT JOIN erp_plots p ON g.name = p.plot_manual_code WHERE g.active=1 AND p.plot_no IS NULL")->fetchColumn();
+        $erpNoGf = $pdo->query("SELECT COUNT(*) FROM erp_plots p LEFT JOIN geofences g ON g.name = p.plot_manual_code AND g.active=1 WHERE p.is_active=1 AND g.id IS NULL")->fetchColumn();
+        $gfD207 = $pdo->query("SELECT name FROM geofences WHERE name LIKE 'D/207%' AND active=1")->fetchAll(PDO::FETCH_COLUMN);
+        $results[] = ["📊 GAP ANALYSIS: Geofences without ERP plot = $gfNoErp | ERP plots without Geofence = $erpNoGf", "color:#38bdf8;font-weight:bold"];
+        $results[] = ["🗺️ D/207 Geofences in GIS: " . implode(', ', $gfD207), "color:#a855f7"];
+    } catch (Throwable $e) {
+        $results[] = ["⚠️ Gap inspect error: " . $e->getMessage(), "color:#ef4444"];
     }
     // Update latest app version & build in settings table using bootstrap set_setting
 try {

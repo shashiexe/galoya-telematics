@@ -2517,7 +2517,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                   ),
                 ],
               ),
-            ),,
+            ),
           const SizedBox(height: 12),
           // 7. Vehicle No (Instant Autocomplete)
           RawAutocomplete<String>(

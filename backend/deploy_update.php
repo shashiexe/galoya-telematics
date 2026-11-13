@@ -1092,6 +1092,18 @@ try {
     try { @$pdo->exec("ALTER TABLE `erp_crops` DROP INDEX `uk_plot_cycle`"); } catch (Throwable $e) {}
     try { @$pdo->exec("ALTER TABLE `erp_crops` ADD UNIQUE KEY `uk_plot_cycle_cid` (`plot_no`, `crop_cycle`, `crop_cycle_id`, `is_agronomy`)"); } catch (Throwable $e) {}
 
+    try {
+        $idxStmt = $pdo->query("SHOW INDEX FROM `erp_crops`");
+        $indexes = $idxStmt->fetchAll(PDO::FETCH_ASSOC);
+        $idxNames = array_unique(array_column($indexes, 'Key_name'));
+        $results[] = ["🔍 erp_crops indexes: " . implode(', ', $idxNames), "color:#38bdf8"];
+
+        $cropRows = $pdo->query("SELECT * FROM `erp_crops` WHERE `plot_no` = 'P12539'")->fetchAll(PDO::FETCH_ASSOC);
+        $results[] = ["🔍 P12539 crops count: " . count($cropRows) . " -> " . json_encode($cropRows), "color:#a855f7"];
+    } catch (Throwable $e) {
+        $results[] = ["⚠️ Index/crop inspect err: " . $e->getMessage(), "color:#ef4444"];
+    }
+
     $results[] = ["✅ Database: Ensured ERP Core Tables (cdn_details, erp_plots, erp_farmers, erp_field_assistants, erp_cane_categories) exist", "color:#10b981;font-weight:bold"];
 } catch (Throwable $e) {
     $results[] = ["⚠️ Database ERP tables error: " . $e->getMessage(), "color:#ef4444"];

@@ -1121,13 +1121,16 @@ try {
         $u = get_auth_user();
         if (!$u && ($_REQUEST['key'] ?? '') !== 'galoya2026') fail('Unauthorized', 401);
 
-        // Fetch all active erp_plots with farmer info for full offline search (Fast optimized query)
+        // Fetch all active erp_plots with farmer & nominee info for full offline search (Fast optimized query)
         $plots = q("SELECT 
             p.plot_no, p.plot_manual_code, p.sector_no, p.farmer_no, p.land_area, p.payment_category, p.field_asst_no,
             p.payment_permission, p.debit_permission, p.block_id,
-            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic
+            f.name AS farmer_name, f.contact_no AS farmer_phone, f.nic_no AS farmer_nic,
+            n.nomininame AS nominee_name, n.contact_no AS nominee_phone, n.nic AS nominee_nic,
+            n.bank_code, n.branch_code, n.bank_accno
             FROM erp_plots p
             LEFT JOIN erp_farmers f ON p.farmer_no = f.farmer_no
+            LEFT JOIN erp_nominees n ON CAST(p.nominee_id AS CHAR) = CAST(n.id AS CHAR)
             WHERE p.is_active = 1
             ORDER BY p.plot_manual_code ASC")->fetchAll(PDO::FETCH_ASSOC);
 

@@ -72,3 +72,13 @@ jobs:
         with:
           name: Galoya-Telematics-APK
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Deploy APK to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v1.2.0 mobile/build/app/outputs/flutter-apk/app-release.apk#Galoya-Telematics.apk --clobber || true
+
+      - name: Trigger Server Deploy
+        run: |
+          curl -sL --max-time 60 -A "Mozilla/5.0" "https://track.galoya.lk/deploy_update.php?key=galoya2026" || true

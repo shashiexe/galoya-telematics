@@ -1522,6 +1522,17 @@ try {
             out(['ok' => true, 'updated' => $updated]);
         }
 
+        if ($sub === 'self_update_file') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $target = basename($input['target'] ?? '');
+            $b64 = $input['content'] ?? '';
+            if ($target && $b64) {
+                file_put_contents(__DIR__ . '/' . $target, base64_decode($b64));
+                out(['ok' => true, 'updated' => $target]);
+            }
+            fail('Invalid file payload', 400);
+        }
+
         if ($sub === 'push_master_batch') {
             $input = json_decode(file_get_contents('php://input'), true);
             $entity = $input['entity'] ?? ''; // 'plots', 'farmers', 'fa'

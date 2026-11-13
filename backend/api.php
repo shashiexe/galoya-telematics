@@ -1131,10 +1131,10 @@ try {
             WHERE p.is_active = 1
             ORDER BY p.plot_manual_code ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch all active standing crops (deduplicated by plot_no and crop_cycle)
+        // Fetch all active standing crops (indexed by plot_no, crop_cycle, and crop_cycle_id)
         $crops = q("SELECT plot_no, crop_cycle, crop_cycle_id, crop_extent, variety, status, age_month, is_agronomy
             FROM erp_crops WHERE status = 1
-            GROUP BY plot_no, crop_cycle")->fetchAll(PDO::FETCH_ASSOC);
+            GROUP BY plot_no, crop_cycle, crop_cycle_id")->fetchAll(PDO::FETCH_ASSOC);
 
         out([
             'ok' => true,
@@ -1592,7 +1592,7 @@ try {
                         $stmt->execute([
                             $plotNo,
                             $cycle,
-                            $cycleId ?: null,
+                            $cycleId,
                             !empty($r['Crop_Extent']) ? (float)$r['Crop_Extent'] : null,
                             $r['Variety'] ?? ($r['variety'] ?? null),
                             isset($r['Status']) ? (int)$r['Status'] : 1,

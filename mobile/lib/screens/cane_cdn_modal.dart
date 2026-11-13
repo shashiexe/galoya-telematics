@@ -212,14 +212,18 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         });
       }
 
-      // 2. Local SQLite crops check (100% offline)
-      var crops = await LocalDb.getActiveCrops(clean);
-      if (crops.isEmpty) {
-        // 3. Cloud lookup if not found locally
+      // 2. Local SQLite crops check (100% offline instant UX)
+      final localCrops = await LocalDb.getActiveCrops(clean);
+      if (localCrops.isNotEmpty && mounted) {
+        _applyCrops(localCrops);
+      }
+
+      // 3. Online cloud lookup to fetch latest multi-block standing crops
+      try {
         final res = await Api.get('get_plot_crops', params: {
           'plot_no': clean,
           'key': 'galoya2026',
-        }).timeout(const Duration(milliseconds: 3000));
+        }).timeout(const Duration(milliseconds: 3500));
         if (res['ok'] == true && mounted) {
           if (res['plot'] is Map) {
             final p = (res['plot'] as Map).cast<String, dynamic>();
@@ -242,44 +246,69 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             await LocalDb.saveMasterPlots([p]);
           }
           if (res['crops'] is List) {
-            crops = (res['crops'] as List).cast<Map<String, dynamic>>();
-            await LocalDb.saveCrops(crops);
+            final freshCrops = (res['crops'] as List).cast<Map<String, dynamic>>();
+            await LocalDb.saveCrops(freshCrops);
+            if (mounted) {
+              _applyCrops(freshCrops);
+            }
           }
         }
-      }
+      } catch (_) {}
 
-      if (mounted) {
-        final Map<String, Map<String, dynamic>> dedupedMap = {};
-        for (final c in crops) {
-          final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
-          final cid = (c['crop_cycle_id'] ?? c['ID'] ?? '').toString().trim();
-          final key = cid.isNotEmpty ? '${cc}_$cid' : cc;
-          if (cc.isNotEmpty && !dedupedMap.containsKey(key)) {
-            dedupedMap[key] = c;
-          }
-        }
-        final finalCrops = dedupedMap.values.toList();
-
+      if (mounted && _activeCrops.isEmpty && localCrops.isEmpty) {
         setState(() {
           _loadingCrops = false;
-          _activeCrops = finalCrops;
-          if (finalCrops.isEmpty) {
-            _hasNoActiveCrop = true;
-            _selectedCropCycle = null;
-            _selectedCropCycleId = null;
-            _cropCycleCtrl.text = '';
-          } else {
-            _hasNoActiveCrop = false;
-            final first = finalCrops.first;
-            _selectedCropCycle = first['crop_cycle']?.toString() ?? 'P';
-            _selectedCropCycleId = (first['crop_cycle_id'] ?? first['ID'] ?? '').toString();
-            _cropCycleCtrl.text = _selectedCropCycle!;
-          }
+          _hasNoActiveCrop = true;
+          _selectedCropCycle = null;
+          _selectedCropCycleId = null;
+          _cropCycleCtrl.text = '';
         });
       }
     } catch (_) {
       if (mounted) setState(() => _loadingCrops = false);
     }
+  }
+
+  void _applyCrops(List<Map<String, dynamic>> crops) {
+    if (!mounted) return;
+    final Map<String, Map<String, dynamic>> dedupedMap = {};
+    for (final c in crops) {
+      final cc = (c['crop_cycle'] ?? '').toString().trim().toUpperCase();
+      final cid = (c['crop_cycle_id'] ?? c['ID'] ?? '').toString().trim();
+      final key = cid.isNotEmpty ? '${cc}_$cid' : cc;
+      if (cc.isNotEmpty && !dedupedMap.containsKey(key)) {
+        dedupedMap[key] = c;
+      }
+    }
+    final finalCrops = dedupedMap.values.toList();
+
+    setState(() {
+      _loadingCrops = false;
+      _activeCrops = finalCrops;
+      if (finalCrops.isEmpty) {
+        _hasNoActiveCrop = true;
+        _selectedCropCycle = null;
+        _selectedCropCycleId = null;
+        _cropCycleCtrl.text = '';
+      } else {
+        _hasNoActiveCrop = false;
+        final currentKey = (_selectedCropCycle != null && _selectedCropCycleId != null)
+            ? '${_selectedCropCycle}_$_selectedCropCycleId'
+            : _selectedCropCycle;
+        final match = finalCrops.firstWhere(
+          (fc) {
+            final fcc = (fc['crop_cycle'] ?? '').toString().trim().toUpperCase();
+            final fcid = (fc['crop_cycle_id'] ?? fc['ID'] ?? '').toString().trim();
+            final k = fcid.isNotEmpty ? '${fcc}_$fcid' : fcc;
+            return k == currentKey;
+          },
+          orElse: () => finalCrops.first,
+        );
+        _selectedCropCycle = match['crop_cycle']?.toString() ?? 'P';
+        _selectedCropCycleId = (match['crop_cycle_id'] ?? match['ID'] ?? '').toString();
+        _cropCycleCtrl.text = _selectedCropCycle!;
+      }
+    });
   }
 
   void _initPrefill() {

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
@@ -398,6 +398,7 @@ $filesToUpdate = [
     'admin/assets/ai_widget.js' => 'backend/admin/assets/ai_widget.js',
     'admin/assets/ai_widget.css' => 'backend/admin/assets/ai_widget.css',
     'admin/settings.php' => 'backend/admin/settings.php',
+    'server_erp_sync.php' => 'backend/server_erp_sync.php',
     'deploy_update.php' => 'backend/deploy_update.php',
 ];
 

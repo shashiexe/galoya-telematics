@@ -1454,6 +1454,45 @@ try {
 
         $sub = $_GET['sub'] ?? ($_POST['sub'] ?? '');
 
+        if ($sub === 'test_mssql_connection') {
+            $mssqlHost = '124.43.10.210:41511';
+            $mssqlDb   = 'GaloyaTracker';
+            $mssqlUser = 'sa';
+            $mssqlPass = '(GopliT@#4900%)';
+            $diag = [
+                'server_ip' => $_SERVER['SERVER_ADDR'] ?? 'Unknown',
+                'php_version' => PHP_VERSION,
+                'pdo_drivers' => PDO::getAvailableDrivers(),
+                'port_41511_reachable' => false,
+                'mssql_connected' => false,
+                'error' => null
+            ];
+            // 1. Test socket reachability
+            $errno = 0; $errstr = '';
+            $fp = @fsockopen('124.43.10.210', 41511, $errno, $errstr, 5);
+            if ($fp) {
+                $diag['port_41511_reachable'] = true;
+                fclose($fp);
+            } else {
+                $diag['error'] = "Socket connection to 124.43.10.210:41511 failed: $errstr ($errno)";
+            }
+            // 2. Test PDO if driver exists
+            if ($diag['port_41511_reachable']) {
+                try {
+                    if (in_array('dblib', $diag['pdo_drivers'])) {
+                        $m = new PDO("dblib:host=$mssqlHost;dbname=$mssqlDb", $mssqlUser, $mssqlPass, [PDO::ATTR_TIMEOUT => 5]);
+                        $diag['mssql_connected'] = true;
+                    } elseif (in_array('sqlsrv', $diag['pdo_drivers'])) {
+                        $m = new PDO("sqlsrv:Server=$mssqlHost;Database=$mssqlDb", $mssqlUser, $mssqlPass, ["LoginTimeout" => 5]);
+                        $diag['mssql_connected'] = true;
+                    }
+                } catch (Throwable $e) {
+                    $diag['error'] = "MSSQL connection error: " . $e->getMessage();
+                }
+            }
+            out(['ok' => true, 'diagnostic' => $diag]);
+        }
+
         if ($sub === 'pull_pending_cdns') {
             // CDNs issued or modified on mobile app waiting to be pushed to MSSQL [dbo].[CDN_Details]
             $limit = min(200, (int)($_GET['limit'] ?? 100));

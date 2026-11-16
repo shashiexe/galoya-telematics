@@ -48,6 +48,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     try {
       Position? pos;
       try { pos = await Geolocator.getCurrentPosition(timeLimit: const Duration(seconds: 10)); } catch (_) {}
+      pos ??= await Geolocator.getLastKnownPosition();
       final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'pending_photos'));
       await dir.create(recursive: true);
       final cid = const Uuid().v4();

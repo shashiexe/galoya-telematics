@@ -859,6 +859,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
   }
 
+  /// Guarantees that Live Duty Tracking & high-accuracy GPS are active before any field action.
+  /// If tracking is off, it auto-activates tracking, notifies the officer, and fetches fresh GPS.
+  Future<bool> _ensureTrackingAndGpsActive({required String actionName}) async {
+    if (!_tracking) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xff0284c7),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            content: Row(
+              children: [
+                const Icon(Icons.gps_fixed, color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '📍 $actionName සඳහා GPS සටහන් වීමට Live Tracking සක්‍රීය කෙරේ...',
+                    style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      await _toggleTracking(true);
+    }
+
+    // Refresh live GPS fix immediately if null or zero
+    if (_currentPosition == null || (_currentPosition!.latitude == 0.0 && _currentPosition!.longitude == 0.0)) {
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
+        );
+        if (mounted) {
+          setState(() => _currentPosition = pos);
+        }
+      } catch (_) {
+        try {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null && mounted) {
+            setState(() => _currentPosition = last);
+          }
+        } catch (_) {}
+      }
+    }
+    return _tracking;
+  }
+
   void _showBackgroundDaemonHelpDialog() {
     showDialog(
       context: context,
@@ -1138,6 +1188,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   // --- Photo Capture with GPS & Anti-Evasion Identity Verification ---
   Future<void> _snapPhoto({bool isSelfie = false, bool isMandatory = false}) async {
+    if (!isSelfie) {
+      await _ensureTrackingAndGpsActive(actionName: 'ඡායාරූප ගැනීම (Photo)');
+    }
     try {
       File? photo;
       try {
@@ -2227,7 +2280,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   // --- Tasks Bottom Sheet ---
-  void _showTasksModal() {
+  Future<void> _showTasksModal() async {
+    await _ensureTrackingAndGpsActive(actionName: 'Tasks පෝරමය');
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2425,7 +2480,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
   }
 
-  void _showCdnModalSheet({Map<String, dynamic>? prefillPlot}) {
+  Future<void> _showCdnModalSheet({Map<String, dynamic>? prefillPlot}) async {
+    await _ensureTrackingAndGpsActive(actionName: 'CDN පෝරමය');
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2439,7 +2496,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
   }
 
-  void _showPlotNavigatorModal() {
+  Future<void> _showPlotNavigatorModal() async {
+    await _ensureTrackingAndGpsActive(actionName: 'Plot Navigator (ඉඩම් සෙවීම)');
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

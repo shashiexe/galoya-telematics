@@ -14,6 +14,46 @@ import '../config.dart';
 import '../db.dart';
 import '../sync.dart';
 
+/// Enforces CDN prefix rules:
+/// 1. Only ONE single letter is allowed across the entire CDN number.
+/// 2. That letter MUST be at index 0 and MUST strictly be either 'C' or 'B'.
+/// 3. All subsequent characters MUST strictly be numbers (0-9).
+/// 4. Multiple letters (e.g. 'CC', 'CB', 'BC', 'BB') or letters in the middle are completely blocked!
+class CdnPrefixInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final raw = newValue.text.toUpperCase();
+    if (raw.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    final sb = StringBuffer();
+    bool hasPrefixLetter = false;
+
+    for (int i = 0; i < raw.length; i++) {
+      final ch = raw[i];
+      if (ch == 'C' || ch == 'B') {
+        if (!hasPrefixLetter && sb.isEmpty) {
+          sb.write(ch);
+          hasPrefixLetter = true;
+        }
+        // If a prefix letter already exists or this is not index 0, reject this character!
+      } else if (RegExp(r'[0-9]').hasMatch(ch)) {
+        sb.write(ch);
+      }
+    }
+
+    final res = sb.toString();
+    return TextEditingValue(
+      text: res,
+      selection: TextSelection.collapsed(offset: res.length),
+    );
+  }
+}
+
 /// Modal bottom sheet for issuing and tracking Cane Delivery Notes (CDN)
 /// Phase 2: Dual Cane Types (CC/SC), Live Weighbridge Net Weight MT Sync,
 /// 100% Mandatory Photos, Strict Duplicate Prevention, 30-Min Edit/Cancel Grace Window,
@@ -428,13 +468,13 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       String? detectedCdn;
       final allText = recognizedText.text;
 
-      final matchCdnNo = RegExp(r'CDN\s*NO[^\w]*([A-Za-z])\s*(\d{4,7})', caseSensitive: false).firstMatch(allText);
+      final matchCdnNo = RegExp(r'CDN\s*NO[^\w]*([CBcb])\s*(\d{4,7})', caseSensitive: false).firstMatch(allText);
       if (matchCdnNo != null) {
         final pfx = (matchCdnNo.group(1) ?? '').toUpperCase();
         final numPart = matchCdnNo.group(2) ?? '';
         detectedCdn = '$pfx$numPart';
       } else {
-        final matchGeneral = RegExp(r'\b([A-Z])\s*(\d{4,7})\b').firstMatch(allText);
+        final matchGeneral = RegExp(r'\b([CBcb])\s*(\d{4,7})\b').firstMatch(allText);
         if (matchGeneral != null) {
           final pfx = (matchGeneral.group(1) ?? '').toUpperCase();
           final numPart = matchGeneral.group(2) ?? '';
@@ -443,7 +483,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       }
 
       if (detectedCdn != null && detectedCdn.isNotEmpty) {
-        detectedCdn = detectedCdn.replaceAll(RegExp(r'[^cbCB0-9]'), '').toUpperCase();
+        detectedCdn = detectedCdn.replaceAll(RegExp(r'[^CB0-9]'), '').toUpperCase();
         if (detectedCdn.isNotEmpty) {
           setState(() {
             _cdnCtrl.text = detectedCdn!;
@@ -696,7 +736,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
 
   Future<void> _submitCdn() async {
     final cdnNo = _cdnCtrl.text.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
-    if (cdnNo.isEmpty || !RegExp(r'^[CB0-9]+$').hasMatch(cdnNo)) {
+    if (cdnNo.isEmpty || !RegExp(r'^[CB]?[0-9]+$').hasMatch(cdnNo) || cdnNo == 'C' || cdnNo == 'B') {
       if (_issueScrollCtrl.hasClients) {
         _issueScrollCtrl.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
@@ -710,7 +750,7 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
               Icon(Icons.error_outline, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text('🛑 CDN අංකය ඇතුළත් කිරීම අනිවාර්යයි! C, B සහ 0-9 අංක පමණක් ඇතුළත් කරන්න.',
+                child: Text('🛑 වලංගු නොවන CDN අංකයකි! ආරම්භක අකුර B හෝ C පමණක් විය හැකි අතර (එක් අකුරක් පමණි), ඉතිරිය ඉලක්කම් (0-9) පමණක් ඇතුළත් කරන්න.',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ),
@@ -890,6 +930,26 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
       final faNo = (widget.userCode != null && widget.userCode!.trim().isNotEmpty) ? widget.userCode!.trim() : 'FA61';
       final faName = widget.userName ?? 'Field Officer';
 
+      // Ensure valid GPS position is captured
+      double? lat = widget.currentPosition?.latitude;
+      double? lng = widget.currentPosition?.longitude;
+      if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) {
+        try {
+          final livePos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 4),
+          );
+          lat = livePos.latitude;
+          lng = livePos.longitude;
+        } catch (_) {
+          try {
+            final last = await Geolocator.getLastKnownPosition();
+            lat = last?.latitude;
+            lng = last?.longitude;
+          } catch (_) {}
+        }
+      }
+
       final record = <String, dynamic>{
         'cdn': cdnNo,
         'plot_no': systemPlotNo, // MSSQL requires System Plot No e.g. P1002
@@ -909,8 +969,8 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
         'tractor_photo': _tractorPhoto?.path,
         'trailer_photo': _trailerPhoto?.path,
         'load_photo': _loadPhoto?.path,
-        'lat': widget.currentPosition?.latitude,
-        'lng': widget.currentPosition?.longitude,
+        'lat': lat,
+        'lng': lng,
         'create_user': faName,
         'create_time': nowIso,
         'weige_ticket_no': null,
@@ -2096,14 +2156,11 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
             textCapitalization: TextCapitalization.characters,
             keyboardType: TextInputType.visiblePassword,
             inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[cbCB0-9]')),
-              TextInputFormatter.withFunction((oldVal, newVal) {
-                return newVal.copyWith(text: newVal.text.toUpperCase());
-              }),
+              CdnPrefixInputFormatter(),
             ],
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5),
             decoration: InputDecoration(
-              labelText: 'CDN Number (C, B සහ අංක පමණි)',
+              labelText: 'CDN Number (C හෝ B සමඟ අංක පමණි)',
               labelStyle: const TextStyle(color: Color(0xfffbbf24)),
               prefixIcon: const Icon(Icons.tag, color: Color(0xfff59e0b), size: 18),
               errorMaxLines: 2,
@@ -2153,8 +2210,11 @@ class _CaneCdnModalSheetState extends State<CaneCdnModalSheet> {
                 return 'CDN අංකය අනිවාර්යයි (CDN Number is required)';
               }
               final clean = val.trim().toUpperCase();
-              if (!RegExp(r'^[CB0-9]+$').hasMatch(clean)) {
-                return 'වලංගු නොවන CDN අංකයකි! C, B සහ අංක (0-9) පමණක් ඇතුළත් කරන්න.';
+              if (!RegExp(r'^[CB]?[0-9]+$').hasMatch(clean)) {
+                return 'වලංගු නොවන CDN අංකයකි! ආරම්භක අකුර C හෝ B පමණක් (එක් අකුරක් පමණි) විය හැකි අතර ඉතිරිය ඉලක්කම් පමණක් විය යුතුය.';
+              }
+              if (clean == 'C' || clean == 'B') {
+                return 'අකුරට (C/B) පසුව CDN අංකයේ ඉලක්කම් ඇතුළත් කරන්න (e.g. C12345, B11450)';
               }
               return null;
             },
